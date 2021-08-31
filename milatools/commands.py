@@ -6,6 +6,7 @@ import sys
 from coleo import Option, auto_cli, default
 
 from .utils import SSHCon, SSHConfig, T, check_passwordless, yn
+from .version import version as mversion
 
 
 def main():
@@ -27,7 +28,7 @@ class milatools:
         version: Option & bool = default(False)
 
         if version:
-            print("milatools v0")
+            print(f"milatools v{mversion}")
 
     def init():
         """Set up your configuration and credentials."""
