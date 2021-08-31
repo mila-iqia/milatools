@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "milatools"
+version = "0.1.0"
+description = "Tools to work with the Mila cluster"
+authors = ["Olivier Breuleux <breuleux@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+blessed = "^1.18.1"
+coleo = "^0.2.2"
+sshconf = "^0.2.2"
+
+[tool.poetry.dev-dependencies]
+black = "^21.8b0"
+isort = "^5.9.3"
+
+[tool.poetry.scripts]
+mila = "milatools.commands:main"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
