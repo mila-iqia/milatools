@@ -59,7 +59,7 @@ colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
 name = "coleo"
-version = "0.2.2"
+version = "0.2.3"
 description = "The nicest way to develop a command-line interface"
 category = "main"
 optional = false
@@ -203,7 +203,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "43d2bc3e71c731041193064e695710b6828023c922dd1b257d1bdd3357401d5f"
+content-hash = "370ec4cd8047022130dc4a9dbc261f9e8862e6a4888f483b95a6942fa48a718a"
 
 [metadata.files]
 ansicon = [
@@ -223,8 +223,8 @@ click = [
     {file = "click-8.0.1.tar.gz", hash = "sha256:8c04c11192119b1ef78ea049e0a6f0463e4c48ef00a30160c704337586f3ad7a"},
 ]
 coleo = [
-    {file = "coleo-0.2.2-py3-none-any.whl", hash = "sha256:3db4d30c70a6b9d97aaab9bfcd16845b18b9ea97eb39f1786f2bc86d5f3acf05"},
-    {file = "coleo-0.2.2.tar.gz", hash = "sha256:c78b5f393338e28cc8d115c118dae39df71d4d174724586b970846c01f52794b"},
+    {file = "coleo-0.2.3-py3-none-any.whl", hash = "sha256:70bd3f1bada8968e04794bb5ca845418f58e3d1c8a59ef378cbb30256fefdae6"},
+    {file = "coleo-0.2.3.tar.gz", hash = "sha256:05a6f34e60132594745545d088d5ef1800817d634dcaab060ecd97f138928796"},
 ]
 colorama = [
     {file = "colorama-0.4.4-py2.py3-none-any.whl", hash = "sha256:9f47eda37229f68eee03b24b9748937c7dc3868f906e8ba69fbcbdd3bc5dc3e2"},

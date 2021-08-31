@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "milatools"
-version = "0.1.0"
+version = "0.0.0"
 description = "Tools to work with the Mila cluster"
 authors = ["Olivier Breuleux <breuleux@gmail.com>"]
 license = "MIT"
@@ -8,7 +8,7 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.8"
 blessed = "^1.18.1"
-coleo = "^0.2.2"
+coleo = "^0.2.3"
 sshconf = "^0.2.2"
 
 [tool.poetry.dev-dependencies]
