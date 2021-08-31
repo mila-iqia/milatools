@@ -3,6 +3,9 @@ name = "milatools"
 version = "0.0.1"
 description = "Tools to work with the Mila cluster"
 authors = ["Olivier Breuleux <breuleux@gmail.com>"]
+readme = "README.md"
+homepage = "https://github.com/mila-iqia/milatools"
+repository = "https://github.com/mila-iqia/milatools"
 license = "MIT"
 
 [tool.poetry.dependencies]
