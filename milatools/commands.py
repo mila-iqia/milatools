@@ -1,11 +1,10 @@
 import os
 import shlex
 import subprocess
-import sys
 
 from coleo import Option, auto_cli, default
 
-from .utils import SSHCon, SSHConfig, T, check_passwordless, yn
+from .utils import Local, SSHCon, SSHConfig, T, yn
 from .version import version as mversion
 
 
@@ -94,6 +93,8 @@ class milatools:
 
         print("Checking passwordless authentication")
 
+        here = Local()
+
         # Check that there is an id file
 
         sshdir = os.path.expanduser("~/.ssh")
@@ -102,20 +103,18 @@ class milatools:
             for entry in os.listdir(sshdir)
         ):
             if yn("You have no public keys. Generate one?"):
-                print(T.bold_green("(local) $ ssh-keygen"))
-                subprocess.run(["ssh-keygen"])
+                here.run("ssh-keygen")
             else:
                 exit("No public keys.")
 
         # Check that it is possible to connect using the key
 
-        if not check_passwordless("mila"):
+        if not here.check_passwordless("mila"):
             if yn(
                 "Your public key does not appear be registered on the cluster. Register it?"
             ):
-                print(T.bold_green("(local) $ ssh-copy-id mila"))
-                subprocess.run(["ssh-copy-id", "mila"])
-                if not check_passwordless("mila"):
+                here.run("ssh-copy-id", "mila")
+                if not here.check_passwordless("mila"):
                     exit("ssh-copy-id appears to have failed")
             else:
                 exit("No passwordless login.")
@@ -133,7 +132,7 @@ class milatools:
         except subprocess.CalledProcessError:
             print("# MISSING")
             if yn("You have no public keys on the login node. Generate them?"):
-                print("(Note: You can just press Enter 3x to accept the defaults)")
+                # print("(Note: You can just press Enter 3x to accept the defaults)")
                 # _, keyfile = ssh.extract("ssh-keygen", pattern="Your public key has been saved in ([^ ]+)", wait=True)
                 private_file = "~/.ssh/id_rsa"
                 ssh.get(f'ssh-keygen -q -t rsa -N "" -f {private_file}')
@@ -166,6 +165,7 @@ class milatools:
         slurm_opts: Option
 
         ssh = SSHCon("mila")
+        here = Local()
 
         node_name = None
         proc, node_name = ssh.extract(
@@ -177,18 +177,16 @@ class milatools:
             exit("Could not find the node name for the allocation")
 
         if not path.startswith("/"):
+            # Get $HOME because we have to give the full path to code
             home = ssh.get("echo $HOME").strip()
             print("#", home)
             path = os.path.join(home, path)
 
-        vscmd = ["code", "--remote", f"ssh-remote+{node_name}.server.mila.quebec", path]
-        print(T.bold_green("(local) $ ", shlex.join(vscmd)))
-
-        subprocess.run(vscmd)
+        here.run("code", "--remote", f"ssh-remote+{node_name}.server.mila.quebec", path)
 
         try:
             proc.wait()
         except KeyboardInterrupt:
             print(f"Ended session on '{node_name}'")
             ssh.cleanup()
-            sys.exit()
+            exit()
