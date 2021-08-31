@@ -45,11 +45,14 @@ class milatools:
 
         print("Checking ssh config")
 
-        cfgpath = os.path.expanduser("~/.ssh/config")
+        sshpath = os.path.expanduser("~/.ssh")
+        cfgpath = os.path.join(sshpath, "config")
         if not os.path.exists(cfgpath):
             if yn("There is no ~/.ssh/config file. Create one?"):
-                os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+                if not os.path.exists(sshpath):
+                    os.makedirs(sshpath, mode=0o700, exist_ok=True)
                 open(cfgpath, "w").close()
+                os.chmod(cfgpath, 0o600)
                 print(f"Created {cfgpath}")
             else:
                 exit("No ssh configuration file was found.")

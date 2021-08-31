@@ -64,7 +64,7 @@ class Local:
 class SSHConnection:
     def __init__(self, host):
         self.here = Local()
-        os.makedirs(sockdir, exist_ok=True)
+        os.makedirs(sockdir, mode=0o700, exist_ok=True)
         self.host = host
         self.sock = os.path.join(sockdir, f"milatools.{host}")
         self.master = self.here.popen(
