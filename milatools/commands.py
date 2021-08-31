@@ -4,7 +4,7 @@ import subprocess
 
 from coleo import Option, auto_cli, default
 
-from .utils import Local, SSHCon, SSHConfig, T, yn
+from .utils import Local, SSHConnection, SSHConfig, T, yn
 from .version import version as mversion
 
 
@@ -38,7 +38,16 @@ class milatools:
 
         print("Checking ssh config")
 
-        c = SSHConfig()
+        cfgpath = os.path.expanduser("~/.ssh/config")
+        if not os.path.exists(cfgpath):
+            if yn("There is no ~/.ssh/config file. Create one?"):
+                os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+                open(cfgpath, "w").close()
+                print(f"Created {cfgpath}")
+            else:
+                exit("No ssh configuration file was found.")
+
+        c = SSHConfig(cfgpath)
         changes = False
 
         # Check for a mila entry in ssh config
@@ -125,7 +134,7 @@ class milatools:
 
         print("Checking connection to compute nodes")
 
-        ssh = SSHCon("mila")
+        ssh = SSHConnection("mila")
         try:
             pubkeys = ssh.get("ls -t ~/.ssh/id*.pub").strip().split()
             print("# OK")
@@ -164,7 +173,7 @@ class milatools:
         # [remainder]
         slurm_opts: Option
 
-        ssh = SSHCon("mila")
+        ssh = SSHConnection("mila")
         here = Local()
 
         node_name = None

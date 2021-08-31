@@ -43,7 +43,7 @@ class Local:
     def check_passwordless(self, host):
         results = self.run(
             "ssh",
-            "-oBatchMode=yes",
+            "-oPreferredAuthentications=publickey",
             host,
             "echo OK",
             stdout=subprocess.PIPE,
@@ -61,7 +61,7 @@ class Local:
             return True
 
 
-class SSHCon:
+class SSHConnection:
     def __init__(self, host):
         self.here = Local()
         os.makedirs(sockdir, exist_ok=True)
@@ -133,8 +133,8 @@ def yn(question, default="y"):
 class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 
-    def __init__(self):
-        self.cfg = read_ssh_config(os.path.expanduser("~/.ssh/config"))
+    def __init__(self, path):
+        self.cfg = read_ssh_config(path)
         self.add = self.cfg.add
         self.save = self.cfg.save
         self.host = self.cfg.host
