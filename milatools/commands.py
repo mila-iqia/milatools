@@ -1,6 +1,7 @@
 import os
 import shlex
 import subprocess
+import webbrowser
 
 from coleo import Option, auto_cli, default
 
@@ -28,6 +29,12 @@ class milatools:
 
         if version:
             print(f"milatools v{mversion}")
+
+    def docs():
+        """Open the Mila cluster documentation."""
+        url = "https://docs.mila.quebec"
+        print(f"Opening the docs: {url}")
+        webbrowser.open(url)
 
     def init():
         """Set up your configuration and credentials."""
