@@ -3,7 +3,7 @@ import shlex
 import subprocess
 import webbrowser
 
-from coleo import Option, auto_cli, default
+from coleo import Option, auto_cli, default, tooled
 
 from .utils import Local, SSHConnection, SSHConfig, T, yn
 from .version import version as mversion
@@ -174,26 +174,14 @@ class milatools:
 
     def code():
         """Open a remote VSCode session on a compute node."""
-
         # Path to open on the remote machine
         # [positional]
         path: Option
 
-        # Extra options to pass to slurm
-        # [remainder]
-        slurm_opts: Option
-
         ssh = SSHConnection("mila")
         here = Local()
 
-        node_name = None
-        proc, node_name = ssh.extract(
-            shlex.join(["salloc", *slurm_opts]),
-            pattern="salloc: Nodes ([^ ]+) are ready for job\n",
-        )
-
-        if node_name is None:
-            exit("Could not find the node name for the allocation")
+        proc, node_name = _find_allocation(ssh)
 
         if not path.startswith("/"):
             # Get $HOME because we have to give the full path to code
@@ -204,8 +192,46 @@ class milatools:
         here.run("code", "--remote", f"ssh-remote+{node_name}.server.mila.quebec", path)
 
         try:
-            proc.wait()
+            if proc is not None:
+                proc.wait()
         except KeyboardInterrupt:
             print(f"Ended session on '{node_name}'")
             ssh.cleanup()
             exit()
+
+
+@tooled
+def _find_allocation(ssh):
+    # Node to connect to
+    node: Option = default(None)
+
+    # Job ID to connect to
+    job: Option = default(None)
+
+    # Extra options to pass to slurm
+    # [nargs: --]
+    alloc: Option = default([])
+
+    if (node is not None) + (job is not None) + bool(alloc) > 1:
+        exit("ERROR: --node, --job and --alloc are mutually exclusive")
+
+    if node is not None:
+        proc = None
+        node_name = node
+
+    elif job is not None:
+        proc = None
+        node_name = ssh.get(f"squeue --jobs {job} -ho %N").strip()
+        print("#", node_name)
+
+    else:
+        node_name = None
+        proc, node_name = ssh.extract(
+            shlex.join(["salloc", *alloc]),
+            pattern="salloc: Nodes ([^ ]+) are ready for job\n",
+        )
+
+    if node_name is None:
+        exit("ERROR: Could not find the node name for the allocation")
+
+    return proc, node_name

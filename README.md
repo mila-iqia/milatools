@@ -33,19 +33,21 @@ Set up your access to the mila cluster interactively. Have your username and pas
 
 ### mila code
 
-Connect a VSCode instance to a compute node. `mila code` first allocates a compute node using slurm (you can pass slurm options as well), and then calls the `code` command with the appropriate options to start a remote coding session on the allocated node.
+Connect a VSCode instance to a compute node. `mila code` first allocates a compute node using slurm (you can pass slurm options as well using `--alloc`), and then calls the `code` command with the appropriate options to start a remote coding session on the allocated node.
 
 You can simply Ctrl+C the process to end the session.
 
 ```
-usage: mila code [-h] PATH ...
+usage: mila code [-h] [--alloc ...] [--job VALUE] [--node VALUE] PATH
 
 positional arguments:
-  PATH
-  SLURM_OPTS
+  PATH          Path to open on the remote machine
 
 optional arguments:
-  -h, --help  show this help message and exit
+  -h, --help    show this help message and exit
+  --alloc ...   Extra options to pass to slurm
+  --job VALUE   Job ID to connect to
+  --node VALUE  Node to connect to
 ```
 
 For example:
@@ -53,3 +55,5 @@ For example:
 ```bash
 mila code path/to/my/experiment
 ```
+
+If you already have an allocation on a compute node, you may use the `--node NODENAME` or `--job JOBID` options to connect to that node.
