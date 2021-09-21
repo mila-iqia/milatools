@@ -76,7 +76,9 @@ class SSHConnection:
             stderr=subprocess.STDOUT,
         )
 
-    def cmd(self, *args):
+    def cmd(self, *args, bash=False):
+        if bash:
+            args = [shlex.join(["bash", "-c", *args])]
         return ["ssh", self.host, "-S", self.sock, *args]
 
     def display(self, args):
@@ -84,19 +86,15 @@ class SSHConnection:
 
     def get(self, *args, bash=False):
         self.display(args)
-        if bash:
-            args = [shlex.join(["bash", "-c", *args])]
-            cmd = self.cmd(*args)
-        else:
-            cmd = self.cmd(*args)
+        cmd = self.cmd(*args, bash=bash)
         return subprocess.check_output(
             cmd,
             universal_newlines=True,
         )
 
-    def popen(self, *args):
+    def popen(self, *args, bash=False):
         self.display(args)
-        cmd = self.cmd(*args)
+        cmd = self.cmd(*args, bash=bash)
         return subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -104,15 +102,19 @@ class SSHConnection:
             universal_newlines=True,
         )
 
-    def extract(self, *args, pattern, wait=False):
-        proc = self.popen(*args)
+    def extract(self, *args, pattern, wait=False, bash=False):
+        proc = self.popen(*args, bash=bash)
         result = None
-        while line := proc.stdout.readline():
-            print("#", line.rstrip())
-            if m := re.match(pattern, line):
-                result = m.groups()[0]
-                if not wait:
-                    return proc, result
+        try:
+            while line := proc.stdout.readline():
+                print("#", line.rstrip())
+                if m := re.match(pattern, line):
+                    result = m.groups()[0]
+                    if not wait:
+                        return proc, result
+        except KeyboardInterrupt:
+            proc.terminate()
+            exit("Canceled")
         proc.wait()
         return None, result
 

@@ -5,7 +5,7 @@ import webbrowser
 
 from coleo import Option, auto_cli, default, tooled
 
-from .utils import Local, SSHConnection, SSHConfig, T, yn
+from .utils import Local, SSHConfig, SSHConnection, T, yn
 from .version import version as mversion
 
 
@@ -229,6 +229,7 @@ def _find_allocation(ssh):
         proc, node_name = ssh.extract(
             shlex.join(["salloc", *alloc]),
             pattern="salloc: Nodes ([^ ]+) are ready for job\n",
+            bash=True,  # Some zsh or fish shells may be improperly configured for salloc
         )
 
     if node_name is None:
