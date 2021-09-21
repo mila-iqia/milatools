@@ -9,6 +9,12 @@ The milatools package provides the `mila` command, which is meant to help with c
 Requires Python >= 3.8
 
 ```bash
+pip install milatools
+```
+
+Or, for bleeding edge version:
+
+```bash
 pip install git+git://github.com/mila-iqia/milatools.git
 ```
 
@@ -55,5 +61,7 @@ For example:
 ```bash
 mila code path/to/my/experiment
 ```
+
+The `--alloc` option may be used to pass extra arguments to `salloc` when allocating a node (for example, `--alloc --gres=cpu:8` to allocate 8 CPUs). `--alloc` should be at the end, because it will take all of the arguments that come after it.
 
 If you already have an allocation on a compute node, you may use the `--node NODENAME` or `--job JOBID` options to connect to that node.
