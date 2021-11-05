@@ -11,7 +11,8 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.8"
 blessed = "^1.18.1"
-coleo = "^0.2.4"
+coleo = "0.2.5"
+ptera = "0.4.2"
 sshconf = "^0.2.2"
 
 [tool.poetry.dev-dependencies]
