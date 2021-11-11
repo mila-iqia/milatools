@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "milatools"
-version = "0.0.6"
+version = "0.0.7"
 description = "Tools to work with the Mila cluster"
 authors = ["Olivier Breuleux <breuleux@gmail.com>"]
 readme = "README.md"
