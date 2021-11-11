@@ -32,8 +32,27 @@ class milatools:
 
     def docs():
         """Open the Mila cluster documentation."""
+        # Search terms
+        # [remainder]
+        search: Option = default([])
         url = "https://docs.mila.quebec"
+        if search:
+            terms = "+".join(search)
+            url = f"{url}/search.html?q={terms}"
         print(f"Opening the docs: {url}")
+        webbrowser.open(url)
+
+    def intranet():
+        """Open the Mila intranet in a browser."""
+        # Search terms
+        # [remainder]
+        search: Option = default([])
+        if search:
+            terms = "+".join(search)
+            url = f"https://sites.google.com/search/mila.quebec/mila-intranet?query={terms}&scope=site&showTabs=false"
+        else:
+            url = "https://intranet.mila.quebec"
+        print(f"Opening the intranet: {url}")
         webbrowser.open(url)
 
     def init():

@@ -37,6 +37,14 @@ Set up your access to the mila cluster interactively. Have your username and pas
 * Set up a public key on the login node to enable ssh into compute nodes
 
 
+### mila docs/intranet
+
+* Use `mila docs <search terms>` to search the Mila technical documentation
+* Use `mila intranet <search terms>` to search the Mila intranet
+
+Both commands open a browser window. If no search terms are given you are taken to the home page.
+
+
 ### mila code
 
 Connect a VSCode instance to a compute node. `mila code` first allocates a compute node using slurm (you can pass slurm options as well using `--alloc`), and then calls the `code` command with the appropriate options to start a remote coding session on the allocated node.
