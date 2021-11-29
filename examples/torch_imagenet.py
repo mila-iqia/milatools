@@ -43,6 +43,7 @@ def main():
     best_acc1 = 0
     args = parser.parse_args()
     experiment_buddy.register_defaults(vars(args))
+    # Temporary, until we have a buddy-free way to do it, or buddy becomes part of milatools
     experiment_buddy.deploy(host='mila')
 
     random.seed(args.seed)
