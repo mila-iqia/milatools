@@ -5,7 +5,7 @@ import webbrowser
 
 from coleo import Option, auto_cli, default, tooled
 
-from .utils import Local, SSHConfig, SSHConnection, T, yn
+from .cmd_utils import Local, SSHConfig, SSHConnection, T, yn
 from .version import version as mversion
 
 
