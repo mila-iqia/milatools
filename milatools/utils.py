@@ -1,6 +1,7 @@
 import os
 import re
 import shlex
+import socket
 import subprocess
 
 import blessed
@@ -8,6 +9,7 @@ from sshconf import read_ssh_config
 
 sockdir = os.path.expanduser("~/.ssh/sockets")
 
+running_on_mila_cluster = socket.getfqdn().endswith(".server.mila.quebec") and "SLURM_TMPDIR" in os.environ.keys()
 
 T = blessed.Terminal()
 
