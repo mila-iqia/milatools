@@ -174,7 +174,7 @@ def dataparallel(model, device=None):
 
 
 def record(fn, error_handler=None):
-    """Decorator that help record exception in a distrubted setup"""
+    """Decorator that helps record an exception in a distributed setup"""
     if rank() >= 0:
         return torch_record(fn, error_handler)
 
