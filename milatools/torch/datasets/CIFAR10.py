@@ -1,3 +1,6 @@
+import torchvision.datasets as datasets
+from torch.utils.data import ConcatDataset
+
 from milatools.datasets.cached import CachedDataset
 from milatools.datasets.transformed import Transformed
 from milatools.dataset.split import split
@@ -47,8 +50,6 @@ class CIFAR10(CachedDataset):
     @staticmethod
     def build_dataset(*args, **kwargs):
         """Builds the expexted dataset"""
-        import torchvision.datasets as datasets
-        from torch.utils.data import ConcatDataset
 
         train_dataset = datasets.CIFAR10(*args, train=True, **kwargs)
         test_dataset = datasets.CIFAR10(*args, train=False, **kwargs)
@@ -56,55 +57,3 @@ class CIFAR10(CachedDataset):
 
     def __init__(self, root, download=False):
         super(CIFAR10, self).__init__(root, download)
-
-    def splits(
-        self, method="original", final=False, train_transform=None, test_transform=None
-    ):
-        """Split the dataset in 3 train, valid, test.
-        When the hyperparameter optimization is done, final is set to True and
-        train and valid are merged together.
-
-        Parameters
-        ----------
-
-        method: str
-            split method to use, defaults to original which use the standard dataset split
-
-        final: bool
-            When set to true merge the test and validation set together
-
-        train_transform:
-            Per sample transformation applied to your trainning set
-
-        test_transform:
-            Per sample transformation applied to both the valid test test set.
-
-        Notes
-        -----
-
-        Randomizing the dataset splits is important to be able to effectively benchmark
-        your model
-
-        """
-        from torch.utils.data import ConcatDataset, Dataset, Subset
-
-        splits = split(self, method)
-
-        trainset = Subset(self, splits.train)
-        validset = Subset(self, splits.valid)
-        testset = Subset(self, splits.test)
-
-        if final:
-            trainset = ConcatDataset([trainset, validset])
-            # Valid set get merged to get a bigger trainset
-            # when HPO is done
-            validset = None
-        else:
-            # Not allowed to use testset during HPO
-            testset = None
-
-        return (
-            Transformed(trainset, train_transform) if trainset else None,
-            Transformed(validset, test_transform) if validset else None,
-            Transformed(testset, test_transform) if testset else None,
-        )
