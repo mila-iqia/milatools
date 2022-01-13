@@ -1,10 +1,15 @@
 import os
 import shutil
+import tempfile
 
 from milatools.torch.datasets.split import split
 from milatools.torch.datasets.transformed import Transformed
 
 from torch.utils.data import ConcatDataset, Dataset, Subset
+
+
+def get_temp_folder():
+    return os.environ.get("SLURM_TMPDIR", "/tmp/")
 
 
 class CachedDataset:
@@ -15,16 +20,25 @@ class CachedDataset:
     valid_size = None
     test_size = None
 
-    def __init__(self, root, download=False):
+    def __init__(self, root=None, *args, download=False, **kwargs):
+        # NB: for HPO (multiple unrelated workers on the same machine)
+        # we will need a filelock to avoid workers all downloading the same dataset
 
+        # TODO: only dist.has_dataset_authority() can download
         if os.path.exists(self.mila_path()):
             download = False
 
-        if not CachedDataset.WAS_COPIED:
-            shutil.copytree(self.mila_path(), root, dirs_exist_ok=True)
-            CachedDataset.WAS_COPIED = True
+        # Create a deterministic location so other workers on the same machine
+        # can access the data
+        if root is None:
+            root = os.path.join(get_temp_folder(), "milatools", type(self).__name__)
 
-        self.dataset = self.build_dataset(root, download=download)
+        # TODO: only dist.has_dataset_authority() can copy
+        if os.path.exists(self.mila_path()) and not type(self).WAS_COPIED:
+            shutil.copytree(self.mila_path(), root, dirs_exist_ok=True)
+            type(self).WAS_COPIED = True
+
+        self.dataset = self.build_dataset(root, *args, download=download, **kwargs)
 
     @staticmethod
     def dataset_class():
@@ -83,7 +97,7 @@ class CachedDataset:
 
         """
 
-        splits = split(self, method)
+        splits = split(self, method, len(self.dataset))
 
         trainset = Subset(self, splits.train)
         validset = Subset(self, splits.valid)
@@ -91,8 +105,7 @@ class CachedDataset:
 
         if final:
             trainset = ConcatDataset([trainset, validset])
-            # Valid set get merged to get a bigger trainset
-            # when HPO is done
+            # Valid set get merged to get a bigger trainset when HPO is done
             validset = None
         else:
             # Not allowed to use testset during HPO

@@ -1,12 +1,26 @@
+from collections import defaultdict
+
 import torchvision.datasets as datasets
 from torch.utils.data import ConcatDataset
 
-from milatools.datasets.cached import CachedDataset
-from milatools.datasets.transformed import Transformed
-from milatools.dataset.split import split
+from milatools.torch.datasets.cached import CachedDataset
+from milatools.torch.datasets.transformed import Transformed
+from milatools.torch.datasets.split import split
 
 
-class CIFAR10(CachedDataset):
+class ClassificationDataset:
+    @property
+    def classes(self):
+        """Return the mapping between samples index and their class"""
+        classes = defaultdict(list)
+
+        for index, [_, y] in enumerate(self.dataset):
+            classes[y].append(index)
+
+        return [classes[i] for i in sorted(classes.keys())]
+
+
+class CIFAR10(CachedDataset, ClassificationDataset):
     """The CIFAR-10 dataset (Canadian Institute For Advanced Research) is a collection of images
     that are commonly used to train machine learning and computer vision algorithms.
     It is one of the most widely used datasets for machine learning research.
@@ -49,11 +63,10 @@ class CIFAR10(CachedDataset):
 
     @staticmethod
     def build_dataset(*args, **kwargs):
-        """Builds the expexted dataset"""
-
+        """Builds the expected dataset"""
         train_dataset = datasets.CIFAR10(*args, train=True, **kwargs)
         test_dataset = datasets.CIFAR10(*args, train=False, **kwargs)
         return ConcatDataset([train_dataset, test_dataset])
 
-    def __init__(self, root, download=False):
-        super(CIFAR10, self).__init__(root, download)
+    def __init__(self, root=None, download=False):
+        super(CIFAR10, self).__init__(root=root, download=download)
