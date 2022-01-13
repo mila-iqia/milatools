@@ -97,7 +97,7 @@ class DistributedProcessGroup:
 
     @property
     def device(self):
-        """Return the device this scrupt should use"""
+        """Return the device this script should use"""
         if self.rank < 0:
             return torch.device("cuda")
 
