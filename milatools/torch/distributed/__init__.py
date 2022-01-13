@@ -3,7 +3,6 @@ import logging
 
 import torch
 import torch.distributed as dist
-from torch.distributed.elastic.multiprocessing.errors import record
 from torch.nn.parallel import DistributedDataParallel
 from torch.distributed.elastic.multiprocessing.errors import (
     record as torch_record,
