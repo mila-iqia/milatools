@@ -1,6 +1,6 @@
 from milatools.datasets.cached import CachedDataset
 from milatools.datasets.transformed import Transformed
-from milatools.dataset.split import split
+from milatools.datasets.split import split
 
 
 class CIFAR10(CachedDataset):
