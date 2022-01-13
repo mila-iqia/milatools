@@ -114,7 +114,7 @@ def __get_attr(name, default):
 
 def barrier():
     """block until all workers reach this"""
-    return __get_attr("barrier", lambda: lambda: True)()
+    return __get_attr("barrier", lambda: True)()
 
 
 def has_weight_autority():
