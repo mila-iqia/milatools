@@ -96,7 +96,7 @@ class DistributedProcessGroup:
 
     @property
     def device(self):
-        """Return the device this scrupt should use"""
+        """Return the device this script should use"""
         if self.rank < 0:
             return torch.device("cuda")
 
@@ -113,7 +113,7 @@ def __get_attr(name, default):
 
 def barrier():
     """block until all workers reach this"""
-    return __get_attr("barrier", lambda: lambda: True)()
+    return __get_attr("barrier", lambda: True)()
 
 
 def has_weight_autority():
@@ -173,7 +173,7 @@ def dataparallel(model, device=None):
 
 
 def record(fn, error_handler=None):
-    """Decorator that help record exception in a distrubted setup"""
+    """Decorator that helps record an exception in a distributed setup"""
     if rank() >= 0:
         return torch_record(fn, error_handler)
 

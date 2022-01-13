@@ -89,18 +89,26 @@ def train():
                 running_loss = 0.0
 
     print("Finished Training")
-    torch.save(model.state_dict(), PATH)
+
+    # Only one worker should save the network
+    if dist.has_weight_autority():
+        torch.save(model.state_dict(), PATH)
 
 
 if __name__ == "__main__":
     # Usage:
     #
+    #   # Works with a single GPU
+    #   python distributed.py
+    #
+    #   # Works with multiple GPUs
     #   torchrun                            \
     #       --nproc_per_node=$GPU_COUNT     \
     #       --nnodes=$WORLD_SIZE            \
     #       --rdzv_id=$SLURM_JOB_ID         \
     #       --rdzv_backend=c10d             \
-    #        --rdzv_endpoint=$RDV_ADDR      \
+    #       --rdzv_endpoint=$RDV_ADDR       \
+    #       distributed.py
     #
     import argparse
 
