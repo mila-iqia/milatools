@@ -12,9 +12,15 @@ sockdir = os.path.expanduser("~/.ssh/sockets")
 T = blessed.Terminal()
 
 
+# This is the implementation of shlex.join in Python >= 3.8
+def shjoin(split_command):
+    """Return a shell-escaped string from *split_command*."""
+    return " ".join(shlex.quote(arg) for arg in split_command)
+
+
 class Local:
     def display(self, args):
-        print(T.bold_green(f"(local) $ ", shlex.join(args)))
+        print(T.bold_green(f"(local) $ ", shjoin(args)))
 
     def get(self, *args, **kwargs):
         self.display(args)
@@ -78,7 +84,7 @@ class SSHConnection:
 
     def cmd(self, *args, bash=False):
         if bash:
-            args = [shlex.join(["bash", "-c", *args])]
+            args = [shjoin(["bash", "-c", *args])]
         return ["ssh", self.host, "-S", self.sock, *args]
 
     def display(self, args):
@@ -106,9 +112,13 @@ class SSHConnection:
         proc = self.popen(*args, bash=bash)
         result = None
         try:
-            while line := proc.stdout.readline():
+            while True:
+                line = proc.stdout.readline()
+                if not line:
+                    break
                 print("#", line.rstrip())
-                if m := re.match(pattern, line):
+                m = re.match(pattern, line)
+                if m:
                     result = m.groups()[0]
                     if not wait:
                         return proc, result
