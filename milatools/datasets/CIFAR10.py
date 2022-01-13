@@ -46,7 +46,7 @@ class CIFAR10(CachedDataset):
 
     @staticmethod
     def build_dataset(*args, **kwargs):
-        """Builds the expexted dataset"""
+        """Builds the expected dataset"""
         import torchvision.datasets as datasets
         from torch.utils.data import ConcatDataset
 
