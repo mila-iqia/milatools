@@ -16,8 +16,9 @@ from torchvision.datasets import VisionDataset
 
 from milavision._utils import VD
 
-fast_data_dir: Path = Path(os.environ.get("SLURM_TMPDIR", ""))
-torchvision_dir: Path = Path("/network/datasets/torchvision")
+# NOTE: It should always be possible to import this module even when not on the mila cluster.
+SLURM_TMPDIR: Path = Path(os.environ.get("SLURM_TMPDIR", ""))
+TORCHVISION_DIR: Path = Path("/network/datasets/torchvision")
 
 """ a map of the files for each dataset type, relative to the `torchvision_dir`. """
 dataset_files: Dict[Type[VisionDataset], List[str]] = {
@@ -66,7 +67,7 @@ def _try_load_fast(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
     assert "download" not in kwargs
     assert "root" not in kwargs
     try:
-        return create_dataset(dataset_type, root=fast_data_dir, download=False, **kwargs)
+        return create_dataset(dataset_type, root=SLURM_TMPDIR, download=False, **kwargs)
     except Exception as exc:
         logger.debug(f"Unable to load the dataset from the fast data directory: {exc}")
         return None
@@ -74,7 +75,7 @@ def _try_load_fast(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
 
 def _download_fast(dataset_type: Type[VD], download: bool = None, **kwargs) -> VD:
     assert "root" not in kwargs
-    return create_dataset(dataset_type, root=fast_data_dir, download=download, **kwargs)
+    return create_dataset(dataset_type, root=SLURM_TMPDIR, download=download, **kwargs)
 
 
 def _try_copy_from_slow(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
@@ -82,7 +83,7 @@ def _try_copy_from_slow(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
     assert "root" not in kwargs
     try:
         # Try to load the dataset from the torchvision directory.
-        _ = create_dataset(dataset_type, root=torchvision_dir, download=False, **kwargs)
+        _ = create_dataset(dataset_type, root=TORCHVISION_DIR, download=False, **kwargs)
     except Exception as exc:
         logger.debug(f"Unable to load the dataset from the torchvision directory: {exc}")
         return None
@@ -98,7 +99,7 @@ def _try_copy_from_slow(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
 def _copy_files_to_fast_dir(dataset_type: Type[VisionDataset]) -> None:
     paths_to_copy = dataset_files_paths[dataset_type]
     for source_path in paths_to_copy:
-        destination_path = fast_data_dir / source_path
+        destination_path = SLURM_TMPDIR / source_path
         if source_path.is_dir():
             # Copy the folder over.
             # TODO: Check that this doesn't overwrite stuff, ignores files that are newer.

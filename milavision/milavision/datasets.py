@@ -11,14 +11,69 @@ that are normally passed to the dataset class (e.g. `MNIST(root, download=True)`
 >>> # dataset.root might not actually be "~/my/data/directory"!
 """
 import functools
+import typing
 
-import torchvision.datasets as tvd
+import torchvision.datasets as _tvd
+
+# Import EVERYTHING from torchvision, and then overwrite whatever we support.
+from torchvision.datasets import *  # type: ignore
+from torchvision.datasets import __all__
 
 from milavision._utils import ClusterType
 
-# Import everything from torchvision, and then overwrite whatever we support.
-from torchvision.datasets import *  # type: ignore
-from torchvision.datasets import __all__
+for attribute, value in vars(_tvd).items():
+    if attribute.startswith("__") and attribute.endswith("__"):
+        continue
+    if attribute not in __all__:
+        """
+        For all the attributes like `torchvision.datasets.vision`, `torchvision.datasets.utils`,
+        or the modules like `torchvision.datasets.caltech`, etc, we copy over the value to the
+        globals here.
+        This makes it possible to do:
+        
+        ```python
+        from milavision.datasets import caltech
+        ```
+        """
+        globals()[attribute] = value
+
+if typing.TYPE_CHECKING:
+    # Import these here, so that when writing code, you get hints when doing something like:
+    #
+    # from milavision.datasets import caltech
+    #
+    # without the type-checker complaining.
+    from torchvision.datasets import (
+        caltech,
+        celeba,
+        cifar,
+        cityscapes,
+        coco,
+        fakedata,
+        flickr,
+        folder,
+        hmdb51,
+        imagenet,
+        kinetics,
+        kitti,
+        lsun,
+        mnist,
+        omniglot,
+        phototour,
+        places365,
+        sbd,
+        sbu,
+        semeion,
+        stl10,
+        svhn,
+        ucf101,
+        usps,
+        utils,
+        video_utils,
+        vision,
+        voc,
+        widerface,
+    )
 
 
 cluster_type = ClusterType.current()
@@ -30,10 +85,10 @@ if cluster_type is ClusterType.LOCAL:
 elif cluster_type is ClusterType.MILA:
     from milavision.envs.mila import create_dataset
 
-    MNIST = functools.partial(create_dataset, tvd.MNIST)
-    CIFAR10 = functools.partial(create_dataset, tvd.CIFAR10)
-    CIFAR100 = functools.partial(create_dataset, tvd.CIFAR100)
-    ImageNet = functools.partial(create_dataset, tvd.ImageNet)
+    MNIST = functools.partial(create_dataset, _tvd.MNIST)
+    CIFAR10 = functools.partial(create_dataset, _tvd.CIFAR10)
+    CIFAR100 = functools.partial(create_dataset, _tvd.CIFAR100)
+    ImageNet = functools.partial(create_dataset, _tvd.ImageNet)
     # TODO: Find where the rest of these datasets are stored on the MILA cluster.
     # from tvd.lsun import LSUN, LSUNClass
     # from tvd.folder import ImageFolder, DatasetFolder
