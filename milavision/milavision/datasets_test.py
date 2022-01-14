@@ -37,19 +37,25 @@ class TestLocal:
         # assert vars(torchvision) == vars(milavision)
 
 
+import os
+
+
 @pytest.fixture()
-def temp_root_dir(tmp_path_factory):
+def temp_root_dir(tmp_path_factory, monkeypatch):
     if current_env is ClusterType.LOCAL:
         return tmp_path_factory.mktemp("data")
 
     if current_env is ClusterType.MILA:
         data_dir = ClusterType.MILA.fast_data_dir / "_temp_data"
+
+        monkeypatch.setitem(os.environ, "SLURM_TMPDIR", str(data_dir))
+        assert ClusterType.MILA.fast_data_dir == data_dir
+
         data_dir.mkdir(exist_ok=False, parents=False)
+
         yield data_dir
+
         shutil.rmtree(data_dir, ignore_errors=False)
-
-
-import os
 
 
 @only_runs_on_mila_cluster
@@ -57,10 +63,7 @@ class TestMila:
     @pytest.mark.parametrize(
         "dataset_type", [mvd.MNIST, mvd.CIFAR10, mvd.CIFAR100], ids=lambda c: c.args[0].__name__
     )
-    def test_root_is_ignored(
-        self, temp_root_dir: Path, dataset_type: Type[VisionDataset], monkeypatch
-    ):
-        monkeypatch.setitem(os.environ, "SLURM_TMPDIR", str(temp_root_dir))
+    def test_root_is_ignored(self, temp_root_dir: Path, dataset_type: Type[VisionDataset]):
         d = dataset_type(str(temp_root_dir / "blabla"))
         assert not (temp_root_dir / "blabla").exists()
 
