@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Type, Union
 import torchvision.datasets as tvd
 from torchvision.datasets import VisionDataset
 
-from milavision._utils import VD
+from milavision._utils import VD, ClusterType
 
 # NOTE: It should always be possible to import this module even when not on the mila cluster.
 SLURM_TMPDIR: Path = Path(os.environ.get("SLURM_TMPDIR", ""))
@@ -96,14 +96,15 @@ def _try_copy_from_slow(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
 
 def _copy_files_to_fast_dir(dataset_type: Type[VisionDataset]) -> None:
     paths_to_copy = dataset_files_paths[dataset_type]
-    for source_path in paths_to_copy:
-        destination_path = SLURM_TMPDIR / source_path
+    for source_file in paths_to_copy:
+        source_path = ClusterType.MILA.torchvision_dir / source_file
+        destination_path = SLURM_TMPDIR / source_file
         if source_path.is_dir():
             # Copy the folder over.
             # TODO: Check that this doesn't overwrite stuff, ignores files that are newer.
             # TODO: Test this out with symlinks, make sure it works.
             shutil.copytree(
-                src=source_path, dst=destination_path, symlinks=False, dirs_exist_ok=True,
+                src=source_path, dst=destination_path, symlinks=False
             )
         elif not destination_path.exists():
             # Copy the file over.
