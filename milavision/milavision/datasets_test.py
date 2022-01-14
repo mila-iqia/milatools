@@ -3,6 +3,8 @@ import shutil
 from pathlib import Path
 from typing import Tuple, Type
 
+import numpy as np
+import torch
 import pytest
 import torchvision.datasets as tvd
 from torchvision.datasets import VisionDataset
@@ -70,5 +72,11 @@ class TestMila:
         tv_dataset = tv_dataset_class(str(current_env.torchvision_dir))
         mv_dataset = mv_dataset_class(str(current_env.torchvision_dir))
         assert len(tv_dataset) == len(mv_dataset)
-        assert (tv_dataset[0][0] == mv_dataset[0][0]).all()
-        assert (tv_dataset[0][1] == mv_dataset[0][1]).all()
+        tv_first_item = tv_dataset[0]
+        mv_first_item = mv_dataset[0]
+        for tv_value, mv_value in zip(tv_first_item, mv_first_item):
+            if isinstance(tv_value, (torch.Tensor, np.ndarray)):
+                assert (tv_value == mv_value).all()
+            else:
+                assert tv_value == mv_value
+
