@@ -16,8 +16,6 @@ from .conftest import only_runs_locally, only_runs_on_mila_cluster
 
 current_env = ClusterType.current()
 
-import torchvision.datasets
-
 
 @only_runs_locally
 class TestLocal:
@@ -45,9 +43,7 @@ def temp_root_dir(tmp_path_factory):
         return tmp_path_factory.mktemp("data")
 
     if current_env is ClusterType.MILA:
-        from milavision.envs.mila import SLURM_TMPDIR
-
-        data_dir = SLURM_TMPDIR / "_temp_data"
+        data_dir = ClusterType.MILA.fast_data_dir / "_temp_data"
         data_dir.mkdir(exist_ok=False, parents=False)
         yield data_dir
         shutil.rmtree(data_dir, ignore_errors=False)
@@ -55,7 +51,9 @@ def temp_root_dir(tmp_path_factory):
 
 @only_runs_on_mila_cluster
 class TestMila:
-    @pytest.mark.parametrize("dataset_type", [mvd.MNIST, mvd.CIFAR10, mvd.CIFAR100])
+    @pytest.mark.parametrize(
+        "dataset_type", [mvd.MNIST, mvd.CIFAR10, mvd.CIFAR100], ids=lambda c: c.__name__
+    )
     def test_root_is_ignored(self, temp_root_dir: Path, dataset_type: Type[VisionDataset]):
         d = dataset_type(str(temp_root_dir / "blabla"))
         assert not (temp_root_dir / "blabla").exists()
@@ -63,6 +61,7 @@ class TestMila:
     @pytest.mark.parametrize(
         "dataset_types",
         [(tvd.MNIST, mvd.MNIST), (tvd.CIFAR10, mvd.CIFAR10), (tvd.CIFAR100, mvd.CIFAR100),],
+        ids=lambda t: t[0].__name__,
     )
     def test_simple_dataset(
         self, temp_root_dir: Path, dataset_types: Tuple[Type[VisionDataset], Type[VisionDataset]]
