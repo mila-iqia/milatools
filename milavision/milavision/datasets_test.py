@@ -49,12 +49,18 @@ def temp_root_dir(tmp_path_factory):
         shutil.rmtree(data_dir, ignore_errors=False)
 
 
+import os
+
+
 @only_runs_on_mila_cluster
 class TestMila:
     @pytest.mark.parametrize(
         "dataset_type", [mvd.MNIST, mvd.CIFAR10, mvd.CIFAR100], ids=lambda c: c.args[0].__name__
     )
-    def test_root_is_ignored(self, temp_root_dir: Path, dataset_type: Type[VisionDataset]):
+    def test_root_is_ignored(
+        self, temp_root_dir: Path, dataset_type: Type[VisionDataset], monkeypatch
+    ):
+        monkeypatch.setitem(os.environ, "SLURM_TMPDIR", str(temp_root_dir))
         d = dataset_type(str(temp_root_dir / "blabla"))
         assert not (temp_root_dir / "blabla").exists()
 
@@ -67,9 +73,11 @@ class TestMila:
         self, temp_root_dir: Path, dataset_types: Tuple[Type[VisionDataset], Type[VisionDataset]]
     ):
         """ Test that we can create this dataset quite simply, like we usually would. """
+        # NOTE: This test is loading the datasets from `$SLURM_TMPDIR` that are moved there by the
+        # previous tests!
         tv_dataset_class, mv_dataset_class = dataset_types
+        mv_dataset = mv_dataset_class(str(temp_root_dir))
         tv_dataset = tv_dataset_class(str(current_env.torchvision_dir))
-        mv_dataset = mv_dataset_class(str(current_env.torchvision_dir))
         assert len(tv_dataset) == len(mv_dataset)
         tv_first_item = tv_dataset[0]
         mv_first_item = mv_dataset[0]
@@ -78,4 +86,3 @@ class TestMila:
                 assert (tv_value == mv_value).all()
             else:
                 assert tv_value == mv_value
-

@@ -14,4 +14,3 @@ def only_runs_on_mila_cluster(t):
     return pytest.mark.skipif(
         current_env is not ClusterType.MILA, reason="Only runs on the Mila cluster."
     )(t)
-
