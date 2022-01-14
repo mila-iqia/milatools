@@ -8,16 +8,7 @@ that are normally passed to the dataset class (e.g. `MNIST(root, download=True)`
 >>> # from torchvision.datasets import MNIST
 >>> from milavision.datasets import MNIST
 >>> dataset = MNIST("~/my/data/directory", download=True)
->>> dataset.root
-
->>>
-
-
-The dataset 
-
-might not be the pat
-
-that you provide to the dataset class might not Dataset creation is altered slightly, de
+>>> # dataset.root might not actually be "~/my/data/directory"!
 """
 import functools
 
@@ -25,11 +16,12 @@ import torchvision.datasets as tvd
 
 from milavision._utils import ClusterType
 
-cluster_type = ClusterType.current()
-
 # Import everything from torchvision, and then overwrite whatever we support.
 from torchvision.datasets import *  # type: ignore
 from torchvision.datasets import __all__
+
+
+cluster_type = ClusterType.current()
 
 if cluster_type is ClusterType.LOCAL:
     # no change.

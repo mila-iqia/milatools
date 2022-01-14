@@ -1,14 +1,20 @@
-from logging import getLogger as get_logger
-import socket
-from pathlib import Path
+""" Set of functions for creating torchvision datasets when on the Mila cluster.
+
+IDEA: later on, we could also add some functions for loading torchvision models from a cached
+directory. 
+"""
+import inspect
 import os
+import shutil
+import socket
+from logging import getLogger as get_logger
+from pathlib import Path
+from typing import Dict, List, Optional, Type, Union
+
 import torchvision.datasets as tvd
 from torchvision.datasets import VisionDataset
-from typing import Dict, Optional, Type, List, Union
-from .._utils import VD
-import shutil
-import inspect
-from functools import partial
+
+from milavision._utils import VD
 
 fast_data_dir: Path = Path(os.environ.get("SLURM_TMPDIR", ""))
 torchvision_dir: Path = Path("/network/datasets/torchvision")

@@ -48,3 +48,6 @@ class ClusterType(enum.Enum):
         if self is ClusterType.MILA:
             return Path(os.environ["SLURM_TMPDIR"])
         raise NotImplementedError(self)  # todo
+
+
+current = ClusterType.current()

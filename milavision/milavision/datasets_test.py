@@ -1,13 +1,15 @@
-from typing import Type
-from milavision.envs import mila
 from pathlib import Path
-from milavision._utils import ClusterType
-import pytest
+from typing import Type
 
-current_env = ClusterType.current()
-from .conftest import local, mila
+import pytest
 import torchvision.datasets as tvd
 from torchvision.datasets import VisionDataset
+
+from milavision._utils import ClusterType
+
+from .conftest import local, mila
+
+current_env = ClusterType.current()
 
 
 @pytest.fixture(scope="module")
@@ -22,6 +24,7 @@ def root_dir(tmp_path_factory):
 class TestLocal:
     def test_all_attributes_match(self):
         import torchvision
+
         import milavision
 
         matching_attributes = []
@@ -32,7 +35,6 @@ class TestLocal:
             milavision_value = getattr(milavision, attribute)
             assert torchvision_value == milavision_value, attribute
             matching_attributes.append(attribute)
-        assert False, ",".join(matching_attributes)
         # a bit too radical perhaps.
         # assert vars(torchvision) == vars(milavision)
 
