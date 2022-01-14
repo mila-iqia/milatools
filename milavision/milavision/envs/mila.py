@@ -45,9 +45,7 @@ dataset_files_paths: Dict[Type[VisionDataset], List[Path]] = {
 _IGNORED = ""
 
 
-def make_dataset(
-    dataset_type: Type[VD], root: str = _IGNORED, download: bool = False, **kwargs
-) -> VD:
+def make_dataset(dataset_type: Type[VD], root: str, download: bool = False, **kwargs) -> VD:
     # Check if the dataset is already downloaded in $SLURM_TMPDIR. If so, read and return it.
     # If not, check if the dataset is already stored somewhere in the cluster. If so, try to copy it
     # over to the fast directory. If that works, read the dataset from the fast directory.
@@ -67,7 +65,7 @@ def _try_load_fast(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
     assert "download" not in kwargs
     assert "root" not in kwargs
     try:
-        return create_dataset(dataset_type, root=SLURM_TMPDIR, download=False, **kwargs)
+        return _create_dataset(dataset_type, root=SLURM_TMPDIR, download=False, **kwargs)
     except Exception as exc:
         logger.debug(f"Unable to load the dataset from the fast data directory: {exc}")
         return None
@@ -75,7 +73,7 @@ def _try_load_fast(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
 
 def _download_fast(dataset_type: Type[VD], download: bool = None, **kwargs) -> VD:
     assert "root" not in kwargs
-    return create_dataset(dataset_type, root=SLURM_TMPDIR, download=download, **kwargs)
+    return _create_dataset(dataset_type, root=SLURM_TMPDIR, download=download, **kwargs)
 
 
 def _try_copy_from_slow(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
@@ -83,7 +81,7 @@ def _try_copy_from_slow(dataset_type: Type[VD], **kwargs) -> Optional[VD]:
     assert "root" not in kwargs
     try:
         # Try to load the dataset from the torchvision directory.
-        _ = create_dataset(dataset_type, root=TORCHVISION_DIR, download=False, **kwargs)
+        _ = _create_dataset(dataset_type, root=TORCHVISION_DIR, download=False, **kwargs)
     except Exception as exc:
         logger.debug(f"Unable to load the dataset from the torchvision directory: {exc}")
         return None
@@ -112,7 +110,7 @@ def _copy_files_to_fast_dir(dataset_type: Type[VisionDataset]) -> None:
             shutil.copy(src=source_path, dst=destination_path, follow_symlinks=False)
 
 
-def create_dataset(
+def _create_dataset(
     dataset_type: Type[VD], *args, root: Union[Path, str], download: bool = None, **kwargs
 ) -> VD:
     """ Creates the dataset using the arguments. If `download` is passed"""

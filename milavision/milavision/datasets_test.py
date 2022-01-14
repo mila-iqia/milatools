@@ -53,9 +53,9 @@ def temp_root_dir(tmp_path_factory):
 
 @only_runs_on_mila_cluster
 class TestMila:
-    @pytest.mark.parametrize("dataset_type", [tvd.MNIST, tvd.CIFAR10, tvd.CIFAR100])
+    @pytest.mark.parametrize("dataset_type", [mvd.MNIST, mvd.CIFAR10, mvd.CIFAR100])
     def test_root_is_ignored(self, temp_root_dir: Path, dataset_type: Type[VisionDataset]):
-        d = MNIST(temp_root_dir / "blabla")
+        d = dataset_type(str(temp_root_dir / "blabla"))
         assert not (temp_root_dir / "blabla").exists()
 
     @pytest.mark.parametrize(

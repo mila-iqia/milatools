@@ -83,12 +83,12 @@ if cluster_type is ClusterType.LOCAL:
     pass
 
 elif cluster_type is ClusterType.MILA:
-    from milavision.envs.mila import create_dataset
+    from milavision.envs.mila import make_dataset
 
-    MNIST = functools.partial(create_dataset, _tvd.MNIST)
-    CIFAR10 = functools.partial(create_dataset, _tvd.CIFAR10)
-    CIFAR100 = functools.partial(create_dataset, _tvd.CIFAR100)
-    ImageNet = functools.partial(create_dataset, _tvd.ImageNet)
+    MNIST = functools.partial(make_dataset, _tvd.MNIST)
+    CIFAR10 = functools.partial(make_dataset, _tvd.CIFAR10)
+    CIFAR100 = functools.partial(make_dataset, _tvd.CIFAR100)
+    ImageNet = functools.partial(make_dataset, _tvd.ImageNet)
     # TODO: Find where the rest of these datasets are stored on the MILA cluster.
     # from tvd.lsun import LSUN, LSUNClass
     # from tvd.folder import ImageFolder, DatasetFolder
