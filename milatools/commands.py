@@ -1,11 +1,10 @@
 import os
-import shlex
 import subprocess
 import webbrowser
 
 from coleo import Option, auto_cli, default, tooled
 
-from .utils import Local, SSHConfig, SSHConnection, T, yn
+from .utils import Local, SSHConfig, SSHConnection, T, shjoin, yn
 from .version import version as mversion
 
 
@@ -83,8 +82,9 @@ class milatools:
 
         if "mila" not in c.hosts():
             if yn("There is no 'mila' entry in ~/.ssh/config. Create one?"):
-                while not (username := input(T.bold("What is your username?\n> "))):
-                    continue
+                username = ""
+                while not username:
+                    username = input(T.bold("What is your username?\n> "))
                 c.add(
                     "mila",
                     HostName="login.server.mila.quebec",
@@ -246,7 +246,7 @@ def _find_allocation(ssh):
     else:
         node_name = None
         proc, node_name = ssh.extract(
-            shlex.join(["salloc", *alloc]),
+            shjoin(["salloc", *alloc]),
             pattern="salloc: Nodes ([^ ]+) are ready for job\n",
             bash=True,  # Some zsh or fish shells may be improperly configured for salloc
         )
