@@ -89,6 +89,7 @@ elif cluster_type is ClusterType.MILA:
     CIFAR10 = functools.partial(make_dataset, _tvd.CIFAR10)
     CIFAR100 = functools.partial(make_dataset, _tvd.CIFAR100)
     ImageNet = functools.partial(make_dataset, _tvd.ImageNet)
+    Cityscapes functools.partial(make_dataset, _tvd.Cityscapes)
     # TODO: Find where the rest of these datasets are stored on the MILA cluster.
     # from tvd.lsun import LSUN, LSUNClass
     # from tvd.folder import ImageFolder, DatasetFolder

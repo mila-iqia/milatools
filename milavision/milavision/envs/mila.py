@@ -23,9 +23,10 @@ current_env = ClusterType.current()
 """ a map of the files for each dataset type, relative to the torchvision dir. """
 dataset_files: Dict[Type[VisionDataset], List[str]] = {
     tvd.MNIST: ["MNIST"],
-    tvd.CIFAR10: ["cifar-10-batches-py"],
-    tvd.CIFAR100: ["cifar-100-python"],
+    tvd.CIFAR10: [tvd.CIFAR10.base_folder],
+    tvd.CIFAR100: [tvd.CIFAR100.base_folder],
     tvd.ImageNet: ["train", "val"],
+    tvd.Cityscapes: ["leftImg8bit", "gtFine", "gtCoarse"],
 }
 
 logger = get_logger(__name__)
