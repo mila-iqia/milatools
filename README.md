@@ -15,7 +15,7 @@ pip install milatools
 Or, for bleeding edge version:
 
 ```bash
-pip install git+git://github.com/mila-iqia/milatools.git
+pip install git+https://github.com/mila-iqia/milatools.git
 ```
 
 After installing `milatools`, start with `mila init`:
