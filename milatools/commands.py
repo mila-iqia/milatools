@@ -1,10 +1,11 @@
 import os
 import subprocess
+import time
 import webbrowser
 
 from coleo import Option, auto_cli, default, tooled
 
-from .utils import Local, SSHConfig, SSHConnection, T, shjoin, yn
+from .utils import Local, Remote, SSHConfig, SSHConnection, T, shjoin, yn
 from .version import version as mversion
 
 
@@ -197,30 +198,33 @@ class milatools:
         # [positional]
         path: Option
 
-        ssh = SSHConnection("mila")
+        remote = Remote("mila")
         here = Local()
 
-        proc, node_name = _find_allocation(ssh)
+        proc, node_name = _find_allocation(remote)
 
         if not path.startswith("/"):
             # Get $HOME because we have to give the full path to code
-            home = ssh.get("echo $HOME").strip()
-            print("#", home)
+            home = remote.get("echo $HOME")
             path = os.path.join(home, path)
 
-        here.run("code", "--remote", f"ssh-remote+{node_name}.server.mila.quebec", path)
-
+        time.sleep(1)
         try:
-            if proc is not None:
-                proc.wait()
+            here.run(
+                "code",
+                "-nw",
+                "--remote",
+                f"ssh-remote+{node_name}.server.mila.quebec",
+                path,
+            )
         except KeyboardInterrupt:
-            print(f"Ended session on '{node_name}'")
-            ssh.cleanup()
-            exit()
+            pass
+        proc.kill()
+        print(f"Ended session on '{node_name}'")
 
 
 @tooled
-def _find_allocation(ssh):
+def _find_allocation(remote):
     # Node to connect to
     node: Option = default(None)
 
@@ -240,14 +244,13 @@ def _find_allocation(ssh):
 
     elif job is not None:
         proc = None
-        node_name = ssh.get(f"squeue --jobs {job} -ho %N").strip()
-        print("#", node_name)
+        node_name = remote.get(f"squeue --jobs {job} -ho %N")
 
     else:
         node_name = None
-        proc, node_name = ssh.extract(
+        proc, node_name = remote.extract(
             shjoin(["salloc", *alloc]),
-            pattern="salloc: Nodes ([^ ]+) are ready for job\n",
+            pattern="salloc: Nodes ([^ ]+) are ready for job",
             bash=True,  # Some zsh or fish shells may be improperly configured for salloc
         )
 
