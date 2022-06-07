@@ -1,14 +1,26 @@
-import os
 import re
 import shlex
 import subprocess
+import tempfile
+from pathlib import Path
 from queue import Empty, Queue
 
 import blessed
+import questionary as qn
 from fabric import Connection
 from sshconf import read_ssh_config
 
-sockdir = os.path.expanduser("~/.ssh/sockets")
+here = Path(__file__).parent
+
+style = qn.Style(
+    [
+        ("envname", "yellow bold"),
+        ("envpath", "cyan"),
+        ("prefix", "bold"),
+        ("special", "orange bold"),
+        ("cancel", "grey bold"),
+    ]
+)
 
 
 T = blessed.Terminal()
@@ -99,13 +111,26 @@ class Remote:
     def __init__(self, host):
         self.host = host
         self.conn = Connection(host)
+        fieldmap = {
+            "cd": "cd",
+            "put": "putfile",
+            "get": "getfile",
+        }
+        for infield, outfield in fieldmap.items():
+            setattr(self, outfield, getattr(self.conn, infield))
 
     def display(self, cmd):
         print(T.bold_cyan(f"({self.host}) $ ", cmd))
 
-    def run(self, cmd, display=True, bash=False, **kwargs):
+    def run(
+        self, cmd, display=True, bash=False, precommand=None, profile=None, **kwargs
+    ):
+        if profile is not None:
+            precommand = f"source {profile}"
         if display:
             self.display(cmd)
+        if precommand:
+            cmd = f"{precommand} && {cmd}"
         if bash:
             cmd = shjoin(["bash", "-c", cmd])
         return self.conn.run(cmd, **kwargs)
@@ -132,73 +157,29 @@ class Remote:
         proc.join()
         return proc.runner, result
 
+    def puttext(self, text, dest):
+        base = Path(dest).parent
+        self.run(f"mkdir -p {base}", display=False, hide=True)
+        with tempfile.NamedTemporaryFile("w") as f:
+            f.write(text)
+            f.flush()
+            self.putfile(f.name, dest)
 
-class SSHConnection:
-    def __init__(self, host):
-        self.here = Local()
-        os.makedirs(sockdir, mode=0o700, exist_ok=True)
-        self.host = host
-        self.sock = os.path.join(sockdir, f"milatools.{host}")
-        self.master = self.here.popen(
-            "ssh",
-            host,
-            "-fNMS",
-            self.sock,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
+    def run_script(self, name, *args, **kwargs):
+        base = ".milatools/scripts"
+        dest = f"{base}/{name}"
+        print(T.bold_cyan(f"({self.host}) WRITE ", dest))
+        self.run(f"mkdir -p {base}", display=False, hide=True)
+        self.putfile(here / name, dest)
+        return self.run(shjoin([dest, *args]), **kwargs)
 
-    def cmd(self, *args, bash=False):
-        if bash:
-            args = [shjoin(["bash", "-c", *args])]
-        return ["ssh", self.host, "-S", self.sock, *args]
-
-    def display(self, args):
-        print(T.bold_cyan(f"({self.host}) $ ", *args))
-
-    def get(self, *args, bash=False):
-        self.display(args)
-        cmd = self.cmd(*args, bash=bash)
-        return subprocess.check_output(
-            cmd,
-            universal_newlines=True,
-        )
-
-    def popen(self, *args, bash=False):
-        self.display(args)
-        cmd = self.cmd(*args, bash=bash)
-        return subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-        )
-
-    def extract(self, *args, pattern, wait=False, bash=False):
-        proc = self.popen(*args, bash=bash)
-        result = None
-        try:
-            while True:
-                line = proc.stdout.readline()
-                if not line:
-                    break
-                print("#", line.rstrip())
-                m = re.match(pattern, line)
-                if m:
-                    result = m.groups()[0]
-                    if not wait:
-                        return proc, result
-        except KeyboardInterrupt:
-            proc.terminate()
-            exit("Canceled")
-        proc.wait()
-        return None, result
-
-    def wait(self):
-        self.master.wait()
-
-    def cleanup(self):
-        pass
+    def extract_script(self, name, *args, pattern, **kwargs):
+        base = ".milatools/scripts"
+        dest = f"{base}/{name}"
+        print(T.bold_cyan(f"({self.host}) WRITE ", dest))
+        self.run(f"mkdir -p {base}", display=False, hide=True)
+        self.putfile(here / name, dest)
+        return self.extract(shjoin([dest, *args]), pattern=pattern, **kwargs)
 
 
 def yn(question, default="y"):

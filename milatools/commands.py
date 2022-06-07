@@ -2,10 +2,13 @@ import os
 import subprocess
 import time
 import webbrowser
+from pathlib import Path
 
+import questionary as qn
 from coleo import Option, auto_cli, default, tooled
 
-from .utils import Local, Remote, SSHConfig, SSHConnection, T, shjoin, yn
+from .profile import setup_profile
+from .utils import Local, Remote, SSHConfig, T, shjoin, yn
 from .version import version as mversion
 
 
@@ -164,24 +167,24 @@ class milatools:
 
         print("Checking connection to compute nodes")
 
-        ssh = SSHConnection("mila")
+        remote = Remote("mila")
         try:
-            pubkeys = ssh.get("ls -t ~/.ssh/id*.pub").strip().split()
+            pubkeys = remote.get("ls -t ~/.ssh/id*.pub").split()
             print("# OK")
         except subprocess.CalledProcessError:
             print("# MISSING")
             if yn("You have no public keys on the login node. Generate them?"):
                 # print("(Note: You can just press Enter 3x to accept the defaults)")
-                # _, keyfile = ssh.extract("ssh-keygen", pattern="Your public key has been saved in ([^ ]+)", wait=True)
+                # _, keyfile = remote.extract("ssh-keygen", pattern="Your public key has been saved in ([^ ]+)", wait=True)
                 private_file = "~/.ssh/id_rsa"
-                ssh.get(f'ssh-keygen -q -t rsa -N "" -f {private_file}')
+                remote.run(f'ssh-keygen -q -t rsa -N "" -f {private_file}')
                 pubkeys = [f"{private_file}.pub"]
             else:
                 exit("Cannot proceed because there is no public key")
 
-        common = ssh.get(
+        common = remote.get(
             "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)", bash=True
-        ).strip()
+        )
         if common:
             print("# OK")
         else:
@@ -190,7 +193,7 @@ class milatools:
                 "To connect to a compute node from a login node you need one id_*.pub to be in authorized_keys. Do it?"
             ):
                 pubkey = pubkeys[0]
-                ssh.get(f"cat {pubkey} >> ~/.ssh/authorized_keys")
+                remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
 
     def code():
         """Open a remote VSCode session on a compute node."""
@@ -221,6 +224,79 @@ class milatools:
             pass
         proc.kill()
         print(f"Ended session on '{node_name}'")
+
+    def jupyter():
+        """Start a Jupyter server."""
+
+        # Path to open on the remote machine
+        # [positional]
+        path: Option
+
+        remote = Remote("mila")
+
+        home = remote.get("echo $HOME")
+        if not path.startswith("/"):
+            path = os.path.join(home, path)
+
+        prof = setup_profile(remote, path)
+
+        progs = [
+            Path(p).name
+            for p in remote.get(
+                "which jupyter pip conda",
+                hide=True,
+                display=False,
+                profile=prof,
+                warn=True,
+            ).split()
+        ]
+
+        if "jupyter" not in progs:
+            installers = {
+                "conda": "conda install -y jupyter",
+                "pip": "pip install jupyter",
+            }
+            choices = [
+                *[cmd for prog, cmd in installers.items() if prog in progs],
+                qn.Choice(title="I will install it myself.", value="<MYSELF>"),
+            ]
+            install = qn.select(
+                "Jupyter is not installed in that environment. Do you want to install it?",
+                choices=choices,
+            ).ask()
+            if install == "<MYSELF>":
+                return
+            else:
+                remote.run(f"srun {install}", profile=prof)
+
+        proc, node_name = _find_allocation(remote)
+
+        time.sleep(1)
+        node_full = f"{node_name}.server.mila.quebec"
+        cnode = Remote(node_full)
+
+        cnode.run("mkdir -p ~/.milatools/sockets")
+        proc1, _ = cnode.extract(
+            f"jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {path}",
+            pattern="Notebook is listening on (.*)",
+            profile=prof,
+        )
+
+        here = Local()
+        local_proc = here.popen(
+            "ssh",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-nNCL",
+            f"localhost:8888:{home}/.milatools/sockets/{node_name}.sock",
+            node_full,
+        )
+
+        time.sleep(2)
+        webbrowser.open("http://localhost:8888")
+        local_proc.wait()
 
 
 @tooled
