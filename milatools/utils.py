@@ -182,13 +182,6 @@ class Remote:
         return self.extract(shjoin([dest, *args]), pattern=pattern, **kwargs)
 
 
-def yn(question, default="y"):
-    """Ask a yes/no question."""
-    options = "[y/n]".replace(default, default.upper())
-    answer = input(T.bold(f"{question} {options} ")).strip()
-    return (answer or default) in "yY"
-
-
 class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 

@@ -8,7 +8,7 @@ import questionary as qn
 from coleo import Option, auto_cli, default, tooled
 
 from .profile import setup_profile
-from .utils import Local, Remote, SSHConfig, T, shjoin, yn
+from .utils import Local, Remote, SSHConfig, T, shjoin
 from .version import version as mversion
 
 
@@ -70,7 +70,7 @@ class milatools:
         sshpath = os.path.expanduser("~/.ssh")
         cfgpath = os.path.join(sshpath, "config")
         if not os.path.exists(cfgpath):
-            if yn("There is no ~/.ssh/config file. Create one?"):
+            if qn.confirm("There is no ~/.ssh/config file. Create one?").ask():
                 if not os.path.exists(sshpath):
                     os.makedirs(sshpath, mode=0o700, exist_ok=True)
                 open(cfgpath, "w").close()
@@ -85,7 +85,9 @@ class milatools:
         # Check for a mila entry in ssh config
 
         if "mila" not in c.hosts():
-            if yn("There is no 'mila' entry in ~/.ssh/config. Create one?"):
+            if qn.confirm(
+                "There is no 'mila' entry in ~/.ssh/config. Create one?"
+            ).ask():
                 username = ""
                 while not username:
                     username = input(T.bold("What is your username?\n> "))
@@ -107,9 +109,9 @@ class milatools:
         # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
 
         if "*.server.mila.quebec" not in c.hosts():
-            if yn(
+            if qn.confirm(
                 "There is no '*.server.mila.quebec' entry in ~/.ssh/config. Create one?"
-            ):
+            ).ask():
                 username = c.host("mila")["user"]
                 c.add(
                     "*.server.mila.quebec",
@@ -144,7 +146,7 @@ class milatools:
             entry.startswith("id") and entry.endswith(".pub")
             for entry in os.listdir(sshdir)
         ):
-            if yn("You have no public keys. Generate one?"):
+            if qn.confirm("You have no public keys. Generate one?").ask():
                 here.run("ssh-keygen")
             else:
                 exit("No public keys.")
@@ -152,9 +154,9 @@ class milatools:
         # Check that it is possible to connect using the key
 
         if not here.check_passwordless("mila"):
-            if yn(
+            if qn.confirm(
                 "Your public key does not appear be registered on the cluster. Register it?"
-            ):
+            ).ask():
                 here.run("ssh-copy-id", "mila")
                 if not here.check_passwordless("mila"):
                     exit("ssh-copy-id appears to have failed")
@@ -173,7 +175,9 @@ class milatools:
             print("# OK")
         except subprocess.CalledProcessError:
             print("# MISSING")
-            if yn("You have no public keys on the login node. Generate them?"):
+            if qn.confirm(
+                "You have no public keys on the login node. Generate them?"
+            ).ask():
                 # print("(Note: You can just press Enter 3x to accept the defaults)")
                 # _, keyfile = remote.extract("ssh-keygen", pattern="Your public key has been saved in ([^ ]+)", wait=True)
                 private_file = "~/.ssh/id_rsa"
@@ -189,9 +193,9 @@ class milatools:
             print("# OK")
         else:
             print("# MISSING")
-            if yn(
+            if qn.confirm(
                 "To connect to a compute node from a login node you need one id_*.pub to be in authorized_keys. Do it?"
-            ):
+            ).ask():
                 pubkey = pubkeys[0]
                 remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
 
