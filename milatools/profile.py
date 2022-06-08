@@ -20,7 +20,7 @@ style = qn.Style(
 
 def _ask_name(message, default=""):
     while True:
-        name = qn.text(message, default=default).ask()
+        name = qn.text(message, default=default).unsafe_ask()
         if re.match(r"[a-zA-Z0-9_]+", name):
             return name
         else:
@@ -49,9 +49,9 @@ def select_preferred(remote, path):
     qn.print(f"Checking for preferred profile in {preferred}...")
 
     try:
-        preferred = remote.get(f"cat {preferred}", hide=True, display=False)
+        preferred = remote.get_output(f"cat {preferred}", hide=True)
     except invoke.exceptions.UnexpectedExit:
-        print("None found.")
+        qn.print("None found.", style="grey")
         preferred = None
 
     return preferred
@@ -62,13 +62,10 @@ def select_profile(remote):
 
     qn.print(f"Fetching profiles in {profdir}...")
 
-    try:
-        profiles = remote.get(f"ls {profdir}/*.bash", hide=True, display=False).split()
-    except invoke.exceptions.UnexpectedExit:
-        profiles = []
+    profiles = remote.get_lines(f"ls {profdir}/*.bash", hide=True, warn=True)
 
     if not profiles:
-        print("None found.")
+        qn.print("None found.", style="grey")
         return None, False
 
     profile_choices = [
@@ -87,7 +84,7 @@ def select_profile(remote):
                 title=[("class:special", "Create a new profile")], value="<CREATE>"
             ),
         ],
-    ).ask()
+    ).unsafe_ask()
 
     if profile == "<CREATE>":
         return None
@@ -103,12 +100,12 @@ def create_profile(remote, path="~"):
 
     default_profname = ""
     if any("conda" in m for m in modules):
-        env = select_conda_environment(remote, loader=mload)
+        env = select_conda_environment(remote.with_precommand(mload))
         lines.append(f"conda activate {env}")
         default_profname = _env_basename(env)
 
     elif any("python" in m for m in modules):
-        vpath = select_virtual_environment(remote, path, loader=mload)
+        vpath = select_virtual_environment(remote.with_precommand(mload), path)
         lines.append(f"source {vpath}/bin/activate")
 
     profname = _ask_name("Name of the profile:", default=default_profname)
@@ -145,15 +142,11 @@ def select_modules(remote):
     modules = qn.select(
         "Select the set of modules to load:",
         choices=choices,
-    ).ask()
+    ).unsafe_ask()
     if modules == "<OTHER>":
         qn.print("Fetching the list of modules...")
         # "module --terse avail" prints on stderr? Really?!
-        modlist = (
-            remote.run("module --terse avail", display=False, hide=True)
-            .stderr.strip()
-            .split()
-        )
+        modlist = remote.run("module --terse avail", hide=True).stderr.strip().split()
         modchoices = {
             x.split("(@")[0]: x.split("(@")[-1].rstrip(")")
             for x in modlist
@@ -171,7 +164,7 @@ def select_modules(remote):
                     choices=modchoices.keys(),
                     style=qn.Style([("answer", "fg:default bg:default")]),
                 )
-                .ask()
+                .unsafe_ask()
                 .strip()
             )
             if not entry:
@@ -195,9 +188,7 @@ def _env_basename(pth):
 
 def select_conda_environment(remote, loader="module load miniconda/3"):
     qn.print("Fetching the list of conda environments...")
-    envstr = remote.get(
-        f"conda env list --json", hide=True, display=False, precommand=loader
-    )
+    envstr = remote.get_output(f"conda env list --json", hide=True)
     envlist = json.loads(envstr)["envs"]
 
     choices = [
@@ -227,31 +218,30 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
 
     env = qn.select(
         "Select the environment to use:", choices=choices, style=style
-    ).ask()
+    ).unsafe_ask()
 
     if env == "<OTHER>":
-        env = qn.text("Enter the path to the environment to use.").ask()
+        env = qn.text("Enter the path to the environment to use.").unsafe_ask()
 
     elif env == "<CREATE>":
         pyver = qn.select(
             "Choose the Python version",
             choices=["3.10", "3.9", "3.8", "3.7"],
-        ).ask()
+        ).unsafe_ask()
         envname = _ask_name("What should the environment name be?")
         remote.run(
             f"srun conda create -y -n {envname} python={pyver}",
-            precommand=loader,
         )
         env = envname
 
     return env
 
 
-def select_virtual_environment(remote, path, loader="module load python"):
+def select_virtual_environment(remote, path):
     envstr = remote.get(
         f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/*",
+        hide=True,
         warn=True,
-        precommand=loader,
     )
     choices = [x for x in envstr.split() if x]
     choices.extend(
@@ -269,17 +259,14 @@ def select_virtual_environment(remote, path, loader="module load python"):
 
     env = qn.select(
         "Select the environment to use:", choices=choices, style=style
-    ).ask()
+    ).unsafe_ask()
 
     if env == "<OTHER>":
-        env = qn.text("Enter the path to the environment to use.").ask()
+        env = qn.text("Enter the path to the environment to use.").unsafe_ask()
 
     elif env == "<CREATE>":
         envname = _ask_name("What should the environment name be?")
         env = f"~/virtualenvs/{envname}"
-        remote.run(
-            f"srun python -m venv {env}",
-            precommand=loader,
-        )
+        remote.run(f"srun python -m venv {env}")
 
     return env

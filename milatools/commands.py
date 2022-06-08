@@ -204,11 +204,12 @@ class milatools:
         remote = Remote("mila")
         here = Local()
 
-        proc, node_name = _find_allocation(remote)
+        cnode = _find_allocation(remote)
+        node_name, proc = cnode.ensure_allocation()
 
         if not path.startswith("/"):
             # Get $HOME because we have to give the full path to code
-            home = remote.get("echo $HOME")
+            home = remote.home()
             path = os.path.join(home, path)
 
         time.sleep(1)
@@ -222,7 +223,8 @@ class milatools:
             )
         except KeyboardInterrupt:
             pass
-        proc.kill()
+        if proc is not None:
+            proc.kill()
         print(f"Ended session on '{node_name}'")
 
     def jupyter():
@@ -234,19 +236,18 @@ class milatools:
 
         remote = Remote("mila")
 
-        home = remote.get("echo $HOME")
+        home = remote.home()
         if not path.startswith("/"):
             path = os.path.join(home, path)
 
         prof = setup_profile(remote, path)
+        premote = remote.with_profile(prof)
 
         progs = [
             Path(p).name
-            for p in remote.get(
+            for p in premote.get_output(
                 "which jupyter pip conda",
                 hide=True,
-                display=False,
-                profile=prof,
                 warn=True,
             ).split()
         ]
@@ -267,20 +268,20 @@ class milatools:
             if install == "<MYSELF>":
                 return
             else:
-                remote.run(f"srun {install}", profile=prof)
+                premote.run(f"srun {install}")
 
-        proc, node_name = _find_allocation(remote)
+        remote.run("mkdir -p ~/.milatools/sockets", hide=True)
 
-        time.sleep(1)
-        node_full = f"{node_name}.server.mila.quebec"
-        cnode = Remote(node_full)
-
-        cnode.run("mkdir -p ~/.milatools/sockets")
-        proc1, _ = cnode.extract(
-            f"jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {path}",
-            pattern="Notebook is listening on (.*)",
-            profile=prof,
+        cnode = _find_allocation(remote)
+        proc, results = cnode.with_profile(prof).extract(
+            f"echo '####' $(hostname) && jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {path}",
+            patterns={
+                "node_name": "#### ([A-Za-z0-9_-]+)",
+                "port": "Notebook is listening on (.*)",
+            },
         )
+        node_name = results["node_name"]
+        node_full = f"{node_name}.server.mila.quebec"
 
         here = Local()
         local_proc = here.popen(
@@ -296,7 +297,13 @@ class milatools:
 
         time.sleep(2)
         webbrowser.open("http://localhost:8888")
-        local_proc.wait()
+        try:
+            local_proc.wait()
+        except KeyboardInterrupt:
+            exit("Terminated by user.")
+        finally:
+            local_proc.kill()
+            proc.kill()
 
 
 @tooled
@@ -315,22 +322,14 @@ def _find_allocation(remote):
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
     if node is not None:
-        proc = None
-        node_name = node
+        return Remote(node_name)
 
     elif job is not None:
-        proc = None
-        node_name = remote.get(f"squeue --jobs {job} -ho %N")
+        node_name = remote.get_output(f"squeue --jobs {job} -ho %N")
+        return Remote(node_name)
 
     else:
-        node_name = None
-        proc, node_name = remote.extract(
-            shjoin(["salloc", *alloc]),
-            pattern="salloc: Nodes ([^ ]+) are ready for job",
-            bash=True,  # Some zsh or fish shells may be improperly configured for salloc
+        return SlurmRemote(
+            connection=remote.connection,
+            alloc=alloc,
         )
-
-    if node_name is None:
-        exit("ERROR: Could not find the node name for the allocation")
-
-    return proc, node_name
