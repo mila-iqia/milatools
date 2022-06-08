@@ -5,7 +5,7 @@ from pathlib import Path
 import invoke
 import questionary as qn
 
-from .utils import yn
+from .utils import shjoin, yn
 
 style = qn.Style(
     [
@@ -270,3 +270,29 @@ def select_virtual_environment(remote, path):
         remote.run(f"srun python -m venv {env}")
 
     return env
+
+
+def ensure_program(remote, program, installers):
+    to_test = [program, *installers.keys()]
+    progs = [
+        Path(p).name
+        for p in remote.get_output(
+            shjoin(["which", *to_test]),
+            hide=True,
+            warn=True,
+        ).split()
+    ]
+
+    if program not in progs:
+        choices = [
+            *[cmd for prog, cmd in installers.items() if prog in progs],
+            qn.Choice(title="I will install it myself.", value="<MYSELF>"),
+        ]
+        install = qn.select(
+            f"{program} is not installed in that environment. Do you want to install it?",
+            choices=choices,
+        ).ask()
+        if install == "<MYSELF>":
+            return
+        else:
+            remote.run(f"srun {install}")

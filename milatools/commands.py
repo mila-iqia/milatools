@@ -3,11 +3,12 @@ import subprocess
 import time
 import webbrowser
 from pathlib import Path
+from urllib.parse import urlencode
 
 import questionary as qn
 from coleo import Option, auto_cli, default, tooled
 
-from .profile import setup_profile
+from .profile import ensure_program, setup_profile
 from .utils import Local, Remote, SlurmRemote, SSHConfig, T, yn
 from .version import version as mversion
 
@@ -234,9 +235,6 @@ class milatools:
         # [positional]
         path: Option
 
-        # Port to open on the local machine
-        port: Option = default(8888)
-
         remote = Remote("mila")
 
         home = remote.home()
@@ -246,32 +244,14 @@ class milatools:
         prof = setup_profile(remote, path)
         premote = remote.with_profile(prof)
 
-        progs = [
-            Path(p).name
-            for p in premote.get_output(
-                "which jupyter pip conda",
-                hide=True,
-                warn=True,
-            ).split()
-        ]
-
-        if "jupyter" not in progs:
-            installers = {
+        ensure_program(
+            remote=premote,
+            program="jupyter",
+            installers={
                 "conda": "conda install -y jupyter",
                 "pip": "pip install jupyter",
-            }
-            choices = [
-                *[cmd for prog, cmd in installers.items() if prog in progs],
-                qn.Choice(title="I will install it myself.", value="<MYSELF>"),
-            ]
-            install = qn.select(
-                "Jupyter is not installed in that environment. Do you want to install it?",
-                choices=choices,
-            ).ask()
-            if install == "<MYSELF>":
-                return
-            else:
-                premote.run(f"srun {install}")
+            },
+        )
 
         remote.run("mkdir -p ~/.milatools/sockets", hide=True)
 
@@ -285,23 +265,14 @@ class milatools:
             },
         )
         node_name = results["node_name"]
-        token = results["token"]
-        node_full = f"{node_name}.server.mila.quebec"
 
-        here = Local()
-        local_proc = here.popen(
-            "ssh",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-nNCL",
-            f"localhost:{port}:{home}/.milatools/sockets/{node_name}.sock",
-            node_full,
+        local_proc = _forward(
+            local=Local(),
+            node=f"{node_name}.server.mila.quebec",
+            to_forward=f"{home}/.milatools/sockets/{node_name}.sock",
+            options={"token": results["token"]},
         )
 
-        time.sleep(2)
-        webbrowser.open(f"http://localhost:{port}?token={token}")
         try:
             local_proc.wait()
         except KeyboardInterrupt:
@@ -338,3 +309,24 @@ def _find_allocation(remote):
             connection=remote.connection,
             alloc=alloc,
         )
+
+
+@tooled
+def _forward(local, node, to_forward, options):
+
+    # Port to open on the local machine
+    port: Option = default(10101)
+
+    proc = local.popen(
+        "ssh",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-nNCL",
+        f"localhost:{port}:{to_forward}",
+        node,
+    )
+    time.sleep(2)
+    webbrowser.open(f"http://localhost:{port}?{urlencode(options)}")
+    return proc
