@@ -66,7 +66,6 @@ def select_profile(remote):
 
     if not profiles:
         qn.print("None found.", style="grey")
-        return None, False
 
     profile_choices = [
         qn.Choice(
@@ -238,7 +237,7 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
 
 
 def select_virtual_environment(remote, path):
-    envstr = remote.get(
+    envstr = remote.get_output(
         f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/*",
         hide=True,
         warn=True,

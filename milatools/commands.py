@@ -229,7 +229,7 @@ class milatools:
         print(f"Ended session on '{node_name}'")
 
     def jupyter():
-        """Start a Jupyter server."""
+        """Start a Jupyter Notebook server."""
 
         # Path to open on the remote machine
         # [positional]
@@ -241,7 +241,11 @@ class milatools:
         if not path.startswith("/"):
             path = os.path.join(home, path)
 
-        prof = setup_profile(remote, path)
+        pathdir = path
+        if path.endswith(".ipynb"):
+            pathdir = str(Path(path).parent)
+
+        prof = setup_profile(remote, pathdir)
         premote = remote.with_profile(prof)
 
         ensure_program(
@@ -257,7 +261,7 @@ class milatools:
 
         cnode = _find_allocation(remote)
         proc, results = cnode.with_profile(prof).extract(
-            f"echo '####' $(hostname) && jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {path}",
+            f"echo '####' $(hostname) && jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {pathdir}",
             patterns={
                 "node_name": "#### ([A-Za-z0-9_-]+)",
                 "url": "Notebook is listening on (.*)",
