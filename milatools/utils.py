@@ -23,6 +23,29 @@ style = qn.Style(
 )
 
 
+class CommandNotFoundError(Exception):
+
+    # Instructions to install certain commands if they are not found
+    instructions = {
+        "code": (
+            "To fix this, try starting VSCode, then hit Cmd+Shift+P,"
+            " type 'install code command' in the box, and hit Enter."
+            " You might need to restart your shell."
+        )
+    }
+
+    def __init__(self, command):
+        super().__init__(command)
+
+    def __str__(self):
+        cmd = self.args[0]
+        message = f"Command '{cmd}' does not exist locally."
+        supp = self.instructions.get(cmd, None)
+        if supp:
+            message += f" {supp}"
+        return message
+
+
 def yn(prompt, default=True):
     return qn.confirm(prompt, default=default).unsafe_ask()
 
@@ -50,11 +73,17 @@ class Local:
 
     def run(self, *args, **kwargs):
         self.display(args)
-        return subprocess.run(
-            args,
-            universal_newlines=True,
-            **kwargs,
-        )
+        try:
+            return subprocess.run(
+                args,
+                universal_newlines=True,
+                **kwargs,
+            )
+        except FileNotFoundError as e:
+            if e.filename == args[0]:
+                raise CommandNotFoundError(e.filename)
+            else:
+                raise
 
     def popen(self, *args, **kwargs):
         self.display(args)
