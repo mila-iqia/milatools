@@ -234,6 +234,9 @@ class milatools:
         # [positional]
         path: Option
 
+        # Port to open on the local machine
+        port: Option = default(8888)
+
         remote = Remote("mila")
 
         home = remote.home()
@@ -277,10 +280,12 @@ class milatools:
             f"echo '####' $(hostname) && jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {path}",
             patterns={
                 "node_name": "#### ([A-Za-z0-9_-]+)",
-                "port": "Notebook is listening on (.*)",
+                "url": "Notebook is listening on (.*)",
+                "token": "token=([a-f0-9]+)",
             },
         )
         node_name = results["node_name"]
+        token = results["token"]
         node_full = f"{node_name}.server.mila.quebec"
 
         here = Local()
@@ -291,12 +296,12 @@ class milatools:
             "-o",
             "StrictHostKeyChecking=no",
             "-nNCL",
-            f"localhost:8888:{home}/.milatools/sockets/{node_name}.sock",
+            f"localhost:{port}:{home}/.milatools/sockets/{node_name}.sock",
             node_full,
         )
 
         time.sleep(2)
-        webbrowser.open("http://localhost:8888")
+        webbrowser.open(f"http://localhost:{port}?token={token}")
         try:
             local_proc.wait()
         except KeyboardInterrupt:
