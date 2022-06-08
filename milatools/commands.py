@@ -196,6 +196,36 @@ class milatools:
                 pubkey = pubkeys[0]
                 remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
 
+    def forward():
+        """Forward a port on a compute node to your local machine."""
+
+        # node:port to forward
+        # [positional]
+        remote: Option
+
+        node, remote_port = remote.split(":")
+        try:
+            remote_port = int(remote_port)
+        except ValueError:
+            pass
+
+        # String to append after the URL
+        page: Option = default(None)
+
+        local_proc = _forward(
+            local=Local(),
+            node=f"{node}.server.mila.quebec",
+            to_forward=remote_port,
+            page=page,
+        )
+
+        try:
+            local_proc.wait()
+        except KeyboardInterrupt:
+            exit("Terminated by user.")
+        finally:
+            local_proc.kill()
+
     def code():
         """Open a remote VSCode session on a compute node."""
         # Path to open on the remote machine
@@ -316,10 +346,13 @@ def _find_allocation(remote):
 
 
 @tooled
-def _forward(local, node, to_forward, options):
+def _forward(local, node, to_forward, page=None, options={}):
 
     # Port to open on the local machine
     port: Option = default(10101)
+
+    if isinstance(to_forward, int):
+        to_forward = f"localhost:{to_forward}"
 
     proc = local.popen(
         "ssh",
@@ -327,10 +360,20 @@ def _forward(local, node, to_forward, options):
         "UserKnownHostsFile=/dev/null",
         "-o",
         "StrictHostKeyChecking=no",
-        "-nNCL",
+        "-nNL",
         f"localhost:{port}:{to_forward}",
         node,
     )
+
     time.sleep(2)
-    webbrowser.open(f"http://localhost:{port}?{urlencode(options)}")
+
+    url = f"http://localhost:{port}"
+    if page is not None:
+        if not page.startswith("/"):
+            page = f"/{page}"
+        url += page
+    if options:
+        url += f"?{urlencode(options)}"
+
+    webbrowser.open(url)
     return proc
