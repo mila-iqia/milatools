@@ -23,6 +23,10 @@ style = qn.Style(
 )
 
 
+def yn(prompt, default=True):
+    return qn.confirm(prompt, default=default).unsafe_ask()
+
+
 T = blessed.Terminal()
 
 

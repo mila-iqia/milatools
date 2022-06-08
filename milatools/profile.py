@@ -5,6 +5,8 @@ from pathlib import Path
 import invoke
 import questionary as qn
 
+from .utils import yn
+
 style = qn.Style(
     [
         ("envname", "yellow bold"),
@@ -35,9 +37,7 @@ def setup_profile(remote, path):
 
     profile_file = Path(path) / ".milatools-profile"
     if not preferred:
-        save = qn.confirm(
-            f"Do you want to use this profile by default in {path}?"
-        ).ask()
+        save = yn(f"Do you want to use this profile by default in {path}?")
         if save:
             remote.puttext(profile, str(profile_file))
 
