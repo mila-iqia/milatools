@@ -15,6 +15,7 @@ coleo = "0.2.5"
 ptera = "0.4.2"
 sshconf = "^0.2.2"
 questionary = "^1.10.0"
+Fabric = "^2.7.0"
 
 [tool.poetry.dev-dependencies]
 black = "^21.8b0"
