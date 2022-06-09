@@ -1,4 +1,5 @@
 import os
+import random
 import subprocess
 import time
 import webbrowser
@@ -259,20 +260,16 @@ class milatools:
         print(f"Ended session on '{node_name}'")
 
     class serve:
-
         def jupyter():
             """Start a Jupyter Notebook server."""
 
             # Path to open on the remote machine
-            # [positional]
-            path: Option
+            # [positional: ?]
+            path: Option = default(None)
 
             remote = Remote("mila")
 
-            home = remote.home()
-            if not path.startswith("/"):
-                path = os.path.join(home, path)
-
+            path = path or "~"
             pathdir = path
             if path.endswith(".ipynb"):
                 pathdir = str(Path(path).parent)
@@ -305,8 +302,155 @@ class milatools:
             local_proc = _forward(
                 local=Local(),
                 node=f"{node_name}.server.mila.quebec",
-                to_forward=f"{home}/.milatools/sockets/{node_name}.sock",
+                to_forward=f"{remote.home()}/.milatools/sockets/{node_name}.sock",
                 options={"token": results["token"]},
+            )
+
+            try:
+                local_proc.wait()
+            except KeyboardInterrupt:
+                exit("Terminated by user.")
+            finally:
+                local_proc.kill()
+                proc.kill()
+
+        def tensorboard():
+            """Start a Tensorboard server."""
+
+            # Path to the experiment logs
+            # [positional: ?]
+            path: Option = default(None)
+
+            remote = Remote("mila")
+
+            pathdir = path or "~"
+
+            prof = setup_profile(remote, pathdir)
+            premote = remote.with_profile(prof)
+
+            ensure_program(
+                remote=premote,
+                program="tensorboard",
+                installers={
+                    "conda": "conda install -y tensorboard",
+                    "pip": "pip install tensorboard",
+                },
+            )
+
+            cnode = _find_allocation(remote)
+            proc, results = cnode.with_profile(prof).extract(
+                f"echo '####' $(hostname) && tensorboard --logdir {pathdir} --port 0",
+                patterns={
+                    "node_name": "#### ([A-Za-z0-9_-]+)",
+                    "port": "TensorBoard [^ ]+ at http://localhost:([0-9]+)/",
+                },
+            )
+            node_name = results["node_name"]
+
+            local_proc = _forward(
+                local=Local(),
+                node=f"{node_name}.server.mila.quebec",
+                to_forward=int(results["port"]),
+            )
+
+            try:
+                local_proc.wait()
+            except KeyboardInterrupt:
+                exit("Terminated by user.")
+            finally:
+                local_proc.kill()
+                proc.kill()
+
+        def mlflow():
+            """Start an MLFlow server."""
+
+            # Path to the experiment logs
+            # [positional: ?]
+            path: Option = default(None)
+
+            remote = Remote("mila")
+
+            pathdir = path or "~"
+
+            prof = setup_profile(remote, pathdir)
+            premote = remote.with_profile(prof)
+
+            ensure_program(
+                remote=premote,
+                program="mlflow",
+                installers={
+                    "conda": "conda install -y mlflow",
+                    "pip": "pip install mlflow",
+                },
+            )
+
+            cnode = _find_allocation(remote)
+            proc, results = cnode.with_profile(prof).extract(
+                f"echo '####' $(hostname) && mlflow ui --backend-store-uri {pathdir} --port 0",
+                patterns={
+                    "node_name": "#### ([A-Za-z0-9_-]+)",
+                    "port": "Listening at: http://127.0.0.1:([0-9]+)",
+                },
+            )
+            node_name = results["node_name"]
+
+            local_proc = _forward(
+                local=Local(),
+                node=f"{node_name}.server.mila.quebec",
+                to_forward=int(results["port"]),
+            )
+
+            try:
+                local_proc.wait()
+            except KeyboardInterrupt:
+                exit("Terminated by user.")
+            finally:
+                local_proc.kill()
+                proc.kill()
+
+        def aim():
+            """Start an AIM server."""
+
+            # Path to the experiment logs
+            # [positional: ?]
+            path: Option = default(None)
+
+            # Remote port to use
+            remote_port: Option = default(None)
+
+            if remote_port is None:
+                remote_port = random.randint(10000, 60000)
+
+            remote = Remote("mila")
+
+            pathdir = path or "~"
+
+            prof = setup_profile(remote, pathdir)
+            premote = remote.with_profile(prof)
+
+            ensure_program(
+                remote=premote,
+                program="aim",
+                installers={
+                    "conda": "conda install -y aim",
+                    "pip": "pip install aim",
+                },
+            )
+
+            cnode = _find_allocation(remote)
+            proc, results = cnode.with_profile(prof).extract(
+                f"echo '####' $(hostname) && aim up --repo {pathdir} --port {remote_port}",
+                patterns={
+                    "node_name": "#### ([A-Za-z0-9_-]+)",
+                    "port": "Open http://127.0.0.1:([0-9]+)",
+                },
+            )
+            node_name = results["node_name"]
+
+            local_proc = _forward(
+                local=Local(),
+                node=f"{node_name}.server.mila.quebec",
+                to_forward=int(results["port"]),
             )
 
             try:
