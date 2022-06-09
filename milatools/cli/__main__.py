@@ -8,9 +8,9 @@ from urllib.parse import urlencode
 import questionary as qn
 from coleo import Option, auto_cli, default, tooled
 
+from ..version import version as mversion
 from .profile import ensure_program, setup_profile
 from .utils import Local, Remote, SlurmRemote, SSHConfig, T, yn
-from .version import version as mversion
 
 
 def main():
@@ -377,3 +377,7 @@ def _forward(local, node, to_forward, page=None, options={}):
 
     webbrowser.open(url)
     return proc
+
+
+if __name__ == "__main__":
+    main()

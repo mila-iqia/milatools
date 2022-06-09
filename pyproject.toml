@@ -21,7 +21,7 @@ black = "^21.8b0"
 isort = "^5.9.3"
 
 [tool.poetry.scripts]
-mila = "milatools.commands:main"
+mila = "milatools.cli.__main__:main"
 
 [build-system]
 requires = ["poetry-core@https://github.com/python-poetry/poetry-core/archive/325312c016d69189ac93c945ba0c1b69296c5e54.zip"]
