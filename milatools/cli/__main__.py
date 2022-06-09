@@ -171,7 +171,7 @@ class milatools:
 
         remote = Remote("mila")
         try:
-            pubkeys = remote.get("ls -t ~/.ssh/id*.pub").split()
+            pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
             print("# OK")
         except subprocess.CalledProcessError:
             print("# MISSING")
@@ -184,8 +184,8 @@ class milatools:
             else:
                 exit("Cannot proceed because there is no public key")
 
-        common = remote.get(
-            "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)", bash=True
+        common = remote.with_bash().get_output(
+            "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)"
         )
         if common:
             print("# OK")
