@@ -262,7 +262,29 @@ class milatools:
     class serve:
         """Start services on compute nodes and forward them to your local machine."""
 
-        def jupyter():
+        def lab():
+            """Start a Jupyterlab server."""
+
+            # Path to open on the remote machine
+            # [positional: ?]
+            path: Option = default(None)
+
+            path = path or "~"
+            if path.endswith(".ipynb"):
+                exit("Only directories can be given to the mila serve jupyter command")
+
+            _standard_server(
+                path,
+                program="jupyter-lab",
+                installers={
+                    "conda": "conda install -y jupyterlab",
+                    "pip": "pip install jupyterlab",
+                },
+                command="jupyter lab --sock {sock}",
+                token_pattern=r"\?token=([a-f0-9]+)",
+            )
+
+        def notebook():
             """Start a Jupyter Notebook server."""
 
             # Path to open on the remote machine
@@ -275,12 +297,13 @@ class milatools:
 
             _standard_server(
                 path,
-                program="jupyter",
+                program="jupyter-notebook",
                 installers={
                     "conda": "conda install -y jupyter",
                     "pip": "pip install jupyter",
                 },
                 command="jupyter notebook --sock {sock}",
+                token_pattern=r"\?token=([a-f0-9]+)",
             )
 
         def tensorboard():
@@ -349,6 +372,7 @@ def _standard_server(
     installers,
     command,
     port_pattern=None,
+    token_pattern=None,
 ):
 
     # Name of the profile to use
@@ -385,6 +409,9 @@ def _standard_server(
     else:
         remote.run("mkdir -p ~/.milatools/sockets", hide=True)
 
+    if token_pattern:
+        patterns["token"] = token_pattern
+
     proc, results = (
         cnode.with_profile(prof)
         .with_precommand("echo '####' $(hostname)")
@@ -400,10 +427,14 @@ def _standard_server(
     else:
         to_forward = f"{remote.home()}/.milatools/sockets/{node_name}.sock"
 
+    if token_pattern:
+        options = {"token": results["token"]}
+
     local_proc = _forward(
         local=Local(),
         node=f"{node_name}.server.mila.quebec",
         to_forward=to_forward,
+        options=options,
     )
 
     try:
