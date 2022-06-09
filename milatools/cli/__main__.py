@@ -258,62 +258,64 @@ class milatools:
             proc.kill()
         print(f"Ended session on '{node_name}'")
 
-    def jupyter():
-        """Start a Jupyter Notebook server."""
+    class serve:
 
-        # Path to open on the remote machine
-        # [positional]
-        path: Option
+        def jupyter():
+            """Start a Jupyter Notebook server."""
 
-        remote = Remote("mila")
+            # Path to open on the remote machine
+            # [positional]
+            path: Option
 
-        home = remote.home()
-        if not path.startswith("/"):
-            path = os.path.join(home, path)
+            remote = Remote("mila")
 
-        pathdir = path
-        if path.endswith(".ipynb"):
-            pathdir = str(Path(path).parent)
+            home = remote.home()
+            if not path.startswith("/"):
+                path = os.path.join(home, path)
 
-        prof = setup_profile(remote, pathdir)
-        premote = remote.with_profile(prof)
+            pathdir = path
+            if path.endswith(".ipynb"):
+                pathdir = str(Path(path).parent)
 
-        ensure_program(
-            remote=premote,
-            program="jupyter",
-            installers={
-                "conda": "conda install -y jupyter",
-                "pip": "pip install jupyter",
-            },
-        )
+            prof = setup_profile(remote, pathdir)
+            premote = remote.with_profile(prof)
 
-        remote.run("mkdir -p ~/.milatools/sockets", hide=True)
+            ensure_program(
+                remote=premote,
+                program="jupyter",
+                installers={
+                    "conda": "conda install -y jupyter",
+                    "pip": "pip install jupyter",
+                },
+            )
 
-        cnode = _find_allocation(remote)
-        proc, results = cnode.with_profile(prof).extract(
-            f"echo '####' $(hostname) && jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {pathdir}",
-            patterns={
-                "node_name": "#### ([A-Za-z0-9_-]+)",
-                "url": "Notebook is listening on (.*)",
-                "token": "token=([a-f0-9]+)",
-            },
-        )
-        node_name = results["node_name"]
+            remote.run("mkdir -p ~/.milatools/sockets", hide=True)
 
-        local_proc = _forward(
-            local=Local(),
-            node=f"{node_name}.server.mila.quebec",
-            to_forward=f"{home}/.milatools/sockets/{node_name}.sock",
-            options={"token": results["token"]},
-        )
+            cnode = _find_allocation(remote)
+            proc, results = cnode.with_profile(prof).extract(
+                f"echo '####' $(hostname) && jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {pathdir}",
+                patterns={
+                    "node_name": "#### ([A-Za-z0-9_-]+)",
+                    "url": "Notebook is listening on (.*)",
+                    "token": "token=([a-f0-9]+)",
+                },
+            )
+            node_name = results["node_name"]
 
-        try:
-            local_proc.wait()
-        except KeyboardInterrupt:
-            exit("Terminated by user.")
-        finally:
-            local_proc.kill()
-            proc.kill()
+            local_proc = _forward(
+                local=Local(),
+                node=f"{node_name}.server.mila.quebec",
+                to_forward=f"{home}/.milatools/sockets/{node_name}.sock",
+                options={"token": results["token"]},
+            )
+
+            try:
+                local_proc.wait()
+            except KeyboardInterrupt:
+                exit("Terminated by user.")
+            finally:
+                local_proc.kill()
+                proc.kill()
 
 
 @tooled
