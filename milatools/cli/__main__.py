@@ -287,11 +287,11 @@ class milatools:
             """Start a Tensorboard server."""
 
             # Path to the experiment logs
-            # [positional: ?]
-            path: Option = default(None)
+            # [positional]
+            logdir: Option
 
             _standard_server(
-                path,
+                logdir,
                 program="tensorboard",
                 installers={
                     "conda": "conda install -y tensorboard",
@@ -305,11 +305,11 @@ class milatools:
             """Start an MLFlow server."""
 
             # Path to the experiment logs
-            # [positional: ?]
-            path: Option = default(None)
+            # [positional]
+            logdir: Option
 
             _standard_server(
-                path,
+                logdir,
                 program="mlflow",
                 installers={
                     "pip": "pip install mlflow",
@@ -322,8 +322,8 @@ class milatools:
             """Start an AIM server."""
 
             # Path to the experiment logs
-            # [positional: ?]
-            path: Option = default(None)
+            # [positional]
+            logdir: Option
 
             # Remote port to use
             remote_port: Option = default(None)
@@ -332,7 +332,7 @@ class milatools:
                 remote_port = random.randint(10000, 60000)
 
             _standard_server(
-                path,
+                logdir,
                 program="aim",
                 installers={
                     "pip": "pip install aim",
@@ -365,11 +365,12 @@ def _standard_server(
 
     premote = remote.with_profile(prof)
 
-    ensure_program(
+    if not ensure_program(
         remote=premote,
         program=program,
         installers=installers,
-    )
+    ):
+        exit(f"Exit: {program} is not installed.")
 
     cnode = _find_allocation(remote)
 
@@ -384,9 +385,13 @@ def _standard_server(
     else:
         remote.run("mkdir -p ~/.milatools/sockets", hide=True)
 
-    proc, results = cnode.with_profile(prof).extract(
-        f"echo '####' $(hostname) && {command}",
-        patterns=patterns,
+    proc, results = (
+        cnode.with_profile(prof)
+        .with_precommand("echo '####' $(hostname)")
+        .extract(
+            command,
+            patterns=patterns,
+        )
     )
     node_name = results["node_name"]
 

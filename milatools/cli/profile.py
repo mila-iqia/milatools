@@ -46,7 +46,7 @@ def setup_profile(remote, path):
 
 def select_preferred(remote, path):
     preferred = f"{path}/.milatools-profile"
-    qn.print(f"Checking for preferred profile in {preferred}...")
+    qn.print(f"Checking for preferred profile in {preferred}")
 
     try:
         preferred = remote.get_output(f"cat {preferred}", hide=True)
@@ -58,9 +58,9 @@ def select_preferred(remote, path):
 
 
 def select_profile(remote):
-    profdir = ".milatools/profiles"
+    profdir = "~/.milatools/profiles"
 
-    qn.print(f"Fetching profiles in {profdir}...")
+    qn.print(f"Fetching profiles in {profdir}")
 
     profiles = remote.get_lines(f"ls {profdir}/*.bash", hide=True, warn=True)
 
@@ -292,6 +292,8 @@ def ensure_program(remote, program, installers):
             choices=choices,
         ).ask()
         if install == "<MYSELF>":
-            return
+            return False
         else:
             remote.run(f"srun {install}")
+
+    return True
