@@ -260,6 +260,8 @@ class milatools:
         print(f"Ended session on '{node_name}'")
 
     class serve:
+        """Start services on compute nodes and forward them to your local machine."""
+
         def jupyter():
             """Start a Jupyter Notebook server."""
 
@@ -267,52 +269,19 @@ class milatools:
             # [positional: ?]
             path: Option = default(None)
 
-            remote = Remote("mila")
-
             path = path or "~"
-            pathdir = path
             if path.endswith(".ipynb"):
-                pathdir = str(Path(path).parent)
+                exit("Only directories can be given to the mila serve jupyter command")
 
-            prof = setup_profile(remote, pathdir)
-            premote = remote.with_profile(prof)
-
-            ensure_program(
-                remote=premote,
+            _standard_server(
+                path,
                 program="jupyter",
                 installers={
                     "conda": "conda install -y jupyter",
                     "pip": "pip install jupyter",
                 },
+                command="jupyter notebook --sock {sock}",
             )
-
-            remote.run("mkdir -p ~/.milatools/sockets", hide=True)
-
-            cnode = _find_allocation(remote)
-            proc, results = cnode.with_profile(prof).extract(
-                f"echo '####' $(hostname) && jupyter notebook --sock ~/.milatools/sockets/$(hostname).sock {pathdir}",
-                patterns={
-                    "node_name": "#### ([A-Za-z0-9_-]+)",
-                    "url": "Notebook is listening on (.*)",
-                    "token": "token=([a-f0-9]+)",
-                },
-            )
-            node_name = results["node_name"]
-
-            local_proc = _forward(
-                local=Local(),
-                node=f"{node_name}.server.mila.quebec",
-                to_forward=f"{remote.home()}/.milatools/sockets/{node_name}.sock",
-                options={"token": results["token"]},
-            )
-
-            try:
-                local_proc.wait()
-            except KeyboardInterrupt:
-                exit("Terminated by user.")
-            finally:
-                local_proc.kill()
-                proc.kill()
 
         def tensorboard():
             """Start a Tensorboard server."""
@@ -321,45 +290,16 @@ class milatools:
             # [positional: ?]
             path: Option = default(None)
 
-            remote = Remote("mila")
-
-            pathdir = path or "~"
-
-            prof = setup_profile(remote, pathdir)
-            premote = remote.with_profile(prof)
-
-            ensure_program(
-                remote=premote,
+            _standard_server(
+                path,
                 program="tensorboard",
                 installers={
                     "conda": "conda install -y tensorboard",
                     "pip": "pip install tensorboard",
                 },
+                command="tensorboard --logdir {path} --port 0",
+                port_pattern="TensorBoard [^ ]+ at http://localhost:([0-9]+)/",
             )
-
-            cnode = _find_allocation(remote)
-            proc, results = cnode.with_profile(prof).extract(
-                f"echo '####' $(hostname) && tensorboard --logdir {pathdir} --port 0",
-                patterns={
-                    "node_name": "#### ([A-Za-z0-9_-]+)",
-                    "port": "TensorBoard [^ ]+ at http://localhost:([0-9]+)/",
-                },
-            )
-            node_name = results["node_name"]
-
-            local_proc = _forward(
-                local=Local(),
-                node=f"{node_name}.server.mila.quebec",
-                to_forward=int(results["port"]),
-            )
-
-            try:
-                local_proc.wait()
-            except KeyboardInterrupt:
-                exit("Terminated by user.")
-            finally:
-                local_proc.kill()
-                proc.kill()
 
         def mlflow():
             """Start an MLFlow server."""
@@ -368,45 +308,15 @@ class milatools:
             # [positional: ?]
             path: Option = default(None)
 
-            remote = Remote("mila")
-
-            pathdir = path or "~"
-
-            prof = setup_profile(remote, pathdir)
-            premote = remote.with_profile(prof)
-
-            ensure_program(
-                remote=premote,
+            _standard_server(
+                path,
                 program="mlflow",
                 installers={
-                    "conda": "conda install -y mlflow",
                     "pip": "pip install mlflow",
                 },
+                command="mlflow ui --backend-store-uri {path} --port 0",
+                port_pattern="Listening at: http://127.0.0.1:([0-9]+)",
             )
-
-            cnode = _find_allocation(remote)
-            proc, results = cnode.with_profile(prof).extract(
-                f"echo '####' $(hostname) && mlflow ui --backend-store-uri {pathdir} --port 0",
-                patterns={
-                    "node_name": "#### ([A-Za-z0-9_-]+)",
-                    "port": "Listening at: http://127.0.0.1:([0-9]+)",
-                },
-            )
-            node_name = results["node_name"]
-
-            local_proc = _forward(
-                local=Local(),
-                node=f"{node_name}.server.mila.quebec",
-                to_forward=int(results["port"]),
-            )
-
-            try:
-                local_proc.wait()
-            except KeyboardInterrupt:
-                exit("Terminated by user.")
-            finally:
-                local_proc.kill()
-                proc.kill()
 
         def aim():
             """Start an AIM server."""
@@ -421,45 +331,83 @@ class milatools:
             if remote_port is None:
                 remote_port = random.randint(10000, 60000)
 
-            remote = Remote("mila")
-
-            pathdir = path or "~"
-
-            prof = setup_profile(remote, pathdir)
-            premote = remote.with_profile(prof)
-
-            ensure_program(
-                remote=premote,
+            _standard_server(
+                path,
                 program="aim",
                 installers={
-                    "conda": "conda install -y aim",
                     "pip": "pip install aim",
                 },
+                command=f"aim up --repo {{path}} --port {remote_port}",
+                port_pattern="Open http://127.0.0.1:([0-9]+)",
             )
 
-            cnode = _find_allocation(remote)
-            proc, results = cnode.with_profile(prof).extract(
-                f"echo '####' $(hostname) && aim up --repo {pathdir} --port {remote_port}",
-                patterns={
-                    "node_name": "#### ([A-Za-z0-9_-]+)",
-                    "port": "Open http://127.0.0.1:([0-9]+)",
-                },
-            )
-            node_name = results["node_name"]
 
-            local_proc = _forward(
-                local=Local(),
-                node=f"{node_name}.server.mila.quebec",
-                to_forward=int(results["port"]),
-            )
+@tooled
+def _standard_server(
+    path,
+    program,
+    installers,
+    command,
+    port_pattern=None,
+):
 
-            try:
-                local_proc.wait()
-            except KeyboardInterrupt:
-                exit("Terminated by user.")
-            finally:
-                local_proc.kill()
-                proc.kill()
+    # Name of the profile to use
+    profile: Option = default(None)
+
+    remote = Remote("mila")
+
+    path = path or "~"
+
+    if profile:
+        prof = f"~/.milatools/profiles/{profile}.bash"
+    else:
+        prof = setup_profile(remote, path)
+
+    premote = remote.with_profile(prof)
+
+    ensure_program(
+        remote=premote,
+        program=program,
+        installers=installers,
+    )
+
+    cnode = _find_allocation(remote)
+
+    command = command.format(path=path, sock="~/.milatools/sockets/$(hostname).sock")
+
+    patterns = {
+        "node_name": "#### ([A-Za-z0-9_-]+)",
+    }
+
+    if port_pattern:
+        patterns["port"] = port_pattern
+    else:
+        remote.run("mkdir -p ~/.milatools/sockets", hide=True)
+
+    proc, results = cnode.with_profile(prof).extract(
+        f"echo '####' $(hostname) && {command}",
+        patterns=patterns,
+    )
+    node_name = results["node_name"]
+
+    if port_pattern:
+        to_forward = int(results["port"])
+    else:
+        to_forward = f"{remote.home()}/.milatools/sockets/{node_name}.sock"
+
+    local_proc = _forward(
+        local=Local(),
+        node=f"{node_name}.server.mila.quebec",
+        to_forward=to_forward,
+    )
+
+    try:
+        local_proc.wait()
+    except KeyboardInterrupt:
+        exit("Terminated by user.")
+    finally:
+        local_proc.kill()
+        proc.kill()
 
 
 @tooled
