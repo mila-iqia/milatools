@@ -506,8 +506,6 @@ def _forward(local, node, to_forward, page=None, options={}):
         node,
     )
 
-    time.sleep(2)
-
     url = f"http://localhost:{port}"
     if page is not None:
         if not page.startswith("/"):
@@ -516,6 +514,11 @@ def _forward(local, node, to_forward, page=None, options={}):
     if options:
         url += f"?{urlencode(options)}"
 
+    qn.print(
+        "Starting browser. If it does not appear to be working, please note"
+        " that it may take a few seconds for the page to start loading.",
+        style="bold",
+    )
     webbrowser.open(url)
     return proc
 
