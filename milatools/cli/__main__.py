@@ -303,6 +303,44 @@ class milatools:
             remote.run(f"scancel {info['jobid']}")
             remote.run(f"rm .milatools/control/{identifier}")
 
+        def list():
+            """List active servers."""
+
+            # Purge dead or invalid servers
+            purge: Option & bool = default(False)
+
+            remote = Remote("mila")
+
+            to_purge = []
+
+            for identifier in remote.get_lines("ls .milatools/control", hide=True):
+                info = _get_server_info(remote, identifier, hide=True)
+                jobid = info.get("jobid", None)
+                status = remote.get_output(
+                    f"squeue -j {jobid} -ho %T", hide=True, warn=True
+                )
+                program = info.pop("program", "???")
+                if status == "RUNNING":
+                    necessary_keys = {"node_name", "to_forward"}
+                    if any(k not in info for k in necessary_keys):
+                        qn.print(
+                            f"{identifier} ({program}, MISSING INFO)", style="bold red"
+                        )
+                        to_purge.append((identifier, jobid))
+                    else:
+                        qn.print(f"{identifier} ({program})", style="bold yellow")
+                else:
+                    qn.print(f"{identifier} ({program}, DEAD)", style="bold red")
+                    to_purge.append((identifier, None))
+                for k, v in info.items():
+                    print(f"    {k:20} : {v}")
+
+            if purge:
+                for identifier, jobid in to_purge:
+                    if jobid is not None:
+                        remote.run(f"scancel {jobid}")
+                    remote.run(f"rm .milatools/control/{identifier}")
+
         def lab():
             """Start a Jupyterlab server."""
 
@@ -406,8 +444,8 @@ class milatools:
             )
 
 
-def _get_server_info(remote, identifier):
-    text = remote.get_output(f"cat .milatools/control/{identifier}")
+def _get_server_info(remote, identifier, hide=False):
+    text = remote.get_output(f"cat .milatools/control/{identifier}", hide=hide)
     info = dict(line.split(" = ") for line in text.split("\n") if line)
     return info
 
@@ -498,6 +536,7 @@ def _standard_server(
             to_forward = f"{remote.home()}/.milatools/sockets/{node_name}.sock"
 
         if cf is not None:
+            remote.simple_run(f"echo program = {program} >> {cf}")
             remote.simple_run(f"echo node_name = {results['node_name']} >> {cf}")
             remote.simple_run(f"echo to_forward = {to_forward} >> {cf}")
             if token_pattern:
