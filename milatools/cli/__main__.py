@@ -297,11 +297,27 @@ class milatools:
         def kill():
             """Kill a persistent server."""
 
-            remote = Remote("mila")
-            identifier, info = _get_server_info_command(remote)
+            # Server identifier output by the original mila serve command
+            # [positional: ?]
+            identifier: Option = default(None)
 
-            remote.run(f"scancel {info['jobid']}")
-            remote.run(f"rm .milatools/control/{identifier}")
+            # Kill all servers
+            all: Option & bool = default(False)
+
+            remote = Remote("mila")
+
+            if all:
+                for identifier in remote.get_lines("ls .milatools/control", hide=True):
+                    info = _get_server_info(remote, identifier, hide=True)
+                    if "jobid" in info:
+                        remote.run(f"scancel {info['jobid']}")
+                    remote.run(f"rm .milatools/control/{identifier}")
+
+            else:
+                info = _get_server_info(remote, identifier)
+
+                remote.run(f"scancel {info['jobid']}")
+                remote.run(f"rm .milatools/control/{identifier}")
 
         def list():
             """List active servers."""
@@ -640,9 +656,22 @@ def _forward(local, node, to_forward, page=None, options={}, preferred_port=None
     if options:
         url += f"?{urlencode(options)}"
 
+    qn.print("Waiting for connection to be active...")
+    nsecs = 10
+    period = 0.2
+    for _ in range(int(nsecs / period)):
+        time.sleep(period)
+        try:
+            # This feels stupid, there's probably a better way
+            local.silent_get("nc", "-z", "localhost", str(port))
+        except subprocess.CalledProcessError as exc:
+            continue
+        except Exception as exc:
+            break
+        break
+
     qn.print(
-        "Starting browser. If it does not appear to be working, please note"
-        " that it may take a few seconds for the page to start loading.",
+        "Starting browser. You might need to refresh the page.",
         style="bold",
     )
     webbrowser.open(url)

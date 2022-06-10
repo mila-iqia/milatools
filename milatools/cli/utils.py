@@ -103,6 +103,13 @@ class Local:
     def display(self, args):
         print(T.bold_green(f"(local) $ ", shjoin(args)))
 
+    def silent_get(self, *args, **kwargs):
+        return subprocess.check_output(
+            args,
+            universal_newlines=True,
+            **kwargs,
+        )
+
     def get(self, *args, **kwargs):
         self.display(args)
         return subprocess.check_output(
