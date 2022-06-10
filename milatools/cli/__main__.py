@@ -1,5 +1,6 @@
 import os
 import random
+import socket
 import subprocess
 import time
 import webbrowser
@@ -429,6 +430,8 @@ def _standard_server(
 
     if token_pattern:
         options = {"token": results["token"]}
+    else:
+        options = {}
 
     local_proc = _forward(
         local=Local(),
@@ -479,7 +482,15 @@ def _find_allocation(remote):
 def _forward(local, node, to_forward, page=None, options={}):
 
     # Port to open on the local machine
-    port: Option = default(10101)
+    port: Option = default(None)
+
+    if port is None:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Find a free local port by binding to port 0
+        sock.bind(("localhost", 0))
+        _, port = sock.getsockname()
+        # Close it for ssh -L. It is *unlikely* it will not be available.
+        sock.close()
 
     if isinstance(to_forward, int):
         to_forward = f"localhost:{to_forward}"
