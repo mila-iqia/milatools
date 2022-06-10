@@ -1,9 +1,11 @@
 import os
 import random
+import re
 import socket
 import subprocess
 import time
 import webbrowser
+from contextlib import ExitStack
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -12,7 +14,15 @@ from coleo import Option, auto_cli, default, tooled
 
 from ..version import version as mversion
 from .profile import ensure_program, setup_profile
-from .utils import Local, Remote, SlurmRemote, SSHConfig, T, yn
+from .utils import (
+    Local,
+    Remote,
+    SlurmRemote,
+    SSHConfig,
+    T,
+    with_control_file,
+    yn,
+)
 
 
 def main():
@@ -263,6 +273,36 @@ class milatools:
     class serve:
         """Start services on compute nodes and forward them to your local machine."""
 
+        def reconnect():
+            """Reconnect to a persistent server."""
+
+            remote = Remote("mila")
+            _, info = _get_server_info_command(remote)
+
+            local_proc = _forward(
+                local=Local(),
+                node=f"{info['node_name']}.server.mila.quebec",
+                to_forward=info["to_forward"],
+                options={"token": info.get("token", None)},
+                preferred_port=info["local_port"],
+            )
+
+            try:
+                local_proc.wait()
+            except KeyboardInterrupt:
+                exit("Terminated by user.")
+            finally:
+                local_proc.kill()
+
+        def kill():
+            """Kill a persistent server."""
+
+            remote = Remote("mila")
+            identifier, info = _get_server_info_command(remote)
+
+            remote.run(f"scancel {info['jobid']}")
+            remote.run(f"rm .milatools/control/{identifier}")
+
         def lab():
             """Start a Jupyterlab server."""
 
@@ -272,7 +312,7 @@ class milatools:
 
             path = path or "~"
             if path.endswith(".ipynb"):
-                exit("Only directories can be given to the mila serve jupyter command")
+                exit("Only directories can be given to the mila serve lab command")
 
             _standard_server(
                 path,
@@ -294,7 +334,7 @@ class milatools:
 
             path = path or "~"
             if path.endswith(".ipynb"):
-                exit("Only directories can be given to the mila serve jupyter command")
+                exit("Only directories can be given to the mila serve notebook command")
 
             _standard_server(
                 path,
@@ -366,6 +406,21 @@ class milatools:
             )
 
 
+def _get_server_info(remote, identifier):
+    text = remote.get_output(f"cat .milatools/control/{identifier}")
+    info = dict(line.split(" = ") for line in text.split("\n") if line)
+    return info
+
+
+@tooled
+def _get_server_info_command(remote):
+    # Server identifier output by the original mila serve command
+    # [positional]
+    identifier: Option
+
+    return identifier, _get_server_info(remote, identifier)
+
+
 @tooled
 def _standard_server(
     path,
@@ -378,6 +433,9 @@ def _standard_server(
 
     # Name of the profile to use
     profile: Option = default(None)
+
+    # Whether the server should persist or not
+    persist: Option & bool = default(False)
 
     remote = Remote("mila")
 
@@ -413,20 +471,37 @@ def _standard_server(
     if token_pattern:
         patterns["token"] = token_pattern
 
-    proc, results = (
-        cnode.with_profile(prof)
-        .with_precommand("echo '####' $(hostname)")
-        .extract(
-            command,
-            patterns=patterns,
-        )
-    )
-    node_name = results["node_name"]
+    with ExitStack() as stack:
+        if persist:
+            cf = stack.enter_context(with_control_file())
+        else:
+            cf = None
 
-    if port_pattern:
-        to_forward = int(results["port"])
-    else:
-        to_forward = f"{remote.home()}/.milatools/sockets/{node_name}.sock"
+        remote.run("mkdir -p ~/.milatools/control", hide=True)
+
+        if persist:
+            cnode = cnode.persist()
+
+        proc, results = (
+            cnode.with_profile(prof)
+            .with_precommand("echo '####' $(hostname)")
+            .extract(
+                command,
+                patterns=patterns,
+            )
+        )
+        node_name = results["node_name"]
+
+        if port_pattern:
+            to_forward = int(results["port"])
+        else:
+            to_forward = f"{remote.home()}/.milatools/sockets/{node_name}.sock"
+
+        if cf is not None:
+            remote.simple_run(f"echo node_name = {results['node_name']} >> {cf}")
+            remote.simple_run(f"echo to_forward = {to_forward} >> {cf}")
+            if token_pattern:
+                remote.simple_run(f"echo token = {results['token']} >> {cf}")
 
     if token_pattern:
         options = {"token": results["token"]}
@@ -440,10 +515,19 @@ def _standard_server(
         options=options,
     )
 
+    if cf is not None:
+        remote.simple_run(f"echo local_port = {local_proc.local_port} >> {cf}")
+
     try:
         local_proc.wait()
     except KeyboardInterrupt:
-        exit("Terminated by user.")
+        qn.print("Terminated by user.")
+        if cf is not None:
+            name = Path(cf).name
+            qn.print("To reconnect to this server, use the command:")
+            qn.print(f"  mila serve reconnect {name}", style="bold yellow")
+            qn.print("To kill this server, use the command:")
+            qn.print(f"  mila serve kill {name}", style="bold red")
     finally:
         local_proc.kill()
         proc.kill()
@@ -465,6 +549,7 @@ def _find_allocation(remote):
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
     if node is not None:
+        node_name = f"{node}.server.mila.quebec"
         return Remote(node_name)
 
     elif job is not None:
@@ -479,10 +564,10 @@ def _find_allocation(remote):
 
 
 @tooled
-def _forward(local, node, to_forward, page=None, options={}):
+def _forward(local, node, to_forward, page=None, options={}, preferred_port=None):
 
     # Port to open on the local machine
-    port: Option = default(None)
+    port: Option = default(preferred_port)
 
     if port is None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -492,7 +577,7 @@ def _forward(local, node, to_forward, page=None, options={}):
         # Close it for ssh -L. It is *unlikely* it will not be available.
         sock.close()
 
-    if isinstance(to_forward, int):
+    if isinstance(to_forward, int) or re.match("[0-9]+", to_forward):
         to_forward = f"localhost:{to_forward}"
 
     proc = local.popen(
@@ -511,6 +596,8 @@ def _forward(local, node, to_forward, page=None, options={}):
         if not page.startswith("/"):
             page = f"/{page}"
         url += page
+
+    options = {k: v for k, v in options.items() if v is not None}
     if options:
         url += f"?{urlencode(options)}"
 
@@ -520,6 +607,7 @@ def _forward(local, node, to_forward, page=None, options={}):
         style="bold",
     )
     webbrowser.open(url)
+    proc.local_port = port
     return proc
 
 
