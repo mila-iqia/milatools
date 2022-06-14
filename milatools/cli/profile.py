@@ -37,7 +37,9 @@ def setup_profile(remote, path):
 
     profile_file = Path(path) / ".milatools-profile"
     if not preferred:
-        save = yn(f"Do you want to use this profile by default in {path}?")
+        save = yn(
+            f"Do you want to use this profile by default in {path}?", default=False
+        )
         if save:
             remote.puttext(profile, str(profile_file))
 
@@ -290,7 +292,7 @@ def ensure_program(remote, program, installers):
         install = qn.select(
             f"{program} is not installed in that environment. Do you want to install it?",
             choices=choices,
-        ).ask()
+        ).unsafe_ask()
         if install == "<MYSELF>":
             return False
         else:
