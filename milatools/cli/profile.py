@@ -68,6 +68,8 @@ def select_profile(remote):
 
     if not profiles:
         qn.print("None found.", style="grey")
+        qn.print("Creating a new profile.")
+        return None
 
     profile_choices = [
         qn.Choice(
@@ -85,6 +87,7 @@ def select_profile(remote):
                 title=[("class:special", "Create a new profile")], value="<CREATE>"
             ),
         ],
+        style=style,
     ).unsafe_ask()
 
     if profile == "<CREATE>":
