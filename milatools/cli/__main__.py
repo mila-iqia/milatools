@@ -500,6 +500,15 @@ def _standard_server(
     else:
         prof = setup_profile(remote, path)
 
+    qn.print(f"Using profile: {prof}")
+    cat_result = remote.run(f"cat {prof}", hide=True, warn=True)
+    if cat_result.ok:
+        qn.print(f"=" * 50)
+        qn.print(cat_result.stdout.rstrip())
+        qn.print(f"=" * 50)
+    else:
+        exit(f"Could not find or load profile: {prof}")
+
     premote = remote.with_profile(prof)
 
     if not ensure_program(
