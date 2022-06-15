@@ -363,6 +363,8 @@ class SSHConfig:
     def __init__(self, path):
         self.cfg = read_ssh_config(path)
         self.add = self.cfg.add
+        self.remove = self.cfg.remove
+        self.rename = self.cfg.rename
         self.save = self.cfg.save
         self.host = self.cfg.host
         self.hosts = self.cfg.hosts

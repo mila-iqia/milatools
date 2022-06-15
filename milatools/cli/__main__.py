@@ -119,18 +119,27 @@ class milatools:
 
         # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
 
-        if "*.server.mila.quebec" not in c.hosts():
+        cnode_pattern = "*.server.mila.quebec !*login.server.mila.quebec"
+
+        if "*.server.mila.quebec" in c.hosts():
+            if yn(
+                "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should exclude login.server.mila.quebec. Fix this?"
+            ):
+                c.rename("*.server.mila.quebec", cnode_pattern)
+                changes = True
+
+        if cnode_pattern not in c.hosts():
             if yn(
                 "There is no '*.server.mila.quebec' entry in ~/.ssh/config. Create one?"
             ):
                 username = c.host("mila")["user"]
                 c.add(
-                    "*.server.mila.quebec",
+                    cnode_pattern,
                     HostName="%h",
                     User=username,
                     ProxyJump="mila",
                 )
-                if not c.confirm("*.server.mila.quebec"):
+                if not c.confirm(cnode_pattern):
                     exit("Did not change ssh config")
             else:
                 exit("Did not change ssh config")
