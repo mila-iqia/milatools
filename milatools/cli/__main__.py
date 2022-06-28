@@ -452,19 +452,13 @@ class milatools:
             # [positional]
             logdir: Option
 
-            # Remote port to use
-            remote_port: Option = default(None)
-
-            if remote_port is None:
-                remote_port = random.randint(10000, 60000)
-
             _standard_server(
                 logdir,
                 program="aim",
                 installers={
                     "pip": "pip install aim",
                 },
-                command=f"aim up --repo {{path}} --port {remote_port}",
+                command=f"aim up --repo {{path}} --port 0",
                 port_pattern="Open http://127.0.0.1:([0-9]+)",
             )
 
