@@ -20,6 +20,7 @@ from .utils import (
     SlurmRemote,
     SSHConfig,
     T,
+    randname,
     with_control_file,
     yn,
 )
@@ -322,6 +323,9 @@ class milatools:
                         remote.run(f"scancel {info['jobid']}")
                     remote.run(f"rm .milatools/control/{identifier}")
 
+            elif identifier is None:
+                exit("Please give the name of the server to kill")
+
             else:
                 info = _get_server_info(remote, identifier)
 
@@ -494,56 +498,65 @@ def _standard_server(
     # Whether the server should persist or not
     persist: Option & bool = default(False)
 
+    # Name of the persistent server
+    name: Option = default(None)
+
+    if name is not None:
+        persist = True
+    elif persist:
+        name = program
+
     remote = Remote("mila")
 
     path = path or "~"
 
-    if profile:
-        prof = f"~/.milatools/profiles/{profile}.bash"
-    else:
-        prof = setup_profile(remote, path)
-
-    qn.print(f"Using profile: {prof}")
-    cat_result = remote.run(f"cat {prof}", hide=True, warn=True)
-    if cat_result.ok:
-        qn.print(f"=" * 50)
-        qn.print(cat_result.stdout.rstrip())
-        qn.print(f"=" * 50)
-    else:
-        exit(f"Could not find or load profile: {prof}")
-
-    premote = remote.with_profile(prof)
-
-    if not ensure_program(
-        remote=premote,
-        program=program,
-        installers=installers,
-    ):
-        exit(f"Exit: {program} is not installed.")
-
-    cnode = _find_allocation(remote)
-
-    command = command.format(path=path, sock="~/.milatools/sockets/$(hostname).sock")
-
-    patterns = {
-        "node_name": "#### ([A-Za-z0-9_-]+)",
-    }
-
-    if port_pattern:
-        patterns["port"] = port_pattern
-    else:
-        remote.run("mkdir -p ~/.milatools/sockets", hide=True)
-
-    if token_pattern:
-        patterns["token"] = token_pattern
-
     with ExitStack() as stack:
         if persist:
-            cf = stack.enter_context(with_control_file())
+            cf = stack.enter_context(with_control_file(remote, name=name))
         else:
             cf = None
 
-        remote.run("mkdir -p ~/.milatools/control", hide=True)
+        if profile:
+            prof = f"~/.milatools/profiles/{profile}.bash"
+        else:
+            prof = setup_profile(remote, path)
+
+        qn.print(f"Using profile: {prof}")
+        cat_result = remote.run(f"cat {prof}", hide=True, warn=True)
+        if cat_result.ok:
+            qn.print(f"=" * 50)
+            qn.print(cat_result.stdout.rstrip())
+            qn.print(f"=" * 50)
+        else:
+            exit(f"Could not find or load profile: {prof}")
+
+        premote = remote.with_profile(prof)
+
+        if not ensure_program(
+            remote=premote,
+            program=program,
+            installers=installers,
+        ):
+            exit(f"Exit: {program} is not installed.")
+
+        cnode = _find_allocation(remote)
+
+        sock_name = name or randname()
+        command = command.format(
+            path=path, sock=f"~/.milatools/sockets/{sock_name}.sock"
+        )
+
+        patterns = {
+            "node_name": "#### ([A-Za-z0-9_-]+)",
+        }
+
+        if port_pattern:
+            patterns["port"] = port_pattern
+        else:
+            remote.run("mkdir -p ~/.milatools/sockets", hide=True)
+
+        if token_pattern:
+            patterns["token"] = token_pattern
 
         if persist:
             cnode = cnode.persist()
@@ -561,7 +574,7 @@ def _standard_server(
         if port_pattern:
             to_forward = int(results["port"])
         else:
-            to_forward = f"{remote.home()}/.milatools/sockets/{node_name}.sock"
+            to_forward = f"{remote.home()}/.milatools/sockets/{sock_name}.sock"
 
         if cf is not None:
             remote.simple_run(f"echo program = {program} >> {cf}")

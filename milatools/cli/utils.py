@@ -44,9 +44,17 @@ def randname():
 
 
 @contextmanager
-def with_control_file():
-    name = randname()
+def with_control_file(remote, name=None):
+    name = name or randname()
     pth = f".milatools/control/{name}"
+    remote.run("mkdir -p ~/.milatools/control", hide=True)
+
+    try:
+        remote.simple_run(f"[ -f {pth} ]")
+        exit(f"Server {name} already exists. You may use mila serve kill to remove it.")
+    except UnexpectedExit:
+        pass
+
     token = control_file_var.set(pth)
     try:
         yield pth
