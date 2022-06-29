@@ -5,7 +5,7 @@ from pathlib import Path
 import invoke
 import questionary as qn
 
-from .utils import shjoin, yn
+from .utils import askpath, shjoin, yn
 
 style = qn.Style(
     [
@@ -111,6 +111,7 @@ def create_profile(remote, path="~"):
     elif any("python" in m for m in modules):
         vpath = select_virtual_environment(remote.with_precommand(mload), path)
         lines.append(f"source {vpath}/bin/activate")
+        default_profname = _env_basename(vpath)
 
     profname = _ask_name("Name of the profile:", default=default_profname)
     profcontents = "\n".join(lines)
@@ -225,25 +226,26 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
     ).unsafe_ask()
 
     if env == "<OTHER>":
-        env = qn.text("Enter the path to the environment to use.").unsafe_ask()
+        env = askpath("Enter the path to the environment to use.", remote)
 
     elif env == "<CREATE>":
         pyver = qn.select(
             "Choose the Python version",
             choices=["3.10", "3.9", "3.8", "3.7"],
         ).unsafe_ask()
-        envname = _ask_name("What should the environment name be?")
+        env = _ask_name("What should the environment name/path be?")
+        if "/" not in env:
+            env = f"~/scratch/condaenvs/{env}"
         remote.run(
-            f"srun conda create -y -n {envname} python={pyver}",
+            f"srun conda create -y --prefix {env} python={pyver}",
         )
-        env = envname
 
     return env
 
 
 def select_virtual_environment(remote, path):
     envstr = remote.get_output(
-        f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/*",
+        f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/* ~/scratch/virtualenvs/*",
         hide=True,
         warn=True,
     )
@@ -266,11 +268,12 @@ def select_virtual_environment(remote, path):
     ).unsafe_ask()
 
     if env == "<OTHER>":
-        env = qn.text("Enter the path to the environment to use.").unsafe_ask()
+        env = askpath("Enter the path to the environment to use.", remote)
 
     elif env == "<CREATE>":
-        envname = _ask_name("What should the environment name be?")
-        env = f"~/virtualenvs/{envname}"
+        env = _ask_name("What should the environment name/path be?")
+        if "/" not in env:
+            env = f"~/scratch/virtualenvs/{env}"
         remote.run(f"srun python -m venv {env}")
 
     return env

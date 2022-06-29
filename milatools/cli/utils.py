@@ -13,6 +13,7 @@ from queue import Empty, Queue
 import blessed
 import questionary as qn
 from fabric import Connection
+from invoke.exceptions import UnexpectedExit
 from sshconf import read_ssh_config
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
@@ -88,6 +89,17 @@ class CommandNotFoundError(Exception):
 
 def yn(prompt, default=True):
     return qn.confirm(prompt, default=default).unsafe_ask()
+
+
+def askpath(prompt, remote):
+    while True:
+        pth = qn.text(prompt).unsafe_ask()
+        try:
+            remote.simple_run(f"[ -d {pth} ]")
+        except UnexpectedExit:
+            qn.print(f"Path {pth} does not exist")
+            continue
+        return pth
 
 
 T = blessed.Terminal()
