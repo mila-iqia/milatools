@@ -3,6 +3,7 @@ import itertools
 import random
 import re
 import shlex
+import socket
 import subprocess
 import tempfile
 import time
@@ -237,8 +238,16 @@ class Remote:
     def display(self, cmd):
         print(T.bold_cyan(f"({self.hostname}) $ ", cmd))
 
+    def _run(self, cmd, **kwargs):
+        try:
+            return self.connection.run(cmd, **kwargs)
+        except socket.gaierror:
+            exit(
+                f"Error: Could not connect to host '{self.hostname}', did you run 'mila init'?"
+            )
+
     def simple_run(self, cmd, **kwargs):
-        return self.connection.run(cmd, hide=True, **kwargs)
+        return self._run(cmd, hide=True, **kwargs)
 
     def run(self, cmd, display=None, hide=False, **kwargs):
         if display is None:
@@ -247,7 +256,7 @@ class Remote:
             self.display(cmd)
         for transform in self.transforms:
             cmd = transform(cmd)
-        return self.connection.run(cmd, hide=hide, **kwargs)
+        return self._run(cmd, hide=hide, **kwargs)
 
     def get_output(self, cmd, **kwargs):
         return self.run(cmd, **kwargs).stdout.strip()

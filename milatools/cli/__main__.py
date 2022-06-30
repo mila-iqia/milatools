@@ -28,6 +28,11 @@ from .utils import (
 
 def main():
     """Entry point for milatools."""
+    on_mila = socket.getfqdn().endswith(".server.mila.quebec")
+    if on_mila:
+        exit(
+            "Error: 'mila ...' should be run on your local machine and not on the Mila cluster"
+        )
     auto_cli(milatools)
 
 
@@ -341,6 +346,8 @@ class milatools:
             remote = Remote("mila")
 
             to_purge = []
+
+            remote.run("mkdir -p ~/.milatools/control", hide=True)
 
             for identifier in remote.get_lines("ls .milatools/control", hide=True):
                 info = _get_server_info(remote, identifier, hide=True)
