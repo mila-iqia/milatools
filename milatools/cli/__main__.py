@@ -1,5 +1,4 @@
 import os
-import random
 import re
 import socket
 import subprocess
@@ -271,12 +270,14 @@ class milatools:
             path = os.path.join(home, path)
 
         time.sleep(1)
+        if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
+            node_name = f"{node_name}.server.mila.quebec"
         try:
             here.run(
                 "code",
                 "-nw",
                 "--remote",
-                f"ssh-remote+{node_name}.server.mila.quebec",
+                f"ssh-remote+{node_name}",
                 path,
             )
         except KeyboardInterrupt:
