@@ -235,7 +235,8 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
         ).unsafe_ask()
         env = _ask_name("What should the environment name/path be?")
         if "/" not in env:
-            env = f"~/scratch/condaenvs/{env}"
+            # env = f"~/scratch/condaenvs/{env}"
+            env = f"~/condaenvs/{env}"
         remote.run(
             f"srun conda create -y --prefix {env} python={pyver}",
         )
@@ -273,7 +274,8 @@ def select_virtual_environment(remote, path):
     elif env == "<CREATE>":
         env = _ask_name("What should the environment name/path be?")
         if "/" not in env:
-            env = f"~/scratch/virtualenvs/{env}"
+            # env = f"~/scratch/virtualenvs/{env}"
+            env = f"~/virtualenvs/{env}"
         remote.run(f"srun python -m venv {env}")
 
     return env
