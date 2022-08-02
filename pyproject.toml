@@ -17,8 +17,10 @@ questionary = "^1.10.0"
 Fabric = "^2.7.0"
 
 [tool.poetry.dev-dependencies]
-black = "^21.8b0"
-isort = "^5.9.3"
+black = ">= 21.8b0"
+isort = ">= 5.9.3"
+Sphinx = "^5.0.1"
+sphinx-rtd-theme = "^1.0.0"
 
 [tool.poetry.scripts]
 mila = "milatools.cli.__main__:main"
