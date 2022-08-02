@@ -267,7 +267,7 @@ class milatools:
         if not path.startswith("/"):
             # Get $HOME because we have to give the full path to code
             home = remote.home()
-            path = "/".join(home, path)
+            path = "/".join([home, path])
 
         time.sleep(1)
         if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
