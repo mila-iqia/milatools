@@ -11,17 +11,25 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.7"
 blessed = "^1.18.1"
-coleo = "0.2.5"
-ptera = "0.4.2"
+coleo = "^0.3.0"
 sshconf = "^0.2.2"
+questionary = "^1.10.0"
+Fabric = "^2.7.0"
 
 [tool.poetry.dev-dependencies]
-black = "^21.8b0"
-isort = "^5.9.3"
+black = ">= 21.8b0"
+isort = ">= 5.9.3"
+Sphinx = "^5.0.1"
+sphinx-rtd-theme = "^1.0.0"
 
 [tool.poetry.scripts]
-mila = "milatools.commands:main"
+mila = "milatools.cli.__main__:main"
+
+[tool.isort]
+multi_line_output = 3
+include_trailing_comma = true
+combine_as_imports = true
 
 [build-system]
-requires = ["poetry-core@https://github.com/python-poetry/poetry-core/archive/325312c016d69189ac93c945ba0c1b69296c5e54.zip"]
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

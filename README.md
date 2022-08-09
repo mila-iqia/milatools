@@ -73,3 +73,36 @@ mila code path/to/my/experiment
 The `--alloc` option may be used to pass extra arguments to `salloc` when allocating a node (for example, `--alloc --gres=cpu:8` to allocate 8 CPUs). `--alloc` should be at the end, because it will take all of the arguments that come after it.
 
 If you already have an allocation on a compute node, you may use the `--node NODENAME` or `--job JOBID` options to connect to that node.
+
+
+### mila serve
+
+The purpose of `mila serve` is to make it easier to start notebooks, logging servers, etc. on the compute nodes and connect to them.
+
+```
+usage: mila serve [-h] {connect,kill,list,lab,notebook,tensorboard,mlflow,aim} ...
+
+positional arguments:
+  {connect,kill,list,lab,notebook,tensorboard,mlflow,aim}
+    connect             Reconnect to a persistent server.
+    kill                Kill a persistent server.
+    list                List active servers.
+    lab                 Start a Jupyterlab server.
+    notebook            Start a Jupyter Notebook server.
+    tensorboard         Start a Tensorboard server.
+    mlflow              Start an MLFlow server.
+    aim                 Start an AIM server.
+
+optional arguments:
+  -h, --help            show this help message and exit
+```
+
+For example, to start jupyterlab with one GPU, you may write:
+
+```bash
+mila serve lab --alloc --gres gpu:1
+```
+
+You can of course write any SLURM arguments after `--alloc`.
+
+Ending the connection will end the server, but the `--persist` flag can be used to prevent that. In that case you would be able to write `mila serve connect jupyter-lab` in order to reconnect to your running instance. Use `mila serve list` and `mila serve kill` to view and manage any running instances.
