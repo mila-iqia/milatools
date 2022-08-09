@@ -289,7 +289,7 @@ class milatools:
     class serve:
         """Start services on compute nodes and forward them to your local machine."""
 
-        def reconnect():
+        def connect():
             """Reconnect to a persistent server."""
 
             remote = Remote("mila")
@@ -633,7 +633,7 @@ def _standard_server(
         if cf is not None:
             name = Path(cf).name
             qn.print("To reconnect to this server, use the command:")
-            qn.print(f"  mila serve reconnect {name}", style="bold yellow")
+            qn.print(f"  mila serve connect {name}", style="bold yellow")
             qn.print("To kill this server, use the command:")
             qn.print(f"  mila serve kill {name}", style="bold red")
     finally:
