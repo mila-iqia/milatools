@@ -301,6 +301,7 @@ class milatools:
                 to_forward=info["to_forward"],
                 options={"token": info.get("token", None)},
                 preferred_port=info["local_port"],
+                through_login=info["host"] == "0.0.0.0",
             )
 
             try:
@@ -397,6 +398,7 @@ class milatools:
                     "pip": "pip install jupyterlab",
                 },
                 command="jupyter lab --sock {sock}",
+                # command="jupyter lab --ip {host} --port 0",
                 token_pattern=r"\?token=([a-f0-9]+)",
             )
 
@@ -419,6 +421,7 @@ class milatools:
                     "pip": "pip install jupyter",
                 },
                 command="jupyter notebook --sock {sock}",
+                # command="jupyter notebook --ip {host} --port 0",
                 token_pattern=r"\?token=([a-f0-9]+)",
             )
 
@@ -436,8 +439,8 @@ class milatools:
                     "conda": "conda install -y tensorboard",
                     "pip": "pip install tensorboard",
                 },
-                command="tensorboard --logdir {path} --port 0",
-                port_pattern="TensorBoard [^ ]+ at http://localhost:([0-9]+)/",
+                command="tensorboard --logdir {path} --host {host} --port 0",
+                port_pattern="TensorBoard [^ ]+ at http://[^:]+:([0-9]+)/",
             )
 
         def mlflow():
@@ -453,8 +456,8 @@ class milatools:
                 installers={
                     "pip": "pip install mlflow",
                 },
-                command="mlflow ui --backend-store-uri {path} --port 0",
-                port_pattern="Listening at: http://127.0.0.1:([0-9]+)",
+                command="mlflow ui --backend-store-uri {path} --host {host} --port 0",
+                port_pattern="Listening at: http://[^:]+:([0-9]+)",
             )
 
         def aim():
@@ -470,8 +473,8 @@ class milatools:
                 installers={
                     "pip": "pip install aim",
                 },
-                command=f"aim up --repo {{path}} --port 0",
-                port_pattern="Open http://127.0.0.1:([0-9]+)",
+                command="aim up --repo {path} --host {host} --port 0",
+                port_pattern=f"Open http://[^:]+:([0-9]+)",
             )
 
 
@@ -508,6 +511,11 @@ def _standard_server(
 
     # Name of the persistent server
     name: Option = default(None)
+
+    # Make the server visible from the login node (other users will be able to connect)
+    # share: Option & bool = default(False)
+    # Temporarily disabled
+    share = False
 
     if name is not None:
         persist = True
@@ -549,19 +557,30 @@ def _standard_server(
 
         cnode = _find_allocation(remote)
 
-        sock_name = name or randname()
-        command = command.format(
-            path=path, sock=f"~/.milatools/sockets/{sock_name}.sock"
-        )
-
         patterns = {
             "node_name": "#### ([A-Za-z0-9_-]+)",
         }
 
         if port_pattern:
             patterns["port"] = port_pattern
+        elif share:
+            exit(
+                "Server cannot be shared because it is serving over a Unix domain socket"
+            )
         else:
             remote.run("mkdir -p ~/.milatools/sockets", hide=True)
+
+        if share:
+            host = "0.0.0.0"
+        else:
+            host = "localhost"
+
+        sock_name = name or randname()
+        command = command.format(
+            path=path,
+            sock=f"~/.milatools/sockets/{sock_name}.sock",
+            host=host,
+        )
 
         if token_pattern:
             patterns["token"] = token_pattern
@@ -587,6 +606,7 @@ def _standard_server(
         if cf is not None:
             remote.simple_run(f"echo program = {program} >> {cf}")
             remote.simple_run(f"echo node_name = {results['node_name']} >> {cf}")
+            remote.simple_run(f"echo host = {host} >> {cf}")
             remote.simple_run(f"echo to_forward = {to_forward} >> {cf}")
             if token_pattern:
                 remote.simple_run(f"echo token = {results['token']} >> {cf}")
@@ -652,7 +672,15 @@ def _find_allocation(remote):
 
 
 @tooled
-def _forward(local, node, to_forward, page=None, options={}, preferred_port=None):
+def _forward(
+    local,
+    node,
+    to_forward,
+    page=None,
+    options={},
+    preferred_port=None,
+    through_login=False,
+):
 
     # Port to open on the local machine
     port: Option = default(preferred_port)
@@ -666,7 +694,14 @@ def _forward(local, node, to_forward, page=None, options={}, preferred_port=None
         sock.close()
 
     if isinstance(to_forward, int) or re.match("[0-9]+", to_forward):
-        to_forward = f"localhost:{to_forward}"
+        if through_login:
+            to_forward = f"{node}:{to_forward}"
+            args = [f"localhost:{port}:{to_forward}", "mila"]
+        else:
+            to_forward = f"localhost:{to_forward}"
+            args = [f"localhost:{port}:{to_forward}", node]
+    else:
+        args = [f"localhost:{port}:{to_forward}", node]
 
     proc = local.popen(
         "ssh",
@@ -675,8 +710,7 @@ def _forward(local, node, to_forward, page=None, options={}, preferred_port=None
         "-o",
         "StrictHostKeyChecking=no",
         "-nNL",
-        f"localhost:{port}:{to_forward}",
-        node,
+        *args,
     )
 
     url = f"http://localhost:{port}"
