@@ -386,7 +386,9 @@ class SlurmRemote(Remote):
         # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
         # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to a
         # single one, though, so we will simply pick the first one.
-        node_name = re.split(pattern="[,-]", string=results["node_name"])[0]
+        node_name = results["node_name"]
+        if "," in node_name:
+            node_name = node_name.split(",")[0]
         node_name = node_name.replace("[", "")
         return node_name, proc
 
