@@ -386,9 +386,36 @@ class SlurmRemote(Remote):
         # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
         # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to a
         # single one, though, so we will simply pick the first one.
-        node_name = re.split(pattern="[,-]", string=results["node_name"])[0]
-        node_name = node_name.replace("[", "")
+        node_name = get_first_node_name(results["node_name"])
         return node_name, proc
+
+
+def get_first_node_name(node_names_out: str) -> str:
+    """ Returns the name of the first node that was granted, given the string
+    that salloc outputs to stdout.
+
+    >>> get_first_node_name("cn-c001")
+    'cn-c001'
+    >>> get_first_node_name("cn-c[001-003]")
+    'cn-c001'
+    >>> get_first_node_name("cn-c[005,008]")
+    'cn-c005'
+    >>> get_first_node_name("cn-c001,rtx8")
+    'cn-c001'
+    """
+    if "[" not in node_names_out:
+        if "," in node_names_out:
+            # different nodes
+            return node_names_out.split(",")[0]
+        # single node
+        return node_names_out
+    base, _, rest = node_names_out.partition("[")
+    inside_brackets, _, _ = rest.partition("]")
+
+    if "," in inside_brackets:
+        return base + inside_brackets.split(",")[0]
+    assert "-" in inside_brackets
+    return base + inside_brackets.split("-")[0]
 
 
 class SSHConfig:
