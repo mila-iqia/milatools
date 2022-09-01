@@ -258,6 +258,13 @@ class milatools:
         # [positional]
         path: Option
 
+        # Command to use to start vscode
+        # (defaults to "code" or the value of $MILATOOLS_CODE_COMMAND)
+        command: Option = None
+
+        if command is None:
+            command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
+
         remote = Remote("mila")
         here = Local()
 
@@ -274,7 +281,7 @@ class milatools:
             node_name = f"{node_name}.server.mila.quebec"
         try:
             here.run(
-                "code",
+                command,
                 "-nw",
                 "--remote",
                 f"ssh-remote+{node_name}",
