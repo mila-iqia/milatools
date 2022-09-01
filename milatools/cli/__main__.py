@@ -403,7 +403,7 @@ class milatools:
                     "conda": "conda install -y jupyterlab",
                     "pip": "pip install jupyterlab",
                 },
-                command="jupyter lab --sock {sock}",
+                command="jupyter lab --sock {sock} {path}",
                 # command="jupyter lab --ip {host} --port 0",
                 token_pattern=r"\?token=([a-f0-9]+)",
             )
@@ -425,7 +425,7 @@ class milatools:
                     "conda": "conda install -y jupyter",
                     "pip": "pip install jupyter",
                 },
-                command="jupyter notebook --sock {sock}",
+                command="jupyter notebook --sock {sock} {path}",
                 # command="jupyter notebook --ip {host} --port 0",
                 token_pattern=r"\?token=([a-f0-9]+)",
             )
