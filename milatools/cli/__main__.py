@@ -386,8 +386,7 @@ class milatools:
             # [positional: ?]
             path: Option = default(None)
 
-            path = path or "~"
-            if path.endswith(".ipynb"):
+            if path and path.endswith(".ipynb"):
                 exit("Only directories can be given to the mila serve lab command")
 
             _standard_server(
@@ -409,8 +408,7 @@ class milatools:
             # [positional: ?]
             path: Option = default(None)
 
-            path = path or "~"
-            if path.endswith(".ipynb"):
+            if path and path.endswith(".ipynb"):
                 exit("Only directories can be given to the mila serve notebook command")
 
             _standard_server(
@@ -525,6 +523,8 @@ def _standard_server(
     remote = Remote("mila")
 
     path = path or "~"
+    if path == "~" or path.startswith("~/"):
+        path = remote.home() + path[1:]
 
     with ExitStack() as stack:
         if persist:

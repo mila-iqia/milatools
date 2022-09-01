@@ -391,7 +391,7 @@ class SlurmRemote(Remote):
 
 
 def get_first_node_name(node_names_out: str) -> str:
-    """ Returns the name of the first node that was granted, given the string
+    """Returns the name of the first node that was granted, given the string
     that salloc outputs to stdout.
 
     >>> get_first_node_name("cn-c001")
