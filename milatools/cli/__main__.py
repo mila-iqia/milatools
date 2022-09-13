@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import socket
 import subprocess
 import time
@@ -281,7 +282,7 @@ class milatools:
             node_name = f"{node_name}.server.mila.quebec"
         try:
             here.run(
-                command,
+                shutil.which(command),
                 "-nw",
                 "--remote",
                 f"ssh-remote+{node_name}",
