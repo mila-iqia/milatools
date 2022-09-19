@@ -286,24 +286,32 @@ class milatools:
             path = "/".join([home, path])
 
         try:
-            here.run(
-                shutil.which(command),
-                "-nw",
-                "--remote",
-                f"ssh-remote+{qualified(node_name)}",
-                path,
-            )
+            while True:
+                here.run(
+                    shutil.which(command),
+                    "-nw",
+                    "--remote",
+                    f"ssh-remote+{qualified(node_name)}",
+                    path,
+                )
+                print(
+                    "The editor was closed. Reopen it with <Enter>"
+                    " or terminate the process with <Ctrl+C>"
+                )
+                input()
+
         except KeyboardInterrupt:
-            pass
+            if not persist:
+                if proc is not None:
+                    proc.kill()
+                print(f"Ended session on '{node_name}'")
+
         if persist:
+            print(f"This allocation is persistent and is still active.")
             print(f"To reconnect to this node:")
             print(T.bold(f"  mila code {path} --node {node_name}"))
             print(f"To kill this allocation:")
             print(T.bold(f"  ssh mila scancel {data['jobid']}"))
-        elif isinstance(cnode, SlurmRemote):
-            if proc is not None:
-                proc.kill()
-            print(f"Ended session on '{node_name}'")
 
     class serve:
         """Start services on compute nodes and forward them to your local machine."""
