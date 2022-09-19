@@ -20,6 +20,7 @@ from .utils import (
     SlurmRemote,
     SSHConfig,
     T,
+    qualified,
     randname,
     with_control_file,
     yn,
@@ -263,6 +264,9 @@ class milatools:
         # (defaults to "code" or the value of $MILATOOLS_CODE_COMMAND)
         command: Option = None
 
+        # Whether the server should persist or not
+        persist: Option & bool = default(False)
+
         if command is None:
             command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
@@ -270,29 +274,36 @@ class milatools:
         here = Local()
 
         cnode = _find_allocation(remote)
-        node_name, proc = cnode.ensure_allocation()
+        if persist:
+            cnode = cnode.persist()
+        data, proc = cnode.ensure_allocation()
+
+        node_name = data["node_name"]
 
         if not path.startswith("/"):
             # Get $HOME because we have to give the full path to code
             home = remote.home()
             path = "/".join([home, path])
 
-        time.sleep(1)
-        if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
-            node_name = f"{node_name}.server.mila.quebec"
         try:
             here.run(
                 shutil.which(command),
                 "-nw",
                 "--remote",
-                f"ssh-remote+{node_name}",
+                f"ssh-remote+{qualified(node_name)}",
                 path,
             )
         except KeyboardInterrupt:
             pass
-        if proc is not None:
-            proc.kill()
-        print(f"Ended session on '{node_name}'")
+        if persist:
+            print(f"To reconnect to this node:")
+            print(T.bold(f"  mila code {path} --node {node_name}"))
+            print(f"To kill this allocation:")
+            print(T.bold(f"  ssh mila scancel {data['jobid']}"))
+        elif isinstance(cnode, SlurmRemote):
+            if proc is not None:
+                proc.kill()
+            print(f"Ended session on '{node_name}'")
 
     class serve:
         """Start services on compute nodes and forward them to your local machine."""
@@ -665,7 +676,7 @@ def _find_allocation(remote):
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
     if node is not None:
-        node_name = f"{node}.server.mila.quebec"
+        node_name = qualified(node)
         return Remote(node_name)
 
     elif job is not None:

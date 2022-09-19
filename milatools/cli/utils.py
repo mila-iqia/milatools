@@ -318,7 +318,7 @@ class Remote:
         return self
 
     def ensure_allocation(self):
-        return self.hostname, None
+        return {"node_name": self.hostname}, None
 
     def run_script(self, name, *args, **kwargs):
         base = ".milatools/scripts"
@@ -378,16 +378,28 @@ class SlurmRemote(Remote):
         return self.with_transforms(persist=True)
 
     def ensure_allocation(self):
-        remote = Remote(hostname="->", connection=self.connection).with_bash()
-        proc, results = remote.extract(
-            shjoin(["salloc", *self.alloc]),
-            patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
-        )
-        # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
-        # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to a
-        # single one, though, so we will simply pick the first one.
-        node_name = get_first_node_name(results["node_name"])
-        return node_name, proc
+        if self._persist:
+            proc, results = self.extract(
+                "echo @@@ $(hostname) @@@ && sleep 1000d",
+                patterns={
+                    "node_name": "@@@ ([^ ]+) @@@",
+                    "jobid": "Submitted batch job ([0-9]+)",
+                },
+                hide=True,
+            )
+            node_name = get_first_node_name(results["node_name"])
+            return {"node_name": node_name, "jobid": results["jobid"]}, proc
+        else:
+            remote = Remote(hostname="->", connection=self.connection).with_bash()
+            proc, results = remote.extract(
+                shjoin(["salloc", *self.alloc]),
+                patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
+            )
+            # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
+            # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to a
+            # single one, though, so we will simply pick the first one.
+            node_name = get_first_node_name(results["node_name"])
+            return {"node_name": node_name}, proc
 
 
 def get_first_node_name(node_names_out: str) -> str:
@@ -440,3 +452,9 @@ class SSHConfig:
         print(T.bold("The following code will be appended to your ~/.ssh/config:\n"))
         print(self.hoststring(host))
         return yn("\nIs this OK?")
+
+
+def qualified(node_name):
+    if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
+        node_name = f"{node_name}.server.mila.quebec"
+    return node_name
