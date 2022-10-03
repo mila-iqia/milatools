@@ -8,14 +8,15 @@ import webbrowser
 from contextlib import ExitStack
 from pathlib import Path
 from urllib.parse import urlencode
-from invoke import UnexpectedExit
 
 import questionary as qn
 from coleo import Option, auto_cli, default, tooled
+from invoke import UnexpectedExit
 
 from ..version import version as mversion
 from .profile import ensure_program, setup_profile
 from .utils import (
+    CommandNotFoundError,
     Local,
     Remote,
     SlurmRemote,
@@ -271,6 +272,10 @@ class milatools:
         if command is None:
             command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
+        command_path = shutil.which(command)
+        if not command_path:
+            raise CommandNotFoundError(command)
+
         remote = Remote("mila")
         here = Local()
 
@@ -289,7 +294,7 @@ class milatools:
         try:
             while True:
                 here.run(
-                    shutil.which(command),
+                    command_path,
                     "-nw",
                     "--remote",
                     f"ssh-remote+{qualified(node_name)}",
