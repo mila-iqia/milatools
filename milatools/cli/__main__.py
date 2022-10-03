@@ -8,6 +8,7 @@ import webbrowser
 from contextlib import ExitStack
 from pathlib import Path
 from urllib.parse import urlencode
+from invoke import UnexpectedExit
 
 import questionary as qn
 from coleo import Option, auto_cli, default, tooled
@@ -200,7 +201,7 @@ class milatools:
         try:
             pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
             print("# OK")
-        except subprocess.CalledProcessError:
+        except UnexpectedExit:
             print("# MISSING")
             if yn("You have no public keys on the login node. Generate them?"):
                 # print("(Note: You can just press Enter 3x to accept the defaults)")
