@@ -59,7 +59,6 @@ def with_control_file(remote, name=None):
 
 
 class CommandNotFoundError(Exception):
-
     # Instructions to install certain commands if they are not found
     instructions = {
         "code": (
@@ -127,6 +126,8 @@ class SSHConfig:
 
 
 def qualified(node_name):
+    """Return the fully qualified name corresponding to this node name."""
+
     if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
         node_name = f"{node_name}.server.mila.quebec"
     return node_name

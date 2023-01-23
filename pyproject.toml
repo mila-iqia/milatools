@@ -19,11 +19,16 @@ Fabric = "^2.7.0"
 [tool.poetry.dev-dependencies]
 black = ">= 21.8b0"
 isort = ">= 5.9.3"
+flake8 = {version = ">= 6.0.0", python = "^3.8.1"}
 Sphinx = "^5.0.1"
 sphinx-rtd-theme = "^1.0.0"
 
 [tool.poetry.scripts]
 mila = "milatools.cli.__main__:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.1"
+pytest-regressions = "^2.4.2"
 
 [tool.isort]
 multi_line_output = 3

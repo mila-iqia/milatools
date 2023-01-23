@@ -532,7 +532,6 @@ def _standard_server(
     port_pattern=None,
     token_pattern=None,
 ):
-
     # Name of the profile to use
     profile: Option = default(None)
 
@@ -713,7 +712,6 @@ def _forward(
     preferred_port=None,
     through_login=False,
 ):
-
     # Port to open on the local machine
     port: Option = default(preferred_port)
 
