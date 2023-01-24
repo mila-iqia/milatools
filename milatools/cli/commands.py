@@ -49,10 +49,13 @@ def main():
         github_issue_url = (
             f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
         )
-        print(f"An error occured during the execution of the command "
-              f"`{sys.argv[1]}`. Please consider filling a bug report at "
-              f"{github_issue_url}",
-              file=sys.stderr)
+        print(
+            T.bold_yellow(f"An error occured during the execution of the command "
+                          f"`{sys.argv[1]}`. ") +
+            T.yellow("Please consider filling a bug report at ") +
+            T.italic_yellow(github_issue_url),
+            file=sys.stderr
+        )
         raise
 
 class milatools:
