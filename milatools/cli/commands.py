@@ -679,7 +679,7 @@ def _standard_server(
 
     local_proc = _forward(
         local=Local(),
-        node=f"{node_name}.server.mila.quebec",
+        node=qualified(node_name),
         to_forward=to_forward,
         options=options,
     )

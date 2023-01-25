@@ -59,7 +59,7 @@ class Local:
             else:
                 print(results.stdout)
                 print(results.stderr)
-                exit("Failed to connect to mila, could not understand error")
+                exit(f"Failed to connect to {host}, could not understand error")
         else:
             print("# OK")
             return True
