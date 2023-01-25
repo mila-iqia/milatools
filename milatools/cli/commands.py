@@ -43,8 +43,8 @@ def main():
         options = {
             "labels": ",".join([sys.argv[1], mversion]),
             "template": "bug_report.md",
-            "title": f"[v{mversion}] Issue running the command `mila "+
-                      "".join(sys.argv[1:])+"`"
+            "title": f"[v{mversion}] Issue running the command `mila "
+                     f"{sys.argv[1]}`"
         }
         github_issue_url = (
             f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
