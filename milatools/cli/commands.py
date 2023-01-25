@@ -40,6 +40,7 @@ def main():
     try:
         auto_cli(milatools)
     except Exception:
+        print(traceback.format_exc())
         options = {
             "labels": ",".join([sys.argv[1], mversion]),
             "template": "bug_report.md",
@@ -50,13 +51,18 @@ def main():
             f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
         )
         print(
-            T.bold_yellow(f"An error occured during the execution of the command "
-                          f"`{sys.argv[1]}`. ") +
-            T.yellow("Please consider filling a bug report at ") +
+            T.bold_yellow(
+                f"An error occured during the execution of the command "
+                f"`{sys.argv[1]}`. ") +
+            T.yellow(
+                "Please try updating milatools by running\n"
+                "  pip install milatools --upgrade\n"
+                "in the terminal. If the issue persists, consider filling a bug "
+                "report at ") +
             T.italic_yellow(github_issue_url),
             file=sys.stderr
         )
-        raise
+        exit(1)
 
 class milatools:
     """Tools to connect to and interact with the Mila cluster.
