@@ -3,7 +3,9 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import time
+import traceback
 import webbrowser
 from contextlib import ExitStack
 from pathlib import Path
@@ -35,8 +37,33 @@ def main():
         exit(
             "Error: 'mila ...' should be run on your local machine and not on the Mila cluster"
         )
-    auto_cli(milatools)
-
+    
+    try:
+        auto_cli(milatools)
+    except Exception:
+        print(traceback.format_exc())
+        options = {
+            "labels": ",".join([sys.argv[1], mversion]),
+            "template": "bug_report.md",
+            "title": f"[v{mversion}] Issue running the command `mila "
+                     f"{sys.argv[1]}`"
+        }
+        github_issue_url = (
+            f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
+        )
+        print(
+            T.bold_yellow(
+                f"An error occured during the execution of the command "
+                f"`{sys.argv[1]}`. ") +
+            T.yellow(
+                "Please try updating milatools by running\n"
+                "  pip install milatools --upgrade\n"
+                "in the terminal. If the issue persists, consider filling a bug "
+                "report at ") +
+            T.italic_yellow(github_issue_url),
+            file=sys.stderr
+        )
+        exit(1)
 
 class milatools:
     """Tools to connect to and interact with the Mila cluster.
