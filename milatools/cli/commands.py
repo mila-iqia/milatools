@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import time
+import traceback
 import webbrowser
 from contextlib import ExitStack
 from pathlib import Path
