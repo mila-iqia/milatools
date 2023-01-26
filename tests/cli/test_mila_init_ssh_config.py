@@ -85,6 +85,10 @@ def _shorten_if_not_none(s: str, width: int = 30) -> str:
     return textwrap.shorten(textwrap.dedent(s), width=width, placeholder="...")
 
 
+def _join_blocks(*blocks: str, user: str = "bob") -> str:
+    return "\n\n".join(blocks).format(user=user)
+
+
 @pytest.mark.parametrize(
     "initial_contents, prompt_inputs, expected_contents",
     [
@@ -102,14 +106,12 @@ def _shorten_if_not_none(s: str, width: int = 30) -> str:
             # Accept creating the file, then enter a username and accept all the prompts after that
             ["y", "bob", "y", ...],
             # Shoud a .ssh/config file with the following contents:
-            "\n\n".join(
-                [
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                    expected_block_mila_gpu,
-                    expected_block_compute_node,
-                ]
-            ).format(user="bob"),
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+                expected_block_compute_node,
+            ),
         ),
         (
             # Start without a .ssh/config file,
@@ -125,67 +127,105 @@ def _shorten_if_not_none(s: str, width: int = 30) -> str:
             # Enter a username and accept all the prompts after that.
             ["bob", "y", ...],
             # Shoud produce the following contents:
-            "\n\n".join(
-                [
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                    expected_block_mila_gpu,
-                    expected_block_compute_node,
-                ]
-            ).format(user="bob"),
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+                expected_block_compute_node,
+            ),
         ),
         (
             # Start with an empty file
             "",
-            # Enter a username, accept the mila prompt, reject the next prompt.
-            ["bob", "y", "n"],
+            # Enter a username, accept the mila prompt, reject the "confirm" prompt for the mila entry.
+            # NOTE: Grouping them into groups of 2 to match (promt_<x>, confirm_prompt_<x>)
+            ["bob", *("y", "n")],
+            # Shoudn't produce anything:
+            "",
+        ),
+        (
+            # Start with an empty file
+            "",
+            # Enter a username, accept the mila prompt, accept the "confirm" prompt for the mila
+            # entry. Reject the next prompt.
+            ["bob", *("y", "y"), "n"],
             # Shoud produce the following contents:
             expected_block_mila.format(user="bob"),
         ),
         (
             # Start with an empty file
             "",
-            # Enter a username, accept the mila prompt, accept the mila-cpu prompt, reject the next
-            # one.
-            ["bob", "y", "y", "n"],
+            # Enter a username, accept the mila prompts, accept the first mila-cpu prompt, but
+            # reject the confirm prompt for mila-cpu.
+            ["bob", *("y", "y"), *("y", "n")],
             # Shoud produce the following contents:
-            "\n\n".join(
-                [
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                ]
-            ).format(user="bob"),
+            expected_block_mila.format(user="bob"),
         ),
         (
             # Start with an empty file
             "",
-            # Enter a username, accept the mila prompt, accept the mila-cpu prompt, accept the
-            # mila-gpu prompt. Reject creating an entry for the compute node access.
-            ["bob", "y", "y", "y", "n"],
+            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, reject the
+            # mila-gpu prompt.
+            ["bob", *("y", "y"), *("y", "y"), "n"],
             # Shoud produce the following contents:
-            "\n\n".join(
-                [
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                    expected_block_mila_gpu,
-                ]
-            ).format(user="bob"),
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+            ),
         ),
         (
             # Start with an empty file
             "",
-            # Enter a username, accept the mila prompt, accept the mila-cpu prompt, accept the
-            # mila-gpu prompt. Accept creating an entry for the compute node access.
-            ["bob", "y", "y", "y", "y"],
+            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
+            # first mila-gpu prompt, but reject the confirm prompt for mila-gpu.
+            ["bob", *("y", "y"), *("y", "y"), *("y", "n")],
             # Shoud produce the following contents:
-            "\n\n".join(
-                [
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                    expected_block_mila_gpu,
-                    expected_block_compute_node,
-                ]
-            ).format(user="bob"),
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+            ),
+        ),
+        (
+            # Start with an empty file
+            "",
+            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
+            # mila-gpu prompts. Reject creating an entry for the compute node access.
+            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "n"],
+            # Shoud produce the following contents:
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+            ),
+        ),
+        (
+            # Start with an empty file
+            "",
+            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
+            # mila-gpu prompts. Accept creating an entry for the compute node access, but reject
+            # the confirm prompt for compute node access.
+            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), ("y", "n")],
+            # Shoud produce the following contents:
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+                expected_block_compute_node,
+            ),
+        ),
+        (
+            # Start with an empty file
+            "",
+            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
+            # mila-gpu prompts. Accept the compute node prompts.
+            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), ("y", "y")],
+            # Shoud produce the following contents:
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+                expected_block_compute_node,
+            ),
         ),
         (
             # Start with a file with the overly general *.server.mila.quebec entry.
@@ -195,26 +235,24 @@ def _shorten_if_not_none(s: str, width: int = 30) -> str:
               User bob
               ProxyJump mila
             """,
-            # Enter a username, accept the mila prompt, accept the mila-cpu prompt, accept the
-            # mila-gpu prompt. REJECT fixing the *.server.mila.quebec entry
-            ["bob", "y", "y", "y", "y", "n"],
+            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
+            # mila-gpu prompts. REJECT fixing the *.server.mila.quebec entry
+            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "n"],
             # Shoud produce the following contents:
-            "\n\n".join(
-                [
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                    expected_block_mila_gpu,
-                    expected_block_compute_node,
-                    textwrap.dedent(
-                        """\
-                        Host *.server.mila.quebec
-                          HostName %h
-                          User bob
-                          ProxyJump mila
-                        """
-                    ),
-                ]
-            ).format(user="bob"),
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+                expected_block_compute_node,
+                textwrap.dedent(
+                    """\
+                    Host *.server.mila.quebec
+                        HostName %h
+                        User bob
+                        ProxyJump mila
+                    """
+                ),
+            ),
         ),
         (
             # Start with a file with the overly general *.server.mila.quebec entry.
@@ -226,24 +264,23 @@ def _shorten_if_not_none(s: str, width: int = 30) -> str:
             """,
             # Enter a username, accept the mila prompt, accept the mila-cpu prompt, accept the
             # mila-gpu prompt. ACCEPT fixing the *.server.mila.quebec entry
-            ["bob", "y", "y", "y", "y", "y"],
+            # NOTE: In this case, it shouldn't also ask for the compute node entry.
+            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "y"],
             # Shoud produce the following contents:
-            "\n\n".join(
-                [
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                    expected_block_mila_gpu,
-                    expected_block_compute_node,
-                    textwrap.dedent(
-                        """\
-                        Host *.server.mila.quebec !*login.server.mila.quebec
-                          HostName %h
-                          User bob
-                          ProxyJump mila
-                        """
-                    ),
-                ]
-            ).format(user="bob"),
+            _join_blocks(
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+                expected_block_compute_node,
+                textwrap.dedent(
+                    """\
+                    Host *.server.mila.quebec !*login.server.mila.quebec
+                        HostName %h
+                        User bob
+                        ProxyJump mila
+                    """
+                ),
+            ),
         ),
         (
             # Start with a non-empty empty file,
@@ -253,15 +290,13 @@ def _shorten_if_not_none(s: str, width: int = 30) -> str:
             # enter user and accept all the prompts after that.
             ["bob", "y", ...],
             # Shoud produce the following contents:
-            "\n\n".join(
-                [
-                    "# a comment in a fake ssh config file",
-                    expected_block_mila,
-                    expected_block_mila_cpu,
-                    expected_block_mila_gpu,
-                    expected_block_compute_node,
-                ]
-            ).format(user="bob"),
+            _join_blocks(
+                "# a comment in a fake ssh config file",
+                expected_block_mila,
+                expected_block_mila_cpu,
+                expected_block_mila_gpu,
+                expected_block_compute_node,
+            ),
         ),
     ],
     # ids=lambda tuple: (_shorten_if_not_none(tuple[0]), tuple[1], _shorten_if_not_none(tuple[2])),
