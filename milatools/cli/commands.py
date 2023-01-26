@@ -743,7 +743,7 @@ def _forward(
 def setup_ssh_config_interactive(
     ssh_config_path: Union[str, Path] = Path.home() / ".ssh" / "config"
 ):
-    """Interactively sets up some useful entries in the ~/.ssh/config file of user's local machine.
+    """Interactively sets up some useful entries in the ~/.ssh/config file on the local machine.
 
     Exits if the User decides to not set one of these entries, or doesn't confirm the change when
     prompted.
