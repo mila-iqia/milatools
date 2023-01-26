@@ -740,8 +740,12 @@ def _forward(
     return proc
 
 
+from prompt_toolkit.input import PipeInput
+
+
 def setup_ssh_config_interactive(
-    ssh_config_path: Union[str, Path] = Path.home() / ".ssh" / "config"
+    ssh_config_path: Union[str, Path] = Path.home() / ".ssh" / "config",
+    _input_pipe: Optional[PipeInput] = None,
 ):
     """Interactively sets up some useful entries in the ~/.ssh/config file on the local machine.
 
@@ -761,13 +765,13 @@ def setup_ssh_config_interactive(
     """
     cfgpath = Path(ssh_config_path).expanduser()
     if not cfgpath.exists():
-        if not yn("There is no ~/.ssh/config file. Create one?"):
+        if not yn("There is no ~/.ssh/config file. Create one?", _input=_input_pipe):
             exit("No ssh configuration file was found.")
         sshpath = cfgpath.parent
         if not sshpath.exists():
             sshpath.mkdir(mode=0o700, exist_ok=True)
-            cfgpath.touch(mode=0o600)
-            print(f"Created {cfgpath}")
+        cfgpath.touch(mode=0o600)
+        print(f"Created {cfgpath}")
 
     ssh_config = SSHConfig(cfgpath)
 
@@ -775,7 +779,9 @@ def setup_ssh_config_interactive(
     # NOTE: If there is no `mila` entry, ssh_config.host("mila") returns an empty dictionary.
     username = ssh_config.host("mila").get("user")
     while not username:
-        username = input(T.bold("What is your username?\n> "))
+        username = qn.text(T.bold("What's your first name\n>"), input=_input_pipe).ask()
+
+        # username = input(T.bold("What is your username?\n> "))
 
     changed_mila = _add_ssh_entry_interactive(
         ssh_config,
@@ -786,6 +792,7 @@ def setup_ssh_config_interactive(
         Port=2222,
         ServerAliveInterval=120,
         ServerAliveCountMax=5,
+        _input=_input_pipe,
     )
     # NOTE: Can't just do `save_changes |= _add_ssh(...)` because then the
     # action wouldn't get executed if `save_changes` is already True.
@@ -804,9 +811,10 @@ def setup_ssh_config_interactive(
         ProxyCommand=(
             """ssh mila "salloc --partition=unkillable --dependency=singleton """
             """--cpus-per-task=2 --mem=16G """
-            r'''/usr/bin/env bash -c 'nc \$SLURM_NODELIST %p'"'''
+            r'''/usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"'''
         ),
         RemoteCommand="srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l",
+        _input=_input_pipe,
     )
 
     changed_mila_gpu = _add_ssh_entry_interactive(
@@ -828,6 +836,7 @@ def setup_ssh_config_interactive(
         RemoteCommand=(
             "srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l",
         ),
+        _input=_input_pipe,
     )
 
     # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
@@ -838,7 +847,8 @@ def setup_ssh_config_interactive(
     if "*.server.mila.quebec" in ssh_config.hosts():
         if yn(
             "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should "
-            "exclude login.server.mila.quebec. Fix this?"
+            "exclude login.server.mila.quebec. Fix this?",
+            _input=_input_pipe,
         ):
             ssh_config.rename("*.server.mila.quebec", cnode_pattern)
             renamed_cnode = True
@@ -846,17 +856,23 @@ def setup_ssh_config_interactive(
     changed_cnode = _add_ssh_entry_interactive(
         ssh_config,
         cnode_pattern,
-        _host_for_prompt="*.server.mila.quebec",
         HostName="%h",
         User=username,
         ProxyJump="mila",
+        _host_name_for_prompt="*.server.mila.quebec",
+        _input=_input_pipe,
     )
+    print((changed_mila, changed_mila_cpu, changed_mila_gpu, renamed_cnode, changed_cnode))
     ssh_config_changed = any(
         (changed_mila, changed_mila_cpu, changed_mila_gpu, renamed_cnode, changed_cnode)
     )
+    # TODO: Confirm the changes only once, after everything has been done?
     if ssh_config_changed:
         ssh_config.save()
         print("Wrote ~/.ssh/config")
+    else:
+        print("Did not change ssh config")
+    # exit("Did not change ssh config")
 
 
 # NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.
@@ -867,8 +883,9 @@ def setup_ssh_config_interactive(
 def _add_ssh_entry_interactive(
     ssh_config: SSHConfig,
     host: str,
-    host_name_for_prompt: Optional[str] = None,
     Host: Optional[str] = None,
+    _host_name_for_prompt: Optional[str] = None,
+    _input: Optional[PipeInput] = None,
     **entry,
 ) -> bool:
     """Interactively add an entry to the ssh config file.
@@ -880,12 +897,16 @@ def _add_ssh_entry_interactive(
     # NOTE: `Host` is also a parameter to make sure it isn't in `entry`.
     assert not (host and Host)
     host = Host or host
-    host_name_for_prompt = host_name_for_prompt or host
+    _host_name_for_prompt = _host_name_for_prompt or host
+
     if host in ssh_config.hosts():
+        # Don't change an existing entry for now.
         return False
-    if not yn(f"There is no '{host_name_for_prompt}' entry in ~/.ssh/config. Create one?"):
-        exit("Did not change ssh config")
+    if not yn(
+        f"There is no '{_host_name_for_prompt}' entry in ~/.ssh/config. Create one?", _input=_input
+    ):
+        return False
     ssh_config.add(host, **entry)
-    if not ssh_config.confirm(host_name_for_prompt):
-        exit(f"Did not change ssh config")
+    if not ssh_config.confirm(_host_name_for_prompt, _input=_input):
+        exit("Did not change ssh config")
     return True

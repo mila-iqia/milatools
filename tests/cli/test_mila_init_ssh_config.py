@@ -1,14 +1,14 @@
 from __future__ import annotations
-from operator import index
+from contextlib import contextmanager
+import contextlib
 from pathlib import Path
 import textwrap
-from typing import Callable
 import pytest
 from milatools.cli.commands import setup_ssh_config_interactive
-
+from prompt_toolkit.input.defaults import create_pipe_input
 from milatools.cli.utils import SSHConfig
 
-expected_block_mila = r"""\
+expected_block_mila = """
 Host mila
   HostName login.server.mila.quebec
   User {user}
@@ -18,7 +18,7 @@ Host mila
   ServerAliveCountMax 5
 """
 
-expected_block_mila_cpu = r"""\
+expected_block_mila_cpu = """
 Host mila-cpu
   User {user}
   Port 2222
@@ -28,12 +28,12 @@ Host mila-cpu
   UserKnownHostsFile /dev/null
   RequestTTY force
   ConnectTimeout 600
-  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
-  RemoteCommand srun --mem=16G --cpus-per-task=2 --pty /usr/bin/env bash -l
+  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G /usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"
+  RemoteCommand srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l
 """
 
 
-expected_block_mila_gpu = r"""\
+expected_block_mila_gpu = """
 Host mila-gpu
   User {user}
   Port 2222
@@ -43,52 +43,24 @@ Host mila-gpu
   UserKnownHostsFile /dev/null
   RequestTTY force
   ConnectTimeout 600
-  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G --gres=gpu:1 /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
-  RemoteCommand srun --mem=16G --cpus-per-task=2 --gres=gpu:1 --pty /usr/bin/env bash -l
+  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G --gres=gpu:1 /usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"
+  RemoteCommand srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l
 """
 
 
-expected_block_compute_node = r"""\
+expected_block_compute_node = """
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   User {user}
   ProxyJump mila
 """
 
-import prompt_toolkit
-from prompt_toolkit.input.defaults import create_pipe_input
-from prompt_toolkit.output import DummyOutput
-
-from questionary import prompt
-from questionary.prompts import prompt_by_name
-from questionary.utils import is_prompt_toolkit_3
-from prompt_toolkit.input.base import PipeInput
-
-prompt_toolkit_version = tuple([int(v) for v in prompt_toolkit.VERSION])
-
-
-def execute_with_input_pipe(func: Callable):
-    if prompt_toolkit_version < (3, 0, 29):
-        inp = create_pipe_input()
-        try:
-            return func(inp)
-        finally:
-            inp.close()
-    else:
-        with create_pipe_input() as inp:
-            return func(inp)
-
-
-def _shorten_if_not_none(s: str, width: int = 30) -> str:
-    if s is None:
-        return s
-    return textwrap.shorten(textwrap.dedent(s), width=width, placeholder="...")
-
 
 def _join_blocks(*blocks: str, user: str = "bob") -> str:
-    return "\n\n".join(blocks).format(user=user)
+    return "\n".join(blocks).format(user=user)
 
 
+# TODO: Redesign the prompting mechanism (adjusting the test first).
 @pytest.mark.parametrize(
     "initial_contents, prompt_inputs, expected_contents",
     [
@@ -126,7 +98,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             "",
             # Enter a username and accept all the prompts after that.
             ["bob", "y", ...],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -140,7 +111,7 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompt, reject the "confirm" prompt for the mila entry.
             # NOTE: Grouping them into groups of 2 to match (promt_<x>, confirm_prompt_<x>)
             ["bob", *("y", "n")],
-            # Shoudn't produce anything:
+            # Shoudn't produce anything.
             "",
         ),
         (
@@ -149,7 +120,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompt, accept the "confirm" prompt for the mila
             # entry. Reject the next prompt.
             ["bob", *("y", "y"), "n"],
-            # Shoud produce the following contents:
             expected_block_mila.format(user="bob"),
         ),
         (
@@ -158,7 +128,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompts, accept the first mila-cpu prompt, but
             # reject the confirm prompt for mila-cpu.
             ["bob", *("y", "y"), *("y", "n")],
-            # Shoud produce the following contents:
             expected_block_mila.format(user="bob"),
         ),
         (
@@ -167,7 +136,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompts, accept the mila-cpu prompts, reject the
             # mila-gpu prompt.
             ["bob", *("y", "y"), *("y", "y"), "n"],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -179,7 +147,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
             # first mila-gpu prompt, but reject the confirm prompt for mila-gpu.
             ["bob", *("y", "y"), *("y", "y"), *("y", "n")],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -191,7 +158,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
             # mila-gpu prompts. Reject creating an entry for the compute node access.
             ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "n"],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -205,7 +171,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # mila-gpu prompts. Accept creating an entry for the compute node access, but reject
             # the confirm prompt for compute node access.
             ["bob", *("y", "y"), *("y", "y"), *("y", "y"), ("y", "n")],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -219,7 +184,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
             # mila-gpu prompts. Accept the compute node prompts.
             ["bob", *("y", "y"), *("y", "y"), *("y", "y"), ("y", "y")],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -238,7 +202,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
             # mila-gpu prompts. REJECT fixing the *.server.mila.quebec entry
             ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "n"],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -266,7 +229,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             # mila-gpu prompt. ACCEPT fixing the *.server.mila.quebec entry
             # NOTE: In this case, it shouldn't also ask for the compute node entry.
             ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "y"],
-            # Shoud produce the following contents:
             _join_blocks(
                 expected_block_mila,
                 expected_block_mila_cpu,
@@ -289,7 +251,6 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             """,
             # enter user and accept all the prompts after that.
             ["bob", "y", ...],
-            # Shoud produce the following contents:
             _join_blocks(
                 "# a comment in a fake ssh config file",
                 expected_block_mila,
@@ -299,7 +260,9 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
             ),
         ),
     ],
-    # ids=lambda tuple: (_shorten_if_not_none(tuple[0]), tuple[1], _shorten_if_not_none(tuple[2])),
+    ids=lambda val: textwrap.shorten(textwrap.dedent(val), width=80)
+    if isinstance(val, str)
+    else textwrap.shorten(str(val), width=30),
 )
 def test_mila_init_ssh_config(
     initial_contents: str | None,
@@ -311,8 +274,6 @@ def test_mila_init_ssh_config(
     """Checks what entries are added to the ssh config file when running the corresponding portion of `mila init`."""
     # TODO: This doesn't completely work with the `questionary` package yet.
 
-    _set_user_inputs(prompt_inputs, monkeypatch, tmp_path)
-
     ssh_config_path = tmp_path / ".ssh" / "config"
     ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
 
@@ -320,7 +281,12 @@ def test_mila_init_ssh_config(
         with open(ssh_config_path, "w") as f:
             f.write(textwrap.dedent(initial_contents))
 
-    setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
+    with set_user_inputs(prompt_inputs) as input_pipe:
+        with (pytest.raises(SystemExit) if "n" in prompt_inputs else contextlib.nullcontext()):
+            setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input_pipe=input_pipe)
+        # except SystemExit as e:
+        #     print(e)
+        #     pass
 
     if expected_contents:
         expected_contents = textwrap.dedent(expected_contents)
@@ -332,6 +298,26 @@ def test_mila_init_ssh_config(
             resulting_contents = f.read()
 
     assert resulting_contents == expected_contents
+
+
+@contextmanager
+def set_user_inputs(prompt_inputs: list[str]):
+    _prompt_inputs = prompt_inputs.copy()
+
+    with create_pipe_input() as input_pipe:
+        sent = 0
+        while sent < max(10, len(prompt_inputs)):
+            to_send: str
+            if len(_prompt_inputs) == 2 and _prompt_inputs[1] is Ellipsis:
+                # The second item is '...', just to make the test easier to read. Return the first item.
+                to_send = _prompt_inputs[0]
+            else:
+                # Consume one value.
+                to_send = _prompt_inputs.pop(0)
+            # print(to_send + "\r", end="")
+            input_pipe.send_text(to_send + "\r")
+            sent += 1
+        yield input_pipe
 
 
 import io

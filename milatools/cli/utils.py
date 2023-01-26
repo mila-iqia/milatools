@@ -1,3 +1,4 @@
+from __future__ import annotations
 import contextvars
 import itertools
 import random
@@ -84,8 +85,11 @@ class CommandNotFoundError(MilatoolsUserError):
         return message
 
 
-def yn(prompt, default=True):
-    return qn.confirm(prompt, default=default).unsafe_ask()
+from prompt_toolkit.input import PipeInput
+
+
+def yn(prompt: str, default: bool = True, _input: PipeInput | None = None) -> bool:
+    return qn.confirm(prompt, default=default, input=_input).unsafe_ask()
 
 
 def askpath(prompt, remote):
@@ -123,10 +127,10 @@ class SSHConfig:
             lines += [line.line for line in cfg.lines_ if line.host == host]
         return "\n".join(lines)
 
-    def confirm(self, host):
+    def confirm(self, host: str, _input: PipeInput | None = None):
         print(T.bold("The following code will be appended to your ~/.ssh/config:\n"))
         print(self.hoststring(host))
-        return yn("\nIs this OK?")
+        return yn("\nIs this OK?", _input=_input)
 
 
 def qualified(node_name):
