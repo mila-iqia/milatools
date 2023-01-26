@@ -9,6 +9,7 @@ import traceback
 import webbrowser
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Optional, Union
 from urllib.parse import urlencode
 
 import questionary as qn
@@ -126,74 +127,7 @@ class milatools:
 
         print("Checking ssh config")
 
-        sshpath = os.path.expanduser("~/.ssh")
-        cfgpath = os.path.join(sshpath, "config")
-        if not os.path.exists(cfgpath):
-            if yn("There is no ~/.ssh/config file. Create one?"):
-                if not os.path.exists(sshpath):
-                    os.makedirs(sshpath, mode=0o700, exist_ok=True)
-                open(cfgpath, "w").close()
-                os.chmod(cfgpath, 0o600)
-                print(f"Created {cfgpath}")
-            else:
-                exit("No ssh configuration file was found.")
-
-        c = SSHConfig(cfgpath)
-        changes = False
-
-        # Check for a mila entry in ssh config
-
-        if "mila" not in c.hosts():
-            if yn("There is no 'mila' entry in ~/.ssh/config. Create one?"):
-                username = ""
-                while not username:
-                    username = input(T.bold("What is your username?\n> "))
-                c.add(
-                    "mila",
-                    HostName="login.server.mila.quebec",
-                    User=username,
-                    PreferredAuthentications="publickey,keyboard-interactive",
-                    Port="2222",
-                    ServerAliveInterval="120",
-                    ServerAliveCountMax="5",
-                )
-                if not c.confirm("mila"):
-                    exit("Did not change ssh config")
-            else:
-                exit("Did not change ssh config")
-            changes = True
-
-        # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
-
-        cnode_pattern = "*.server.mila.quebec !*login.server.mila.quebec"
-
-        if "*.server.mila.quebec" in c.hosts():
-            if yn(
-                "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should exclude login.server.mila.quebec. Fix this?"
-            ):
-                c.rename("*.server.mila.quebec", cnode_pattern)
-                changes = True
-
-        if cnode_pattern not in c.hosts():
-            if yn(
-                "There is no '*.server.mila.quebec' entry in ~/.ssh/config. Create one?"
-            ):
-                username = c.host("mila")["user"]
-                c.add(
-                    cnode_pattern,
-                    HostName="%h",
-                    User=username,
-                    ProxyJump="mila",
-                )
-                if not c.confirm(cnode_pattern):
-                    exit("Did not change ssh config")
-            else:
-                exit("Did not change ssh config")
-            changes = True
-
-        if changes:
-            c.save()
-            print("Wrote ~/.ssh/config")
+        setup_ssh_config_interactive()
 
         print("# OK")
 
@@ -209,8 +143,7 @@ class milatools:
 
         sshdir = os.path.expanduser("~/.ssh")
         if not any(
-            entry.startswith("id") and entry.endswith(".pub")
-            for entry in os.listdir(sshdir)
+            entry.startswith("id") and entry.endswith(".pub") for entry in os.listdir(sshdir)
         ):
             if yn("You have no public keys. Generate one?"):
                 here.run("ssh-keygen")
@@ -220,9 +153,7 @@ class milatools:
         # Check that it is possible to connect using the key
 
         if not here.check_passwordless("mila"):
-            if yn(
-                "Your public key does not appear be registered on the cluster. Register it?"
-            ):
+            if yn("Your public key does not appear be registered on the cluster. Register it?"):
                 here.run("ssh-copy-id", "mila")
                 if not here.check_passwordless("mila"):
                     exit("ssh-copy-id appears to have failed")
@@ -258,7 +189,8 @@ class milatools:
         else:
             print("# MISSING")
             if yn(
-                "To connect to a compute node from a login node you need one id_*.pub to be in authorized_keys. Do it?"
+                "To connect to a compute node from a login node you need one id_*.pub to be in "
+                "authorized_keys. Do it?"
             ):
                 pubkey = pubkeys[0]
                 remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
@@ -424,16 +356,12 @@ class milatools:
             for identifier in remote.get_lines("ls .milatools/control", hide=True):
                 info = _get_server_info(remote, identifier, hide=True)
                 jobid = info.get("jobid", None)
-                status = remote.get_output(
-                    f"squeue -j {jobid} -ho %T", hide=True, warn=True
-                )
+                status = remote.get_output(f"squeue -j {jobid} -ho %T", hide=True, warn=True)
                 program = info.pop("program", "???")
                 if status == "RUNNING":
                     necessary_keys = {"node_name", "to_forward"}
                     if any(k not in info for k in necessary_keys):
-                        qn.print(
-                            f"{identifier} ({program}, MISSING INFO)", style="bold red"
-                        )
+                        qn.print(f"{identifier} ({program}, MISSING INFO)", style="bold red")
                         to_purge.append((identifier, jobid))
                     else:
                         qn.print(f"{identifier} ({program})", style="bold yellow")
@@ -633,9 +561,7 @@ def _standard_server(
         if port_pattern:
             patterns["port"] = port_pattern
         elif share:
-            exit(
-                "Server cannot be shared because it is serving over a Unix domain socket"
-            )
+            exit("Server cannot be shared because it is serving over a Unix domain socket")
         else:
             remote.run("mkdir -p ~/.milatools/sockets", hide=True)
 
@@ -812,3 +738,154 @@ def _forward(
     webbrowser.open(url)
     proc.local_port = port
     return proc
+
+
+def setup_ssh_config_interactive(
+    ssh_config_path: Union[str, Path] = Path.home() / ".ssh" / "config"
+):
+    """Interactively sets up some useful entries in the ~/.ssh/config file of user's local machine.
+
+    Exits if the User decides to not set one of these entries, or doesn't confirm the change when
+    prompted.
+
+    Entries:
+    - "mila": Used to connect to a login node.
+    - "mila-cpu": Used to connect to a compute node.
+    - "mila-gpu": Used to connect to a compute node with a GPU.
+
+    Other entries:
+    - "*.server.mila.quebec !*login.server.mila.quebec": Sets some useful attributes for connecting
+      directly to compute nodes.
+
+    TODO: Add an interactive prompt to add entries for the ComputeCanada/DRAC clusters.
+    """
+    cfgpath = Path(ssh_config_path).expanduser()
+    if not cfgpath.exists():
+        if not yn("There is no ~/.ssh/config file. Create one?"):
+            exit("No ssh configuration file was found.")
+        sshpath = cfgpath.parent
+        if not sshpath.exists():
+            sshpath.mkdir(mode=0o700, exist_ok=True)
+            cfgpath.touch(mode=0o600)
+            print(f"Created {cfgpath}")
+
+    ssh_config = SSHConfig(cfgpath)
+
+    # Check for a mila entry in ssh config
+    # NOTE: If there is no `mila` entry, ssh_config.host("mila") returns an empty dictionary.
+    username = ssh_config.host("mila").get("user")
+    while not username:
+        username = input(T.bold("What is your username?\n> "))
+
+    changed_mila = _add_ssh_entry_interactive(
+        ssh_config,
+        "mila",
+        HostName="login.server.mila.quebec",
+        User=username,
+        PreferredAuthentications="publickey,keyboard-interactive",
+        Port=2222,
+        ServerAliveInterval=120,
+        ServerAliveCountMax=5,
+    )
+    # NOTE: Can't just do `save_changes |= _add_ssh(...)` because then the
+    # action wouldn't get executed if `save_changes` is already True.
+
+    changed_mila_cpu = _add_ssh_entry_interactive(
+        ssh_config,
+        "mila-cpu",
+        User=username,
+        Port=2222,
+        ForwardAgent="yes",
+        StrictHostKeyChecking="no",
+        LogLevel="ERROR",
+        UserKnownHostsFile="/dev/null",
+        RequestTTY="force",
+        ConnectTimeout=600,
+        ProxyCommand=(
+            """ssh mila "salloc --partition=unkillable --dependency=singleton """
+            """--cpus-per-task=2 --mem=16G """
+            r'''/usr/bin/env bash -c 'nc \$SLURM_NODELIST %p'"'''
+        ),
+        RemoteCommand="srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l",
+    )
+
+    changed_mila_gpu = _add_ssh_entry_interactive(
+        ssh_config,
+        "mila-gpu",
+        User=username,
+        Port=2222,
+        ForwardAgent="yes",
+        StrictHostKeyChecking="no",
+        LogLevel="ERROR",
+        UserKnownHostsFile="/dev/null",
+        RequestTTY="force",
+        ConnectTimeout=600,
+        ProxyCommand=(
+            """ssh mila "salloc --partition=unkillable """
+            """--dependency=singleton --cpus-per-task=2 --mem=16G --gres=gpu:1 """
+            r'''/usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"'''
+        ),
+        RemoteCommand=(
+            "srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l",
+        ),
+    )
+
+    # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
+
+    cnode_pattern = "*.server.mila.quebec !*login.server.mila.quebec"
+
+    renamed_cnode = False
+    if "*.server.mila.quebec" in ssh_config.hosts():
+        if yn(
+            "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should "
+            "exclude login.server.mila.quebec. Fix this?"
+        ):
+            ssh_config.rename("*.server.mila.quebec", cnode_pattern)
+            renamed_cnode = True
+
+    changed_cnode = _add_ssh_entry_interactive(
+        ssh_config,
+        cnode_pattern,
+        _host_for_prompt="*.server.mila.quebec",
+        HostName="%h",
+        User=username,
+        ProxyJump="mila",
+    )
+    ssh_config_changed = any(
+        (changed_mila, changed_mila_cpu, changed_mila_gpu, renamed_cnode, changed_cnode)
+    )
+    if ssh_config_changed:
+        ssh_config.save()
+        print("Wrote ~/.ssh/config")
+
+
+# NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.
+# from .ssh_config_entry import SshConfigEntry
+# from typing_extensions import Unpack
+
+
+def _add_ssh_entry_interactive(
+    ssh_config: SSHConfig,
+    host: str,
+    host_name_for_prompt: Optional[str] = None,
+    Host: Optional[str] = None,
+    **entry,
+) -> bool:
+    """Interactively add an entry to the ssh config file.
+
+    Exits if the user doesn't want to add an entry or doesn't confirm the change.
+
+    Returns whether the changes to `ssh_config` need to be saved later using `ssh_config.save()`.
+    """
+    # NOTE: `Host` is also a parameter to make sure it isn't in `entry`.
+    assert not (host and Host)
+    host = Host or host
+    host_name_for_prompt = host_name_for_prompt or host
+    if host in ssh_config.hosts():
+        return False
+    if not yn(f"There is no '{host_name_for_prompt}' entry in ~/.ssh/config. Create one?"):
+        exit("Did not change ssh config")
+    ssh_config.add(host, **entry)
+    if not ssh_config.confirm(host_name_for_prompt):
+        exit(f"Did not change ssh config")
+    return True
