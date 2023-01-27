@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import contextvars
 import itertools
 import random
@@ -9,6 +10,7 @@ from pathlib import Path
 import blessed
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
+from prompt_toolkit.input import PipeInput
 from sshconf import read_ssh_config
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
@@ -85,9 +87,6 @@ class CommandNotFoundError(MilatoolsUserError):
         return message
 
 
-from prompt_toolkit.input import PipeInput
-
-
 def yn(prompt: str, default: bool = True, _input: PipeInput | None = None) -> bool:
     return qn.confirm(prompt, default=default, input=_input).unsafe_ask()
 
@@ -126,11 +125,6 @@ class SSHConfig:
         for filename, cfg in self.cfg.configs_:
             lines += [line.line for line in cfg.lines_ if line.host == host]
         return "\n".join(lines)
-
-    def confirm(self, host: str, _input: PipeInput | None = None):
-        print(T.bold("The following code will be appended to your ~/.ssh/config:\n"))
-        print(self.hoststring(host))
-        return yn("\nIs this OK?", _input=_input)
 
 
 def qualified(node_name):
