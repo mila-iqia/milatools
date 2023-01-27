@@ -1,6 +1,7 @@
 from __future__ import annotations
 from contextlib import contextmanager
 import contextlib
+import itertools
 from pathlib import Path
 import textwrap
 import pytest
@@ -60,219 +61,32 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
     return "\n".join(blocks).format(user=user)
 
 
-# TODO: Redesign the prompting mechanism (adjusting the test first).
 @pytest.mark.parametrize(
-    "initial_contents, prompt_inputs, expected_contents",
-    [
-        (
-            # Start without an .ssh/config file,
-            None,
-            # Don't accept creating the file. (first prompt), but accept everything else if asked.
-            ["n", "bob", "y", ...],
-            # Shoud NOT create a .ssh/config file.
-            None,
-        ),
-        (
-            # Start without a .ssh/config file,
-            None,
-            # Accept creating the file, then enter a username and accept all the prompts after that
-            ["y", "bob", "y", ...],
-            # Shoud a .ssh/config file with the following contents:
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-                expected_block_compute_node,
-            ),
-        ),
-        (
-            # Start without a .ssh/config file,
-            None,
-            # Accept creating the file, then enter a username and then reject the next prompt.
-            ["y", "bob", "n"],
-            # Shoud create an empty .ssh/config file.
-            "",
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username and accept all the prompts after that.
-            ["bob", "y", ...],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-                expected_block_compute_node,
-            ),
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompt, reject the "confirm" prompt for the mila entry.
-            # NOTE: Grouping them into groups of 2 to match (promt_<x>, confirm_prompt_<x>)
-            ["bob", *("y", "n")],
-            # Shoudn't produce anything.
-            "",
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompt, accept the "confirm" prompt for the mila
-            # entry. Reject the next prompt.
-            ["bob", *("y", "y"), "n"],
-            expected_block_mila.format(user="bob"),
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompts, accept the first mila-cpu prompt, but
-            # reject the confirm prompt for mila-cpu.
-            ["bob", *("y", "y"), *("y", "n")],
-            expected_block_mila.format(user="bob"),
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, reject the
-            # mila-gpu prompt.
-            ["bob", *("y", "y"), *("y", "y"), "n"],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-            ),
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
-            # first mila-gpu prompt, but reject the confirm prompt for mila-gpu.
-            ["bob", *("y", "y"), *("y", "y"), *("y", "n")],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-            ),
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
-            # mila-gpu prompts. Reject creating an entry for the compute node access.
-            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "n"],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-            ),
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
-            # mila-gpu prompts. Accept creating an entry for the compute node access, but reject
-            # the confirm prompt for compute node access.
-            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), ("y", "n")],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-                expected_block_compute_node,
-            ),
-        ),
-        (
-            # Start with an empty file
-            "",
-            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
-            # mila-gpu prompts. Accept the compute node prompts.
-            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), ("y", "y")],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-                expected_block_compute_node,
-            ),
-        ),
-        (
-            # Start with a file with the overly general *.server.mila.quebec entry.
-            """\
-            Host *.server.mila.quebec
-              HostName %h
-              User bob
-              ProxyJump mila
-            """,
-            # Enter a username, accept the mila prompts, accept the mila-cpu prompts, accept the
-            # mila-gpu prompts. REJECT fixing the *.server.mila.quebec entry
-            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "n"],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-                expected_block_compute_node,
-                textwrap.dedent(
-                    """\
-                    Host *.server.mila.quebec
-                        HostName %h
-                        User bob
-                        ProxyJump mila
-                    """
-                ),
-            ),
-        ),
-        (
-            # Start with a file with the overly general *.server.mila.quebec entry.
-            """\
-            Host *.server.mila.quebec
-              HostName %h
-              User bob
-              ProxyJump mila
-            """,
-            # Enter a username, accept the mila prompt, accept the mila-cpu prompt, accept the
-            # mila-gpu prompt. ACCEPT fixing the *.server.mila.quebec entry
-            # NOTE: In this case, it shouldn't also ask for the compute node entry.
-            ["bob", *("y", "y"), *("y", "y"), *("y", "y"), "y"],
-            _join_blocks(
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-                expected_block_compute_node,
-                textwrap.dedent(
-                    """\
-                    Host *.server.mila.quebec !*login.server.mila.quebec
-                        HostName %h
-                        User bob
-                        ProxyJump mila
-                    """
-                ),
-            ),
-        ),
-        (
-            # Start with a non-empty empty file,
-            """\
-            # a comment in a fake ssh config file
-            """,
-            # enter user and accept all the prompts after that.
-            ["bob", "y", ...],
-            _join_blocks(
-                "# a comment in a fake ssh config file",
-                expected_block_mila,
-                expected_block_mila_cpu,
-                expected_block_mila_gpu,
-                expected_block_compute_node,
-            ),
-        ),
-    ],
-    ids=lambda val: textwrap.shorten(textwrap.dedent(val), width=80)
-    if isinstance(val, str)
-    else textwrap.shorten(str(val), width=30),
+    "initial_contents",
+    [None, ""],
 )
-def test_mila_init_ssh_config(
+@pytest.mark.parametrize(
+    "accept_mila, accept_mila_cpu, accept_mila_gpu",
+    list(itertools.product([True, False], repeat=3)),
+)
+@pytest.mark.parametrize(
+    "confirm_changes",
+    [True, False],
+)
+def test_mila_init_empty_ssh_config(
     initial_contents: str | None,
-    prompt_inputs: list[str],
-    expected_contents: str | None,
-    monkeypatch: pytest.MonkeyPatch,
+    accept_mila: bool,
+    accept_mila_cpu: bool,
+    accept_mila_gpu: bool,
+    confirm_changes: bool,
     tmp_path: Path,
 ):
     """Checks what entries are added to the ssh config file when running the corresponding portion of `mila init`."""
     # TODO: This doesn't completely work with the `questionary` package yet.
+    expected_blocks = []
+    expected_blocks += [expected_block_mila] if accept_mila else []
+    expected_blocks += [expected_block_mila_cpu] if accept_mila_cpu else []
+    expected_blocks += [expected_block_mila_gpu] if accept_mila_gpu else []
 
     ssh_config_path = tmp_path / ".ssh" / "config"
     ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
@@ -281,15 +95,26 @@ def test_mila_init_ssh_config(
         with open(ssh_config_path, "w") as f:
             f.write(textwrap.dedent(initial_contents))
 
-    with set_user_inputs(prompt_inputs) as input_pipe:
-        with (pytest.raises(SystemExit) if "n" in prompt_inputs else contextlib.nullcontext()):
-            setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input_pipe=input_pipe)
-        # except SystemExit as e:
-        #     print(e)
-        #     pass
+    def user_input(accept: bool):
+        return ("y" if accept else "n") + "\r"
 
-    if expected_contents:
-        expected_contents = textwrap.dedent(expected_contents)
+    user_inputs = [
+        "bob" + "\r",  # username
+        user_input(accept_mila),
+        user_input(accept_mila_cpu),
+        user_input(accept_mila_gpu),
+        user_input(confirm_changes),
+    ]
+
+    with set_user_inputs(user_inputs) as input_pipe:
+        with (pytest.raises(SystemExit) if not confirm_changes else contextlib.nullcontext()):
+            setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input_pipe=input_pipe)
+
+    if not confirm_changes:
+        expected_contents = initial_contents
+    else:
+        # TODO: Also test when there are already entries in the sshconfig file.
+        expected_contents = _join_blocks(*expected_blocks)
 
     # NOTE: this will stay None if the file wasn't created.
     resulting_contents: str | None = None
