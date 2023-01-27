@@ -62,22 +62,23 @@ def _join_blocks(*blocks: str, user: str = "bob") -> str:
 
 
 @pytest.mark.parametrize(
-    "initial_contents",
-    [None, ""],
-)
-@pytest.mark.parametrize(
-    "accept_mila, accept_mila_cpu, accept_mila_gpu",
-    list(itertools.product([True, False], repeat=3)),
-)
-@pytest.mark.parametrize(
     "confirm_changes",
-    [True, False],
+    [False, True],
+)
+@pytest.mark.parametrize(
+    "accept_mila, accept_mila_cpu, accept_mila_gpu, accept_mila_computenode",
+    list(itertools.product([False, True], repeat=4)),
+)
+@pytest.mark.parametrize(
+    "initial_contents",
+    [""],  # todo: test the case where the file is created separately?
 )
 def test_mila_init_empty_ssh_config(
     initial_contents: str | None,
     accept_mila: bool,
     accept_mila_cpu: bool,
     accept_mila_gpu: bool,
+    accept_mila_computenode: bool,
     confirm_changes: bool,
     tmp_path: Path,
 ):
@@ -87,6 +88,7 @@ def test_mila_init_empty_ssh_config(
     expected_blocks += [expected_block_mila] if accept_mila else []
     expected_blocks += [expected_block_mila_cpu] if accept_mila_cpu else []
     expected_blocks += [expected_block_mila_gpu] if accept_mila_gpu else []
+    expected_blocks += [expected_block_compute_node] if accept_mila_computenode else []
 
     ssh_config_path = tmp_path / ".ssh" / "config"
     ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
@@ -95,26 +97,32 @@ def test_mila_init_empty_ssh_config(
         with open(ssh_config_path, "w") as f:
             f.write(textwrap.dedent(initial_contents))
 
-    def user_input(accept: bool):
-        return ("y" if accept else "n") + "\r"
+    def _yn(accept: bool):
+        return "y" if accept else "n"
 
     user_inputs = [
-        "bob" + "\r",  # username
-        user_input(accept_mila),
-        user_input(accept_mila_cpu),
-        user_input(accept_mila_gpu),
-        user_input(confirm_changes),
+        "bob\r",  # username
+        _yn(accept_mila),
+        _yn(accept_mila_cpu),
+        _yn(accept_mila_gpu),
+        _yn(accept_mila_computenode),
+        _yn(confirm_changes),
     ]
-
-    with set_user_inputs(user_inputs) as input_pipe:
-        with (pytest.raises(SystemExit) if not confirm_changes else contextlib.nullcontext()):
-            setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input_pipe=input_pipe)
 
     if not confirm_changes:
         expected_contents = initial_contents
     else:
         # TODO: Also test when there are already entries in the sshconfig file.
         expected_contents = _join_blocks(*expected_blocks)
+
+    with set_user_inputs(user_inputs) as input_pipe:
+        if not any([accept_mila, accept_mila_cpu, accept_mila_gpu, accept_mila_computenode]):
+            # Won't get prompted for confirmation if no changes are made.
+            should_exit = False
+        else:
+            should_exit = not confirm_changes
+        with (pytest.raises(SystemExit) if should_exit else contextlib.nullcontext()):
+            setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input=input_pipe)
 
     # NOTE: this will stay None if the file wasn't created.
     resulting_contents: str | None = None
@@ -127,58 +135,16 @@ def test_mila_init_empty_ssh_config(
 
 @contextmanager
 def set_user_inputs(prompt_inputs: list[str]):
+    """NOTE: Important: send only 'y' or 'n', (not 'y\r' or 'n\r') if the prompt is on the same
+    line! Otherwise the '\r' is passed to the next prompt, which uses the default value.
+    """
     _prompt_inputs = prompt_inputs.copy()
-
+    sent_prompts = []
     with create_pipe_input() as input_pipe:
         sent = 0
-        while sent < max(10, len(prompt_inputs)):
-            to_send: str
-            if len(_prompt_inputs) == 2 and _prompt_inputs[1] is Ellipsis:
-                # The second item is '...', just to make the test easier to read. Return the first item.
-                to_send = _prompt_inputs[0]
-            else:
-                # Consume one value.
-                to_send = _prompt_inputs.pop(0)
-            # print(to_send + "\r", end="")
-            input_pipe.send_text(to_send + "\r")
+        while _prompt_inputs:
+            to_send = _prompt_inputs.pop(0)
+            input_pipe.send_text(to_send)
+            sent_prompts.append(to_send)
             sent += 1
         yield input_pipe
-
-
-import io
-
-
-def _set_user_inputs(
-    prompt_inputs: str | list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
-
-    _prompt_inputs = [prompt_inputs] if isinstance(prompt_inputs, str) else prompt_inputs.copy()
-
-    def _fake_input(_prompt: str) -> str:
-        if len(_prompt_inputs) == 2 and _prompt_inputs[1] is Ellipsis:
-            # The second item is '...', just to make the test easier to read. Return the first item.
-            return _prompt_inputs[0]
-        elif len(_prompt_inputs) >= 2:
-            # Consume one value.
-            return _prompt_inputs.pop(0)
-        else:
-            # Down to one item, return it over and over again.
-            return _prompt_inputs[0]
-
-    # NOTE: This works fine with the regular `input` function, but not with `questionary`.
-    monkeypatch.setattr("builtins.input", _fake_input)
-
-    from prompt_toolkit.input.defaults import create_pipe_input
-
-    # TODO: It's a little bit hard for me to pass the pre-defined inputs to the prompts!
-    # I'd need some help with this @breuleux
-    # with create_pipe_input() as inp:
-    #     inp.send_text("n\n" * 100 + "\n")
-    #     inp.close()
-    #     monkeypatch.setattr("sys.stdin", inp)
-
-    # fake_stdin_file = tmp_path / "fake_stdin"
-    # with open(fake_stdin_file, "w") as fake_stdin:
-    # fake_stdin.writelines(["n\n"] * 100 + [""])
-    # fake_stdin = open(fake_stdin_file, "r")
-    # monkeypatch.setattr("sys.stdin", fake_stdin)
