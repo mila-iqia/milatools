@@ -296,9 +296,8 @@ def test_with_existing_entries(
     ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
     with open(ssh_config_path, "w") as f:
         f.write(initial_contents)
+
     # Accept all the prompts.
-    # NOTE: This actually has more entries than necessary. We won't get prompted if we already have
-    # the entries.
     prompt_inputs = (
         # username prompt is only there if there isn't already a 'mila' entry.
         (
