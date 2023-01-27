@@ -1,13 +1,15 @@
 from __future__ import annotations
-from contextlib import contextmanager
+
 import contextlib
 import itertools
-from pathlib import Path
 import textwrap
+from contextlib import contextmanager
+from pathlib import Path
+
 import pytest
-from milatools.cli.commands import setup_ssh_config_interactive
 from prompt_toolkit.input.defaults import create_pipe_input
-from milatools.cli.utils import SSHConfig
+
+from milatools.cli.commands import setup_ssh_config_interactive
 
 expected_block_mila = """
 Host mila
@@ -29,10 +31,10 @@ Host mila-cpu
   UserKnownHostsFile /dev/null
   RequestTTY force
   ConnectTimeout 600
-  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G /usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"
+  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 \
+--mem=16G /usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"
   RemoteCommand srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l
 """
-
 
 expected_block_mila_gpu = """
 Host mila-gpu
@@ -44,7 +46,8 @@ Host mila-gpu
   UserKnownHostsFile /dev/null
   RequestTTY force
   ConnectTimeout 600
-  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G --gres=gpu:1 /usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"
+  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 \
+--mem=16G --gres=gpu:1 /usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"
   RemoteCommand srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l
 """
 
@@ -127,7 +130,7 @@ def test_mila_init_empty_ssh_config(
     # NOTE: this will stay None if the file wasn't created.
     resulting_contents: str | None = None
     if ssh_config_path.exists():
-        with open(ssh_config_path, "r") as f:
+        with open(ssh_config_path) as f:
             resulting_contents = f.read()
 
     assert resulting_contents == expected_contents

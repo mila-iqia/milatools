@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 import questionary as qn
 from coleo import Option, auto_cli, default, tooled
 from invoke import UnexpectedExit
+from prompt_toolkit.input import PipeInput
 
 from ..version import version as mversion
 from .local import Local
@@ -738,9 +739,6 @@ def _forward(
     webbrowser.open(url)
     proc.local_port = port
     return proc
-
-
-from prompt_toolkit.input import PipeInput
 
 
 def setup_ssh_config_interactive(
