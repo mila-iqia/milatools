@@ -1,0 +1,6 @@
+(local) $ FAKEcmd --arg1 val1 --arg2=val2 X
+:::::
+=====
+^^^^^
+Command 'cmd' does not exist locally.
+^^^^^

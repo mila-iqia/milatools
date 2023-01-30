@@ -1,0 +1,6 @@
+(local) $ FAKEcode --arg1 val1 --arg2=val2 X
+:::::
+=====
+^^^^^
+Command 'code' does not exist locally. To fix this, try starting VSCode, then hit Cmd+Shift+P, type 'install code command' in the box, and hit Enter. You might need to restart your shell.
+^^^^^
