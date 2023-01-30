@@ -32,6 +32,7 @@ class QueueIO:
 
     def readlines(self, stop):
         current = ""
+        lines = tuple()
         while True:
             try:
                 current += self.q.get(timeout=0.05)
