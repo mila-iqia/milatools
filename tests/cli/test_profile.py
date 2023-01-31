@@ -2,8 +2,10 @@ import functools
 from contextlib import contextmanager
 from subprocess import CompletedProcess
 from unittest.mock import patch
+
 from prompt_toolkit.input.defaults import create_pipe_input
-from milatools.cli.profile import qn, _ask_name
+
+from milatools.cli.profile import _ask_name, qn
 
 
 def _test_stdouterr(func, capsys, file_regression):
@@ -16,7 +18,9 @@ def _test_stdouterr(func, capsys, file_regression):
         captured = capsys.readouterr()
         out = out if out else ""
         err = err if err else ""
-        file_regression.check(f"{captured.out}:::::\n{captured.err}=====\n{out}^^^^^\n{err}^^^^^\n")
+        file_regression.check(
+            f"{captured.out}:::::\n{captured.err}=====\n{out}^^^^^\n{err}^^^^^\n"
+        )
 
 
 def test__ask_name(capsys, file_regression):

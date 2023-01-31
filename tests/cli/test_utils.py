@@ -1,7 +1,9 @@
 import functools
 import random
 from unittest.mock import patch
+
 from prompt_toolkit.input.defaults import create_pipe_input
+
 from milatools.cli.utils import qn, randname, yn
 
 
