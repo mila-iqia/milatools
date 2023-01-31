@@ -1,0 +1,11 @@
+# a comment
+Host foo
+    HostName foobar.com
+
+Host mila
+    HostName login.server.mila.quebec
+    User bob
+    PreferredAuthentications publickey,keyboard-interactive
+    Port 2222
+    ServerAliveInterval 120
+    ServerAliveCountMax 5
