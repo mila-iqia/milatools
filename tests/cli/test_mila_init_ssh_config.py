@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from prompt_toolkit import PromptSession
 from prompt_toolkit.input.defaults import create_pipe_input
+from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.commands import setup_ssh_config_interactive
 from milatools.cli.utils import SSHConfig
@@ -78,14 +79,32 @@ def test_creates_ssh_config_file(tmp_path: Path):
     assert ssh_config_path.exists()
 
 
+def parametrize_flags(test_param_names: str):
+    flags = ("mila", "mila_cpu", "mila_gpu", "mila_computenode")
+    test_params = list(itertools.product([False, True], repeat=4))
+    test_accepted_prompt_names: list[list[str]] = [
+        sum(
+            ([flags[i]] if b else [] for i, b in enumerate(bs)),
+            [],
+        )
+        for bs in test_params
+    ]
+    test_ids = [
+        "-".join(accepted_prompt_names) for accepted_prompt_names in test_accepted_prompt_names
+    ]
+    return pytest.mark.parametrize(
+        test_param_names,
+        test_params,
+        ids=test_ids,
+    )
+
+
 @pytest.mark.parametrize(
     "confirm_changes",
     [False, True],
+    ids=["reject_changes", "confirm_changes"],
 )
-@pytest.mark.parametrize(
-    "accept_mila, accept_mila_cpu, accept_mila_gpu, accept_mila_computenode",
-    list(itertools.product([False, True], repeat=4)),
-)
+@parametrize_flags("accept_mila, accept_mila_cpu, accept_mila_gpu, accept_mila_computenode")
 @pytest.mark.parametrize(
     "initial_contents",
     [
@@ -108,6 +127,7 @@ def test_creates_ssh_config_file(tmp_path: Path):
         # another comment
         """,
     ],
+    ids=["empty", "comment-only", "comment-and-entry"],
 )
 def test_mila_init_no_existing_entries(
     initial_contents: str | None,
@@ -117,6 +137,7 @@ def test_mila_init_no_existing_entries(
     accept_mila_computenode: bool,
     confirm_changes: bool,
     tmp_path: Path,
+    file_regression: FileRegressionFixture,
 ):
     """Checks what entries are added to the ssh config file when running the corresponding portion
     of `mila init`.
@@ -170,6 +191,7 @@ def test_mila_init_no_existing_entries(
     if ssh_config_path.exists():
         with open(ssh_config_path) as f:
             resulting_contents = f.read()
+        file_regression.check(resulting_contents)
 
     assert resulting_contents == expected_contents
 
@@ -239,15 +261,15 @@ def test_ssh_config_host(tmp_path: Path):
     }
 
 
-@pytest.mark.parametrize(
+@parametrize_flags(
     "already_has_mila, already_has_mila_cpu, already_has_mila_gpu, already_has_mila_compute",
-    list(itertools.product([True, False], repeat=4)),
 )
 def test_with_existing_entries(
     already_has_mila: bool,
     already_has_mila_cpu: bool,
     already_has_mila_gpu: bool,
     already_has_mila_compute: bool,
+    file_regression: FileRegressionFixture,
     tmp_path: Path,
 ):
     existing_mila = textwrap.dedent(
@@ -322,6 +344,7 @@ def test_with_existing_entries(
     with open(ssh_config_path) as f:
         resulting_contents = f.read()
 
+    file_regression.check(resulting_contents)
     # TODO: There's an extra newline being added in there somewhere.
     # Making the test agnostic to it just for now.
     # assert resulting_contents == expected_contents

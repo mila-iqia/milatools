@@ -1,0 +1,5 @@
+# a comment
+Host foo
+  HostName foobar.com
+
+# another comment

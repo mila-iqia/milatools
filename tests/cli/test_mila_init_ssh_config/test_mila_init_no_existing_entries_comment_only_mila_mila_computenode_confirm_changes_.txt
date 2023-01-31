@@ -1,0 +1,15 @@
+# A comment in the file.
+
+Host mila
+  HostName login.server.mila.quebec
+  User bob
+  PreferredAuthentications publickey,keyboard-interactive
+  Port 2222
+  ServerAliveInterval 120
+  ServerAliveCountMax 5
+
+
+Host *.server.mila.quebec !*login.server.mila.quebec
+  HostName %h
+  User bob
+  ProxyJump mila
