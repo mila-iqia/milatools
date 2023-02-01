@@ -768,22 +768,9 @@ def setup_ssh_config_interactive(
     TODO: Add an interactive prompt to add entries for the ComputeCanada/DRAC clusters.
     """
 
-    cfgpath = Path(ssh_config_path).expanduser()
-    if not cfgpath.exists():
-        if not yn(f"There is no {ssh_config_path} file. Create one?"):
-            exit("No ssh configuration file was found.")
-        sshpath = cfgpath.parent
-        if not sshpath.exists():
-            sshpath.mkdir(mode=0o700, exist_ok=True)
-        else:
-            sshpath.chmod(mode=0o700)
-        cfgpath.touch(mode=0o600)
-        print(f"Created {cfgpath}")
-
-    ssh_config = SSHConfig(cfgpath)
-
+    ssh_config_path = _setup_ssh_config_file(ssh_config_path)
+    ssh_config = SSHConfig(ssh_config_path)
     username: str = _get_username(ssh_config)
-
     changed_entries_in_config: list[str] = []
 
     if _add_ssh_entry_interactive(
@@ -868,6 +855,31 @@ def setup_ssh_config_interactive(
     else:
         ssh_config.save()
         print(f"Wrote {ssh_config_path}")
+
+
+def _setup_ssh_config_file(config_path: str | Path) -> Path:
+    # Save the original value for the prompt. (~/.ssh/config looks better on the command-line).
+    filename_for_prompt = config_path
+
+    config_path = Path(config_path).expanduser()
+    if config_path.exists():
+        # Fix any permissions issues:
+        # TODO: double check this suggestion from Co-Pilot.
+        if config_path.stat().st_mode & 0o777 != 0o600:
+            config_path.chmod(mode=0o600)
+        return config_path
+
+    if not yn(f"There is no {filename_for_prompt} file. Create one?"):
+        exit("No ssh configuration file was found.")
+
+    ssh_dir = config_path.parent
+    if not ssh_dir.exists():
+        ssh_dir.mkdir(mode=0o700, exist_ok=True)
+    else:
+        ssh_dir.chmod(mode=0o700)
+    config_path.touch(mode=0o600)
+    print(f"Created {config_path}")
+    return config_path
 
 
 def _confirm_changes(ssh_config: SSHConfig, hosts: list[str]) -> bool:
