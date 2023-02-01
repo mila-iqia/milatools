@@ -765,6 +765,8 @@ def setup_ssh_config_interactive(
         sshpath = cfgpath.parent
         if not sshpath.exists():
             sshpath.mkdir(mode=0o700, exist_ok=True)
+        else:
+            sshpath.chmod(mode=0o700)
         cfgpath.touch(mode=0o600)
         print(f"Created {cfgpath}")
 
