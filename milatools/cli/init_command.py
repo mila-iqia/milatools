@@ -4,11 +4,7 @@ from pathlib import Path
 
 import questionary as qn
 
-from .utils import (
-    SSHConfig,
-    T,
-    yn,
-)
+from .utils import SSHConfig, T, yn
 
 
 def setup_ssh_config(
@@ -35,7 +31,7 @@ def setup_ssh_config(
     username: str = _get_username(ssh_config)
     changed_entries_in_config: list[str] = []
 
-    if _add_ssh_entry_interactive(
+    if _add_ssh_entry(
         ssh_config,
         "mila",
         HostName="login.server.mila.quebec",
@@ -47,7 +43,7 @@ def setup_ssh_config(
     ):
         changed_entries_in_config.append("mila")
 
-    if _add_ssh_entry_interactive(
+    if _add_ssh_entry(
         ssh_config,
         "mila-cpu",
         User=username,
@@ -67,7 +63,7 @@ def setup_ssh_config(
     ):
         changed_entries_in_config.append("mila-cpu")
 
-    if _add_ssh_entry_interactive(
+    if _add_ssh_entry(
         ssh_config,
         "mila-gpu",
         User=username,
@@ -99,13 +95,12 @@ def setup_ssh_config(
         ):
             ssh_config.rename("*.server.mila.quebec", cnode_pattern)
             changed_entries_in_config.append(cnode_pattern)
-    elif _add_ssh_entry_interactive(
+    elif _add_ssh_entry(
         ssh_config,
         cnode_pattern,
         HostName="%h",
         User=username,
         ProxyJump="mila",
-        _host_name_for_prompt="*.server.mila.quebec",
     ):
         changed_entries_in_config.append(cnode_pattern)
 
@@ -173,15 +168,13 @@ def _get_username(ssh_config: SSHConfig) -> str:
 
     while not username:
         username = qn.text(
-            f"What's your username on the mila cluster?\n", validate=_is_valid_username
+            "What's your username on the mila cluster?\n", validate=_is_valid_username
         ).unsafe_ask()
     return username.strip()
 
 
 def _is_valid_username(text: str) -> bool | str:
-    return (
-        "Please enter your username on the mila cluster." if not text or text.isspace() else True
-    )
+    return "Please enter your username on the mila cluster." if not text or text.isspace() else True
 
 
 # NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.
@@ -189,11 +182,10 @@ def _is_valid_username(text: str) -> bool | str:
 # from typing_extensions import Unpack
 
 
-def _add_ssh_entry_interactive(
+def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,
     Host: str | None = None,
-    _host_name_for_prompt: str | None = None,
     **entry,
 ) -> bool:
     """Interactively add an entry to the ssh config file.
@@ -205,12 +197,8 @@ def _add_ssh_entry_interactive(
     # NOTE: `Host` is also a parameter to make sure it isn't in `entry`.
     assert not (host and Host)
     host = Host or host
-    _host_name_for_prompt = _host_name_for_prompt or host
-
     if host in ssh_config.hosts():
         # Don't change an existing entry for now.
-        return False
-    if not yn(f"There is no '{_host_name_for_prompt}' entry in ~/.ssh/config. Create one?"):
         return False
     ssh_config.add(host, **entry)
     return True

@@ -1,6 +1,0 @@
-# A comment in the file.
-
-Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName %h
-  User bob
-  ProxyJump mila
