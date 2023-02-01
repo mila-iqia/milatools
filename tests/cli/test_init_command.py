@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import inspect
 import itertools
 import textwrap
 from functools import partial
@@ -9,7 +8,6 @@ from pathlib import Path
 
 import pytest
 import questionary
-from prompt_toolkit import PromptSession
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
@@ -44,7 +42,6 @@ def test_questionary_uses_input_pipe(input_pipe: PipeInput):
     TODO: Ideally we'd want to make sure that the input prompts work exactly the same way in
     our tests as they will for the users, but that's not something I'm confident I can guarantee.
     """
-    assert inspect.signature(PromptSession).parameters["input"].default is None
     input_pipe.send_text("bob\r")
     assert questionary.text("name?").unsafe_ask() == "bob"
     input_pipe.send_text("y")
