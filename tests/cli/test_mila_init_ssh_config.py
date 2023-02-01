@@ -13,7 +13,11 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.commands import setup_ssh_config_interactive
+from milatools.cli.commands import (
+    setup_ssh_config_interactive,
+    _get_username,
+    _setup_ssh_config_file,
+)
 from milatools.cli.utils import SSHConfig
 
 
@@ -139,9 +143,7 @@ def test_mila_init_no_existing_entries(
     else:
         should_exit = not confirm_changes
 
-    with contextlib.suppress(SystemExit), (
-        pytest.raises(SystemExit) if should_exit else contextlib.nullcontext()
-    ):
+    with (pytest.raises(SystemExit) if should_exit else contextlib.nullcontext()):
         setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
 
     assert ssh_config_path.exists()
@@ -299,9 +301,6 @@ def test_with_existing_entries(
     file_regression.check(resulting_contents)
 
 
-from milatools.cli.commands import _get_username
-
-
 @pytest.mark.parametrize(
     "contents, prompt_inputs, expected",
     [
@@ -388,3 +387,55 @@ def test_get_username(
     for prompt_input in prompt_inputs:
         input_pipe.send_text(prompt_input)
     assert _get_username(ssh_config) == expected
+
+
+class TestSetupSshFile:
+    def test_create_file(self, tmp_path: Path, input_pipe: PipeInput):
+        config_path = tmp_path / "config"
+        input_pipe.send_text("y")
+        file = _setup_ssh_config_file(config_path)
+        assert file.exists()
+        assert file.stat().st_mode & 0o777 == 0o600
+
+    def test_refuse_creating_file(self, tmp_path: Path, input_pipe: PipeInput):
+        config_path = tmp_path / "config"
+        input_pipe.send_text("n")
+        with pytest.raises(SystemExit):
+            config_path = _setup_ssh_config_file(config_path)
+        assert not config_path.exists()
+
+    def test_fix_file_permissions(self, tmp_path: Path):
+        config_path = tmp_path / "config"
+        config_path.touch(mode=0o644)
+        assert config_path.stat().st_mode & 0o777 == 0o644
+
+        # todo: Do we want to have a prompt in this case here?
+        # idea: might be nice to also test that the right output is printed
+        file = _setup_ssh_config_file(config_path)
+        assert file.exists()
+        assert file.stat().st_mode & 0o777 == 0o600
+
+    def test_creates_dir(self, tmp_path: Path, input_pipe: PipeInput):
+        config_path = tmp_path / "fake_ssh" / "config"
+        input_pipe.send_text("y")
+        file = _setup_ssh_config_file(config_path)
+        assert file.parent.exists()
+        assert file.parent.stat().st_mode & 0o777 == 0o700
+        assert file.exists()
+        assert file.stat().st_mode & 0o777 == 0o600
+
+    @pytest.mark.parametrize("file_exists", [True, False])
+    def test_fixes_dir_permission_issues(
+        self, file_exists: bool, tmp_path: Path, input_pipe: PipeInput
+    ):
+        config_path = tmp_path / "fake_ssh" / "config"
+        config_path.parent.mkdir(mode=0o755)
+        if file_exists:
+            config_path.touch(mode=0o600)
+        else:
+            input_pipe.send_text("y")
+        file = _setup_ssh_config_file(config_path)
+        assert file.parent.exists()
+        assert file.parent.stat().st_mode & 0o777 == 0o700
+        assert file.exists()
+        assert file.stat().st_mode & 0o777 == 0o600
