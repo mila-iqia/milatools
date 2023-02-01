@@ -10,7 +10,6 @@ from pathlib import Path
 import blessed
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
-from prompt_toolkit.input import PipeInput
 from sshconf import read_ssh_config
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
@@ -87,8 +86,8 @@ class CommandNotFoundError(MilatoolsUserError):
         return message
 
 
-def yn(prompt: str, default: bool = True, _input: PipeInput | None = None) -> bool:
-    return qn.confirm(prompt, default=default, input=_input).unsafe_ask()
+def yn(prompt: str, default: bool = True) -> bool:
+    return qn.confirm(prompt, default=default).unsafe_ask()
 
 
 def askpath(prompt, remote):

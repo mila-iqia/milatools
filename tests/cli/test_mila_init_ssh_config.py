@@ -4,16 +4,33 @@ import contextlib
 import inspect
 import itertools
 import textwrap
-from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 
 import pytest
+import questionary
 from prompt_toolkit import PromptSession
-from prompt_toolkit.input.defaults import create_pipe_input
+from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.commands import setup_ssh_config_interactive
 from milatools.cli.utils import SSHConfig
+
+
+@pytest.fixture
+def input_pipe(monkeypatch: pytest.MonkeyPatch):
+    """Fixture that creates an input pipe and makes questionary use it.
+
+    To use it, call `input_pipe.send_text("some text")`.
+
+    NOTE: Important: Send the \\r (with one backslash) character if the prompt is on a newline.
+    For confirmation prompts, just send one letter, otherwise the '\r' is passed to the next
+    prompt, which sees it as just pressing enter, which uses the default value.
+    """
+    with create_pipe_input() as input_pipe:
+        monkeypatch.setattr("questionary.confirm", partial(questionary.confirm, input=input_pipe))
+        monkeypatch.setattr("questionary.text", partial(questionary.text, input=input_pipe))
+        yield input_pipe
 
 
 def _join_blocks(*blocks: str, user: str = "bob") -> str:
@@ -24,10 +41,12 @@ def _yn(accept: bool):
     return "y" if accept else "n"
 
 
-def test_creates_ssh_config_file(tmp_path: Path):
+def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
     ssh_config_path = tmp_path / "ssh_config"
-    with set_user_inputs(["y", "bob\r", "y", "y", "y", "y", "y"]) as input_pipe:
-        setup_ssh_config_interactive(tmp_path / "ssh_config", _input=input_pipe)
+
+    for prompt in ["y", "bob\r", "y", "y", "y", "y", "y"]:
+        input_pipe.send_text(prompt)
+    setup_ssh_config_interactive(tmp_path / "ssh_config")
     assert ssh_config_path.exists()
 
 
@@ -88,6 +107,7 @@ def test_mila_init_no_existing_entries(
     confirm_changes: bool,
     tmp_path: Path,
     file_regression: FileRegressionFixture,
+    input_pipe: PipeInput,
 ):
     """Checks what entries are added to the ssh config file when running the corresponding portion
     of `mila init`.
@@ -110,17 +130,19 @@ def test_mila_init_no_existing_entries(
         _yn(accept_mila_computenode),
         _yn(confirm_changes),
     ]
+    for prompt in user_inputs:
+        input_pipe.send_text(prompt)
 
-    with set_user_inputs(user_inputs) as input_pipe:
-        if not any([accept_mila, accept_mila_cpu, accept_mila_gpu, accept_mila_computenode]):
-            # Won't get prompted for confirmation if no changes are made.
-            should_exit = False
-        else:
-            should_exit = not confirm_changes
-        with contextlib.suppress(SystemExit), (
-            pytest.raises(SystemExit) if should_exit else contextlib.nullcontext()
-        ):
-            setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input=input_pipe)
+    if not any([accept_mila, accept_mila_cpu, accept_mila_gpu, accept_mila_computenode]):
+        # Won't get prompted for confirmation if no changes are made.
+        should_exit = False
+    else:
+        should_exit = not confirm_changes
+
+    with contextlib.suppress(SystemExit), (
+        pytest.raises(SystemExit) if should_exit else contextlib.nullcontext()
+    ):
+        setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
 
     assert ssh_config_path.exists()
     with open(ssh_config_path) as f:
@@ -135,7 +157,7 @@ def test_questionary_prompts_works_with_input_none():
     assert inspect.signature(PromptSession).parameters["input"].default is None
 
 
-def test_fixes_overly_general_entry(tmp_path: Path):
+def test_fixes_overly_general_entry(tmp_path: Path, input_pipe: PipeInput):
     """Test the case where the user has a *.server.mila.quebec entry."""
     ssh_config_path = tmp_path / ".ssh" / "config"
     ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
@@ -157,8 +179,10 @@ def test_fixes_overly_general_entry(tmp_path: Path):
         """
     )
     # Only change that entry, and confirm.
-    with set_user_inputs(["bob\r", "n", "n", "n", "y", "y"]) as input_pipe:
-        setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input=input_pipe)
+    for user_input in ["bob\r", "n", "n", "n", "y", "y"]:
+        input_pipe.send_text(user_input)
+
+    setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
 
     with open(ssh_config_path) as f:
         resulting_contents = f.read()
@@ -203,6 +227,7 @@ def test_with_existing_entries(
     already_has_mila_compute: bool,
     file_regression: FileRegressionFixture,
     tmp_path: Path,
+    input_pipe: PipeInput,
 ):
     existing_mila = textwrap.dedent(
         """\
@@ -263,27 +288,12 @@ def test_with_existing_entries(
         # There's a confirmation prompt only if we're adding some entry.
         prompt_inputs += ["y"]
 
-    with set_user_inputs(prompt_inputs) as input_pipe:
-        setup_ssh_config_interactive(ssh_config_path=ssh_config_path, _input=input_pipe)
+    for prompt_input in prompt_inputs:
+        input_pipe.send_text(prompt_input)
+
+    setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
 
     with open(ssh_config_path) as f:
         resulting_contents = f.read()
 
     file_regression.check(resulting_contents)
-
-
-@contextmanager
-def set_user_inputs(prompt_inputs: list[str]):
-    """NOTE: Important: send only 'y' or 'n', (not 'y\r' or 'n\r') if the prompt is on the same
-    line! Otherwise the '\r' is passed to the next prompt, which uses the default value.
-    """
-    _prompt_inputs = prompt_inputs.copy()
-    sent_prompts = []
-    with create_pipe_input() as input_pipe:
-        sent = 0
-        while _prompt_inputs:
-            to_send = _prompt_inputs.pop(0)
-            input_pipe.send_text(to_send)
-            sent_prompts.append(to_send)
-            sent += 1
-        yield input_pipe

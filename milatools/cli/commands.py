@@ -15,7 +15,6 @@ from urllib.parse import urlencode
 import questionary as qn
 from coleo import Option, auto_cli, default, tooled
 from invoke import UnexpectedExit
-from prompt_toolkit.input import PipeInput
 
 from ..version import version as mversion
 from .local import Local
@@ -54,9 +53,7 @@ def main():
             "title": f"[v{mversion}] Issue running the command `mila "
             f"{sys.argv[1]}`",
         }
-        github_issue_url = (
-            f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
-        )
+        github_issue_url = f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
         print(
             T.bold_yellow(
                 f"An error occured during the execution of the command "
@@ -743,7 +740,6 @@ def _forward(
 
 def setup_ssh_config_interactive(
     ssh_config_path: Union[str, Path] = "~/.ssh/config",
-    _input: Optional[PipeInput] = None,
 ):
     """Interactively sets up some useful entries in the ~/.ssh/config file on the local machine.
 
@@ -764,7 +760,7 @@ def setup_ssh_config_interactive(
 
     cfgpath = Path(ssh_config_path).expanduser()
     if not cfgpath.exists():
-        if not yn(f"There is no {ssh_config_path} file. Create one?", _input=_input):
+        if not yn(f"There is no {ssh_config_path} file. Create one?"):
             exit("No ssh configuration file was found.")
         sshpath = cfgpath.parent
         if not sshpath.exists():
@@ -789,7 +785,6 @@ def setup_ssh_config_interactive(
 
         username = qn.text(
             f"What's your username on the {cluster_name} cluster?\n",
-            input=_input,
             validate=is_valid,
         ).unsafe_ask()
 
@@ -804,7 +799,6 @@ def setup_ssh_config_interactive(
         Port=2222,
         ServerAliveInterval=120,
         ServerAliveCountMax=5,
-        _input=_input,
     ):
         changed_entries_in_config.append("mila")
 
@@ -825,7 +819,6 @@ def setup_ssh_config_interactive(
             '''/usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"'''
         ),
         RemoteCommand="srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l",
-        _input=_input,
     ):
         changed_entries_in_config.append("mila-cpu")
 
@@ -848,7 +841,6 @@ def setup_ssh_config_interactive(
         RemoteCommand=(
             "srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l",
         ),
-        _input=_input,
     ):
         changed_entries_in_config.append("mila-gpu")
 
@@ -860,8 +852,7 @@ def setup_ssh_config_interactive(
     if "*.server.mila.quebec" in ssh_config.hosts():
         if yn(
             "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should "
-            "exclude login.server.mila.quebec. Fix this?",
-            _input=_input,
+            "exclude login.server.mila.quebec. Fix this?"
         ):
             ssh_config.rename("*.server.mila.quebec", cnode_pattern)
             changed_entries_in_config.append(cnode_pattern)
@@ -872,28 +863,25 @@ def setup_ssh_config_interactive(
         User=username,
         ProxyJump="mila",
         _host_name_for_prompt="*.server.mila.quebec",
-        _input=_input,
     ):
         changed_entries_in_config.append(cnode_pattern)
 
     # TODO: Might be better to display a diff of the current and the potential new config instead.
     if not changed_entries_in_config:
         print("Did not change ssh config")
-    elif not _confirm_changes(ssh_config, hosts=changed_entries_in_config, _input=_input):
+    elif not _confirm_changes(ssh_config, hosts=changed_entries_in_config):
         exit("Did not change ssh config")
     else:
         ssh_config.save()
         print(f"Wrote {ssh_config_path}")
 
 
-def _confirm_changes(
-    ssh_config: SSHConfig, hosts: list[str], _input: Optional[PipeInput] = None
-) -> bool:
-    print(T.bold("The following code will be appended to your ~/.ssh/config:\n"))
+def _confirm_changes(ssh_config: SSHConfig, hosts: list[str]) -> bool:
+    print(T.bold("The following code will be appended or modified in your ~/.ssh/config:\n"))
     if isinstance(hosts, str):
         hosts = [hosts]
     print(*(ssh_config.hoststring(host) for host in hosts), sep="\n\n")
-    return yn("\nIs this OK?", _input=_input)
+    return yn("\nIs this OK?")
 
 
 # NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.
@@ -906,7 +894,6 @@ def _add_ssh_entry_interactive(
     host: str,
     Host: Optional[str] = None,
     _host_name_for_prompt: Optional[str] = None,
-    _input: Optional[PipeInput] = None,
     **entry,
 ) -> bool:
     """Interactively add an entry to the ssh config file.
@@ -923,9 +910,7 @@ def _add_ssh_entry_interactive(
     if host in ssh_config.hosts():
         # Don't change an existing entry for now.
         return False
-    if not yn(
-        f"There is no '{_host_name_for_prompt}' entry in ~/.ssh/config. Create one?", _input=_input
-    ):
+    if not yn(f"There is no '{_host_name_for_prompt}' entry in ~/.ssh/config. Create one?"):
         return False
     ssh_config.add(host, **entry)
     return True
