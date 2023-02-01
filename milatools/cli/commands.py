@@ -772,23 +772,7 @@ def setup_ssh_config_interactive(
 
     ssh_config = SSHConfig(cfgpath)
 
-    # Check for a mila entry in ssh config
-    # NOTE: If there is no `mila` entry, ssh_config.host("mila") returns an empty dictionary.
-    username = ssh_config.host("mila").get("user")
-    while not username:
-        cluster_name = "mila"  # placeholder.
-
-        def is_valid(text: str) -> Union[bool, str]:
-            return (
-                True
-                if text.strip()
-                else f"Please enter your username on the {cluster_name} cluster."
-            )
-
-        username = qn.text(
-            f"What's your username on the {cluster_name} cluster?\n",
-            validate=is_valid,
-        ).unsafe_ask()
+    username: str = _get_username(ssh_config)
 
     changed_entries_in_config: list[str] = []
 
@@ -840,9 +824,7 @@ def setup_ssh_config_interactive(
             """--dependency=singleton --cpus-per-task=2 --mem=16G --gres=gpu:1 """
             '''/usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"'''
         ),
-        RemoteCommand=(
-            "srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l",
-        ),
+        RemoteCommand="srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l",
     ):
         changed_entries_in_config.append("mila-gpu")
 
@@ -884,6 +866,32 @@ def _confirm_changes(ssh_config: SSHConfig, hosts: list[str]) -> bool:
         hosts = [hosts]
     print(*(ssh_config.hoststring(host) for host in hosts), sep="\n\n")
     return yn("\nIs this OK?")
+
+
+def _get_username(ssh_config: SSHConfig) -> str:
+    # Check for a mila entry in ssh config
+    # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila' entry.
+    # NOTE: ssh_config.host(entry) returns an empty dictionary if there is no entry.
+    username: Optional[str] = None
+    hosts_with_mila_in_name_and_a_user_entry = [
+        host
+        for host in ssh_config.hosts()
+        if "mila" in host.split() and "user" in ssh_config.host(host)
+    ]
+    # Note: If there are none, or more than one, then we'll ask the user for their username, just
+    # to be sure.
+    if len(hosts_with_mila_in_name_and_a_user_entry) == 1:
+        username = ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get("user")
+
+    while not username:
+        username = qn.text(
+            f"What's your username on the mila cluster?\n", validate=_is_valid_username
+        ).unsafe_ask()
+    return username
+
+
+def _is_valid_username(text: str) -> Union[bool, str]:
+    return True if bool(text.strip()) else f"Please enter your username on the mila cluster."
 
 
 # NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.
