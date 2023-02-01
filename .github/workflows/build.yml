@@ -24,10 +24,6 @@ jobs:
         pip install poetry
         poetry install
 
-    # - name: Lint with flake8
-    #   if: ${{ matrix.python-version == '3.10' }}
-    #   run: poetry run flake8
-
     - name: Check formatting with black
       if: ${{ matrix.python-version == '3.10' }}
       run: poetry run black --check .
@@ -38,8 +34,3 @@ jobs:
 
     - name: Test with pytest
       run: poetry run pytest
-      # run: poetry run pytest --cov=ptera --cov-report term-missing
-
-    # - name: Verify coverage
-    #   if: ${{ matrix.python-version >= '3.8' }}
-    #   run: poetry run coverage report | tail -1 | egrep "TOTAL +[0-9]+ +0 +100%"
