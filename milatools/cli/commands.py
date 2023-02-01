@@ -53,7 +53,9 @@ def main():
             "title": f"[v{mversion}] Issue running the command `mila "
             f"{sys.argv[1]}`",
         }
-        github_issue_url = f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
+        github_issue_url = (
+            f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
+        )
         print(
             T.bold_yellow(
                 f"An error occured during the execution of the command "
@@ -73,7 +75,6 @@ def main():
             file=sys.stderr,
         )
         exit(1)
-
 
 class milatools:
     """Tools to connect to and interact with the Mila cluster.
@@ -141,7 +142,8 @@ class milatools:
 
         sshdir = os.path.expanduser("~/.ssh")
         if not any(
-            entry.startswith("id") and entry.endswith(".pub") for entry in os.listdir(sshdir)
+            entry.startswith("id") and entry.endswith(".pub")
+            for entry in os.listdir(sshdir)
         ):
             if yn("You have no public keys. Generate one?"):
                 here.run("ssh-keygen")
@@ -151,7 +153,9 @@ class milatools:
         # Check that it is possible to connect using the key
 
         if not here.check_passwordless("mila"):
-            if yn("Your public key does not appear be registered on the cluster. Register it?"):
+            if yn(
+                "Your public key does not appear be registered on the cluster. Register it?"
+            ):
                 here.run("ssh-copy-id", "mila")
                 if not here.check_passwordless("mila"):
                     exit("ssh-copy-id appears to have failed")
@@ -354,12 +358,16 @@ class milatools:
             for identifier in remote.get_lines("ls .milatools/control", hide=True):
                 info = _get_server_info(remote, identifier, hide=True)
                 jobid = info.get("jobid", None)
-                status = remote.get_output(f"squeue -j {jobid} -ho %T", hide=True, warn=True)
+                status = remote.get_output(
+                    f"squeue -j {jobid} -ho %T", hide=True, warn=True
+                )
                 program = info.pop("program", "???")
                 if status == "RUNNING":
                     necessary_keys = {"node_name", "to_forward"}
                     if any(k not in info for k in necessary_keys):
-                        qn.print(f"{identifier} ({program}, MISSING INFO)", style="bold red")
+                        qn.print(
+                            f"{identifier} ({program}, MISSING INFO)", style="bold red"
+                        )
                         to_purge.append((identifier, jobid))
                     else:
                         qn.print(f"{identifier} ({program})", style="bold yellow")
@@ -559,7 +567,9 @@ def _standard_server(
         if port_pattern:
             patterns["port"] = port_pattern
         elif share:
-            exit("Server cannot be shared because it is serving over a Unix domain socket")
+            exit(
+                "Server cannot be shared because it is serving over a Unix domain socket"
+            )
         else:
             remote.run("mkdir -p ~/.milatools/sockets", hide=True)
 
