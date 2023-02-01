@@ -857,29 +857,33 @@ def setup_ssh_config_interactive(
         print(f"Wrote {ssh_config_path}")
 
 
-def _setup_ssh_config_file(config_path: str | Path) -> Path:
+def _setup_ssh_config_file(config_file_path: Union[str, Path]) -> Path:
     # Save the original value for the prompt. (~/.ssh/config looks better on the command-line).
-    filename_for_prompt = config_path
+    filename_for_prompt = config_file_path
 
-    config_path = Path(config_path).expanduser()
-    if config_path.exists():
-        # Fix any permissions issues:
-        # TODO: double check this suggestion from Co-Pilot.
-        if config_path.stat().st_mode & 0o777 != 0o600:
-            config_path.chmod(mode=0o600)
-        return config_path
-
-    if not yn(f"There is no {filename_for_prompt} file. Create one?"):
+    config_file = Path(config_file_path).expanduser()
+    if not config_file.exists() and not yn(f"There is no {filename_for_prompt} file. Create one?"):
         exit("No ssh configuration file was found.")
 
-    ssh_dir = config_path.parent
+    ssh_dir = config_file.parent
     if not ssh_dir.exists():
         ssh_dir.mkdir(mode=0o700, exist_ok=True)
-    else:
+        print(f"Created the ssh directory at {ssh_dir}")
+    elif ssh_dir.stat().st_mode & 0o777 != 0o700:
         ssh_dir.chmod(mode=0o700)
-    config_path.touch(mode=0o600)
-    print(f"Created {config_path}")
-    return config_path
+        print(f"Fixed the permissions on ssh directory at {ssh_dir} to 700")
+
+    if not config_file.exists():
+        config_file.touch(mode=0o600)
+        print(f"Created {config_file}")
+        return config_file
+    # Fix any permissions issues:
+    if config_file.stat().st_mode & 0o777 != 0o600:
+        config_file.chmod(mode=0o600)
+        print(f"Fixing permissions on {config_file} to 600")
+        return config_file
+
+    return config_file
 
 
 def _confirm_changes(ssh_config: SSHConfig, hosts: list[str]) -> bool:
