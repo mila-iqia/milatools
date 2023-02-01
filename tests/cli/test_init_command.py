@@ -13,8 +13,8 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.commands import (
-    setup_ssh_config_interactive,
+from milatools.cli.init_command import (
+    setup_ssh_config,
     _get_username,
     _setup_ssh_config_file,
 )
@@ -50,7 +50,7 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
 
     for prompt in ["y", "bob\r", "y", "y", "y", "y", "y"]:
         input_pipe.send_text(prompt)
-    setup_ssh_config_interactive(tmp_path / "ssh_config")
+    setup_ssh_config(tmp_path / "ssh_config")
     assert ssh_config_path.exists()
 
 
@@ -144,7 +144,7 @@ def test_mila_init_no_existing_entries(
         should_exit = not confirm_changes
 
     with (pytest.raises(SystemExit) if should_exit else contextlib.nullcontext()):
-        setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
+        setup_ssh_config(ssh_config_path=ssh_config_path)
 
     assert ssh_config_path.exists()
     with open(ssh_config_path) as f:
@@ -184,7 +184,7 @@ def test_fixes_overly_general_entry(tmp_path: Path, input_pipe: PipeInput):
     for user_input in ["bob\r", "n", "n", "n", "y", "y"]:
         input_pipe.send_text(user_input)
 
-    setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
+    setup_ssh_config(ssh_config_path=ssh_config_path)
 
     with open(ssh_config_path) as f:
         resulting_contents = f.read()
@@ -293,7 +293,7 @@ def test_with_existing_entries(
     for prompt_input in prompt_inputs:
         input_pipe.send_text(prompt_input)
 
-    setup_ssh_config_interactive(ssh_config_path=ssh_config_path)
+    setup_ssh_config(ssh_config_path=ssh_config_path)
 
     with open(ssh_config_path) as f:
         resulting_contents = f.read()
