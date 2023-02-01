@@ -753,8 +753,7 @@ def setup_ssh_config_interactive(
 ):
     """Interactively sets up some useful entries in the ~/.ssh/config file on the local machine.
 
-    Exits if the User decides to not set one of these entries, or doesn't confirm the change when
-    prompted.
+    Exits if the User cancels any of the prompts or doesn't confirm the changes when asked.
 
     Entries:
     - "mila": Used to connect to a login node.
@@ -765,7 +764,7 @@ def setup_ssh_config_interactive(
     - "*.server.mila.quebec !*login.server.mila.quebec": Sets some useful attributes for connecting
       directly to compute nodes.
 
-    TODO: Add an interactive prompt to add entries for the ComputeCanada/DRAC clusters.
+    TODO: Also ask if we should add entries for the ComputeCanada/DRAC clusters.
     """
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
