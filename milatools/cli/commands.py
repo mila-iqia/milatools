@@ -887,11 +887,13 @@ def _get_username(ssh_config: SSHConfig) -> str:
         username = qn.text(
             f"What's your username on the mila cluster?\n", validate=_is_valid_username
         ).unsafe_ask()
-    return username
+    return username.strip()
 
 
 def _is_valid_username(text: str) -> Union[bool, str]:
-    return True if bool(text.strip()) else f"Please enter your username on the mila cluster."
+    return (
+        "Please enter your username on the mila cluster." if not text or text.isspace() else True
+    )
 
 
 # NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.

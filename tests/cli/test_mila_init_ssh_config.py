@@ -297,3 +297,94 @@ def test_with_existing_entries(
         resulting_contents = f.read()
 
     file_regression.check(resulting_contents)
+
+
+from milatools.cli.commands import _get_username
+
+
+@pytest.mark.parametrize(
+    "contents, prompt_inputs, expected",
+    [
+        pytest.param(
+            "",  # empty file.
+            ["bob\r"],  # enter "bob" then enter.
+            "bob",  # get "bob" as username.
+            id="empty_file",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host mila
+                  HostName login.server.mila.quebec
+                  User bob
+                """
+            ),
+            [],
+            "bob",
+            id="existing_mila_entry",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host mila
+                    HostName login.server.mila.quebec
+                """
+            ),
+            ["bob\r"],
+            "bob",
+            id="entry_without_user",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host mila
+                    HostName login.server.mila.quebec
+                    User george
+                # duplicate entry
+                Host mila mila_alias
+                    User Bob
+                """
+            ),
+            ["bob\r"],
+            "bob",
+            id="two_matching_entries",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host fooo mila bar baz
+                    HostName login.server.mila.quebec
+                    User george
+                """
+            ),
+            [],
+            "george",
+            id="with_aliases",
+        ),
+        pytest.param(
+            "",
+            [" \r", "bob\r"],
+            "bob",
+            id="empty_username",
+        ),
+    ],
+)
+def test_get_username(
+    contents: str,
+    prompt_inputs: list[str],
+    expected: str,
+    input_pipe: PipeInput,
+    tmp_path: Path,
+):
+    # TODO: We should probably also have a test that checks that keyboard interrupts work.
+    # Seems like the text to send for that would be "\x03".
+
+    ssh_config_path = tmp_path / "config"
+    with open(ssh_config_path, "w") as f:
+        f.write(contents)
+    ssh_config = SSHConfig(ssh_config_path)
+    if not prompt_inputs:
+        input_pipe.close()
+    for prompt_input in prompt_inputs:
+        input_pipe.send_text(prompt_input)
+    assert _get_username(ssh_config) == expected
