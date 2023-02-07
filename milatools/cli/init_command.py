@@ -119,7 +119,9 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     filename_for_prompt = config_file_path
 
     config_file = Path(config_file_path).expanduser()
-    if not config_file.exists() and not yn(f"There is no {filename_for_prompt} file. Create one?"):
+    if not config_file.exists() and not yn(
+        f"There is no {filename_for_prompt} file. Create one?"
+    ):
         exit("No ssh configuration file was found.")
 
     ssh_dir = config_file.parent
@@ -144,7 +146,11 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
 
 
 def _confirm_changes(ssh_config: SSHConfig, hosts: list[str]) -> bool:
-    print(T.bold("The following code will be appended or modified in your ~/.ssh/config:\n"))
+    print(
+        T.bold(
+            "The following code will be appended or modified in your ~/.ssh/config:\n"
+        )
+    )
     if isinstance(hosts, str):
         hosts = [hosts]
     print(*(ssh_config.hoststring(host) for host in hosts), sep="\n\n")
@@ -164,7 +170,9 @@ def _get_username(ssh_config: SSHConfig) -> str:
     # Note: If there are none, or more than one, then we'll ask the user for their username, just
     # to be sure.
     if len(hosts_with_mila_in_name_and_a_user_entry) == 1:
-        username = ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get("user")
+        username = ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get(
+            "user"
+        )
 
     while not username:
         username = qn.text(
@@ -174,7 +182,11 @@ def _get_username(ssh_config: SSHConfig) -> str:
 
 
 def _is_valid_username(text: str) -> bool | str:
-    return "Please enter your username on the mila cluster." if not text or text.isspace() else True
+    return (
+        "Please enter your username on the mila cluster."
+        if not text or text.isspace()
+        else True
+    )
 
 
 # NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.

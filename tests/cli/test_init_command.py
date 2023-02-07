@@ -30,8 +30,12 @@ def input_pipe(monkeypatch: pytest.MonkeyPatch):
     prompt, which sees it as just pressing enter, which uses the default value.
     """
     with create_pipe_input() as input_pipe:
-        monkeypatch.setattr("questionary.confirm", partial(questionary.confirm, input=input_pipe))
-        monkeypatch.setattr("questionary.text", partial(questionary.text, input=input_pipe))
+        monkeypatch.setattr(
+            "questionary.confirm", partial(questionary.confirm, input=input_pipe)
+        )
+        monkeypatch.setattr(
+            "questionary.text", partial(questionary.text, input=input_pipe)
+        )
         yield input_pipe
 
 
@@ -123,7 +127,7 @@ def test_setup_ssh(
 
     should_exit = not confirm_changes
 
-    with (pytest.raises(SystemExit) if should_exit else contextlib.nullcontext()):
+    with pytest.raises(SystemExit) if should_exit else contextlib.nullcontext():
         setup_ssh_config(ssh_config_path=ssh_config_path)
 
     assert ssh_config_path.exists()
@@ -157,7 +161,10 @@ def test_fixes_overly_general_entry(
         resulting_contents = f.read()
 
     file_regression.check(resulting_contents)
-    assert "Host *.server.mila.quebec !*login.server.mila.quebec" in resulting_contents.splitlines()
+    assert (
+        "Host *.server.mila.quebec !*login.server.mila.quebec"
+        in resulting_contents.splitlines()
+    )
 
 
 def test_ssh_config_host(tmp_path: Path):
@@ -199,7 +206,8 @@ def parametrize_flags(test_param_names: str):
         for bs in test_params
     ]
     test_ids = [
-        "-".join(accepted_prompt_names) for accepted_prompt_names in test_accepted_prompt_names
+        "-".join(accepted_prompt_names)
+        for accepted_prompt_names in test_accepted_prompt_names
     ]
     return pytest.mark.parametrize(
         test_param_names,
@@ -267,7 +275,12 @@ def test_with_existing_entries(
         else []
     )
     if not all(
-        [already_has_mila, already_has_mila_cpu, already_has_mila_gpu, already_has_mila_compute]
+        [
+            already_has_mila,
+            already_has_mila_cpu,
+            already_has_mila_gpu,
+            already_has_mila_compute,
+        ]
     ):
         # There's a confirmation prompt only if we're adding some entry.
         prompt_inputs += ["y"]
