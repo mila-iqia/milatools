@@ -16,6 +16,7 @@ from coleo import Option, auto_cli, default, tooled
 from invoke import UnexpectedExit
 
 from ..version import version as mversion
+from .init_command import setup_ssh_config
 from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
@@ -28,7 +29,6 @@ from .utils import (
     with_control_file,
     yn,
 )
-from .init_command import setup_ssh_config
 
 
 def main():
