@@ -75,10 +75,13 @@ def get_first_node_name(node_names_out: str) -> str:
 
 
 class Remote:
-    def __init__(self, hostname, connection=None, transforms=()):
+    def __init__(self, hostname, connection=None, transforms=(), keepalive=60):
         self.hostname = hostname
         if connection is None:
             connection = Connection(hostname)
+            if keepalive:
+                connection.open()
+                connection.transport.set_keepalive(keepalive)
         self.connection = connection
         self.transforms = transforms
 
