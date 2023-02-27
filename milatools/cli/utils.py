@@ -58,7 +58,11 @@ def with_control_file(remote, name=None):
         control_file_var.reset(token)
 
 
-class CommandNotFoundError(Exception):
+class MilatoolsUserError(Exception):
+    pass
+
+
+class CommandNotFoundError(MilatoolsUserError):
     # Instructions to install certain commands if they are not found
     instructions = {
         "code": (

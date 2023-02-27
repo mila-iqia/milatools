@@ -21,6 +21,7 @@ from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (
     CommandNotFoundError,
+    MilatoolsUserError,
     SSHConfig,
     T,
     qualified,
@@ -35,13 +36,16 @@ def main():
     on_mila = socket.getfqdn().endswith(".server.mila.quebec")
     if on_mila:
         exit(
-            "Error: 'mila ...' should be run on your local machine and not on the Mila cluster"
+            "ERROR: 'mila ...' should be run on your local machine and not on the Mila cluster"
         )
 
     try:
         auto_cli(milatools)
+    except MilatoolsUserError as exc:
+        # These are user errors and should not be reported
+        print("ERROR:", exc, file=sys.stderr)
     except Exception:
-        print(traceback.format_exc())
+        print(T.red(traceback.format_exc()), file=sys.stderr)
         options = {
             "labels": ",".join([sys.argv[1], mversion]),
             "template": "bug_report.md",
@@ -60,9 +64,13 @@ def main():
                 "Please try updating milatools by running\n"
                 "  pip install milatools --upgrade\n"
                 "in the terminal. If the issue persists, consider filling a bug "
-                "report at "
+                "report at\n  "
             )
-            + T.italic_yellow(github_issue_url),
+            + T.italic_yellow(github_issue_url)
+            + T.yellow(
+                "\nPlease provide the error traceback with the report "
+                "(the red text above)."
+            ),
             file=sys.stderr,
         )
         exit(1)
