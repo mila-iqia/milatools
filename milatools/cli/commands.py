@@ -40,7 +40,7 @@ def main():
 
     try:
         auto_cli(milatools)
-    except Exception:
+    except Exception as e:
         print(traceback.format_exc())
         options = {
             "labels": ",".join([sys.argv[1], mversion]),
@@ -51,17 +51,27 @@ def main():
         github_issue_url = (
             f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
         )
+        content = (
+            "try updating milatools by running\n"
+            "  pip install milatools --upgrade\n"
+            "in the terminal. If the issue persists, consider --filling a bug report at "
+        )
+        for cmd in (
+            CommandNotFoundError.instructions
+            if isinstance(e, CommandNotFoundError)
+            else []
+        ):
+            if cmd == e.args[0]:
+                content = f"If the above instruction did not help, please {content}"
+                break
+        else:
+            content = f"Please {content}"
         print(
             T.bold_yellow(
                 f"An error occured during the execution of the command "
                 f"`{sys.argv[1]}`. "
             )
-            + T.yellow(
-                "Please try updating milatools by running\n"
-                "  pip install milatools --upgrade\n"
-                "in the terminal. If the issue persists, consider filling a bug "
-                "report at "
-            )
+            + T.yellow(content)
             + T.italic_yellow(github_issue_url),
             file=sys.stderr,
         )
