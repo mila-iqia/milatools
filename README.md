@@ -3,6 +3,14 @@
 
 The milatools package provides the `mila` command, which is meant to help with connecting to and interacting with the Mila cluster.
 
+---
+
+**Warning**
+
+The `mila` command is meant to be used on your local machine. Trying to run it on the cluster will fail with an error
+
+---
+
 
 ## Install
 
