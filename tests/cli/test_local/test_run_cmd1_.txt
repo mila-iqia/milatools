@@ -1,6 +1,18 @@
+===============
+Captured stdout
+===============
 (local) $ FAKEcmd --arg1 val1 --arg2=val2 X
-:::::
-=====
-^^^^^
+
+===============
+Captured stderr
+===============
+
+=============
+Result stdout
+=============
+
+=============
+Result stderr
+=============
 Command 'cmd' does not exist locally.
-^^^^^
+

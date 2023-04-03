@@ -1,43 +1,29 @@
-from contextlib import contextmanager
-from subprocess import PIPE, CompletedProcess
+from subprocess import PIPE
 
 import pytest
 
 from milatools.cli.local import CommandNotFoundError, Local
+
+from .common import output_tester
 
 _ECHO_CMD = ["echo", "--arg1", "val1", "--arg2=val2", "X"]
 _FAKE_CMD = ["FAKEcmd", "--arg1", "val1", "--arg2=val2", "X"]
 _FAIL_CODE_CMD = ["FAKEcode", "--arg1", "val1", "--arg2=val2", "X"]
 
 
-def _test_stdouterr(func, capsys, file_regression):
-    out, err = None, None
-    try:
-        out, err = func()
-        if isinstance(out, CompletedProcess):
-            out, err = out.stdout, out.stderr
-    finally:
-        captured = capsys.readouterr()
-        out = out if out else ""
-        err = err if err else ""
-        file_regression.check(
-            f"{captured.out}:::::\n{captured.err}=====\n{out}^^^^^\n{err}^^^^^\n"
-        )
-
-
 @pytest.mark.parametrize("cmd", [_ECHO_CMD, _FAKE_CMD])
 def test_display(cmd, capsys, file_regression):
-    _test_stdouterr(lambda: (Local().display(cmd), None), capsys, file_regression)
+    output_tester(lambda: (Local().display(cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_silent_get(cmd, capsys, file_regression):
-    _test_stdouterr(lambda: (Local().silent_get(*cmd), None), capsys, file_regression)
+    output_tester(lambda: (Local().silent_get(*cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_get(cmd, capsys, file_regression):
-    _test_stdouterr(lambda: (Local().get(*cmd), None), capsys, file_regression)
+    output_tester(lambda: (Local().get(*cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD, _FAKE_CMD, _FAIL_CODE_CMD])
@@ -54,14 +40,14 @@ def test_run(cmd, capsys, file_regression):
             )
             return None, f"{exc_info.value}\n"
 
-        _test_stdouterr(_catch_exc, capsys, file_regression)
+        output_tester(_catch_exc, capsys, file_regression)
     else:
-        _test_stdouterr(func, capsys, file_regression)
+        output_tester(func, capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_popen(cmd, capsys, file_regression):
-    _test_stdouterr(
+    output_tester(
         lambda: Local().popen(*cmd, stdout=PIPE, stderr=PIPE).communicate(),
         capsys,
         file_regression,
