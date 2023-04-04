@@ -75,6 +75,7 @@ def main():
         )
         exit(1)
 
+
 class milatools:
     """Tools to connect to and interact with the Mila cluster.
 

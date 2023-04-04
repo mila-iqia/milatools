@@ -55,7 +55,7 @@ def setup_ssh_config(
         RequestTTY="force",
         ConnectTimeout=600,
         ProxyCommand=(
-            """ssh mila "salloc """  #  --partition=unkillable --dependency=singleton 
+            """ssh mila "salloc """  #  --partition=unkillable --dependency=singleton
             """--cpus-per-task=2 --mem=16G """
             '''/usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"'''
         ),
@@ -75,7 +75,7 @@ def setup_ssh_config(
         RequestTTY="force",
         ConnectTimeout=600,
         ProxyCommand=(
-            """ssh mila "salloc """ # --partition=unkillable --dependency=singleton
+            """ssh mila "salloc """  # --partition=unkillable --dependency=singleton
             """--cpus-per-task=2 --mem=16G --gres=gpu:1 """
             '''/usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"'''
         ),
