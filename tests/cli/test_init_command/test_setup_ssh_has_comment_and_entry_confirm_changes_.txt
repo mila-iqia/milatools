@@ -22,7 +22,7 @@ Host mila-cpu
   UserKnownHostsFile /dev/null
   RequestTTY force
   ConnectTimeout 600
-  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
+  ProxyCommand ssh mila "salloc --cpus-per-task=2 --mem=16G /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
   RemoteCommand srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l
 
 
@@ -35,7 +35,7 @@ Host mila-gpu
   UserKnownHostsFile /dev/null
   RequestTTY force
   ConnectTimeout 600
-  ProxyCommand ssh mila "salloc --partition=unkillable --dependency=singleton --cpus-per-task=2 --mem=16G --gres=gpu:1 /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
+  ProxyCommand ssh mila "salloc --cpus-per-task=2 --mem=16G --gres=gpu:1 /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
   RemoteCommand srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l
 
 
