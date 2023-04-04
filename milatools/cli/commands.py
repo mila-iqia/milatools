@@ -16,13 +16,13 @@ from coleo import Option, auto_cli, default, tooled
 from invoke import UnexpectedExit
 
 from ..version import version as mversion
+from .init_command import setup_ssh_config
 from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
-    SSHConfig,
     T,
     qualified,
     randname,
@@ -126,74 +126,9 @@ class milatools:
 
         print("Checking ssh config")
 
-        sshpath = os.path.expanduser("~/.ssh")
-        cfgpath = os.path.join(sshpath, "config")
-        if not os.path.exists(cfgpath):
-            if yn("There is no ~/.ssh/config file. Create one?"):
-                if not os.path.exists(sshpath):
-                    os.makedirs(sshpath, mode=0o700, exist_ok=True)
-                open(cfgpath, "w").close()
-                os.chmod(cfgpath, 0o600)
-                print(f"Created {cfgpath}")
-            else:
-                exit("No ssh configuration file was found.")
-
-        c = SSHConfig(cfgpath)
-        changes = False
-
-        # Check for a mila entry in ssh config
-
-        if "mila" not in c.hosts():
-            if yn("There is no 'mila' entry in ~/.ssh/config. Create one?"):
-                username = ""
-                while not username:
-                    username = input(T.bold("What is your username?\n> "))
-                c.add(
-                    "mila",
-                    HostName="login.server.mila.quebec",
-                    User=username,
-                    PreferredAuthentications="publickey,keyboard-interactive",
-                    Port="2222",
-                    ServerAliveInterval="120",
-                    ServerAliveCountMax="5",
-                )
-                if not c.confirm("mila"):
-                    exit("Did not change ssh config")
-            else:
-                exit("Did not change ssh config")
-            changes = True
-
-        # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
-
-        cnode_pattern = "*.server.mila.quebec !*login.server.mila.quebec"
-
-        if "*.server.mila.quebec" in c.hosts():
-            if yn(
-                "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should exclude login.server.mila.quebec. Fix this?"
-            ):
-                c.rename("*.server.mila.quebec", cnode_pattern)
-                changes = True
-
-        if cnode_pattern not in c.hosts():
-            if yn(
-                "There is no '*.server.mila.quebec' entry in ~/.ssh/config. Create one?"
-            ):
-                username = c.host("mila")["user"]
-                c.add(
-                    cnode_pattern,
-                    HostName="%h",
-                    User=username,
-                    ProxyJump="mila",
-                )
-                if not c.confirm(cnode_pattern):
-                    exit("Did not change ssh config")
-            else:
-                exit("Did not change ssh config")
-            changes = True
-
-        if changes:
-            c.save()
-            print("Wrote ~/.ssh/config")
+        setup_ssh_config()
+        # TODO: Move the rest of this command to functions in the init_command module,
+        # so they can more easily be tested.
 
         print("# OK")
 
@@ -258,7 +193,8 @@ class milatools:
         else:
             print("# MISSING")
             if yn(
-                "To connect to a compute node from a login node you need one id_*.pub to be in authorized_keys. Do it?"
+                "To connect to a compute node from a login node you need one id_*.pub to be in "
+                "authorized_keys. Do it?"
             ):
                 pubkey = pubkeys[0]
                 remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")

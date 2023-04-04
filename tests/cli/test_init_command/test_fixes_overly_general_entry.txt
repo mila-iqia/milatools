@@ -1,0 +1,36 @@
+Host *.server.mila.quebec !*login.server.mila.quebec
+  User bob
+
+Host mila
+  HostName login.server.mila.quebec
+  User bob
+  PreferredAuthentications publickey,keyboard-interactive
+  Port 2222
+  ServerAliveInterval 120
+  ServerAliveCountMax 5
+
+
+Host mila-cpu
+  User bob
+  Port 2222
+  ForwardAgent yes
+  StrictHostKeyChecking no
+  LogLevel ERROR
+  UserKnownHostsFile /dev/null
+  RequestTTY force
+  ConnectTimeout 600
+  ProxyCommand ssh mila "salloc --cpus-per-task=2 --mem=16G /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
+  RemoteCommand srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l
+
+
+Host mila-gpu
+  User bob
+  Port 2222
+  ForwardAgent yes
+  StrictHostKeyChecking no
+  LogLevel ERROR
+  UserKnownHostsFile /dev/null
+  RequestTTY force
+  ConnectTimeout 600
+  ProxyCommand ssh mila "salloc --cpus-per-task=2 --mem=16G --gres=gpu:1 /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
+  RemoteCommand srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l
