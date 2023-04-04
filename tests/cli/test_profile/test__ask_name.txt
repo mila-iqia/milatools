@@ -1,0 +1,34 @@
+===============
+Captured stdout
+===============
+? ask a name
+
+
+
+
+
+
+              ? ask a name test_file name
+? reask a wrong name
+
+
+
+
+
+
+                      ? reask a wrong name ///
+Invalid name: ///
+? reask a wrong name test/filename                                  ? reask a wrong name test/filename
+
+===============
+Captured stderr
+===============
+
+=============
+Result stdout
+=============
+
+=============
+Result stderr
+=============
+
