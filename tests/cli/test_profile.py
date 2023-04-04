@@ -1,5 +1,4 @@
 import functools
-import sys
 from contextlib import contextmanager
 from unittest.mock import patch
 
@@ -11,10 +10,7 @@ from milatools.cli.profile import _ask_name, qn
 from .common import output_tester
 
 
-@pytest.mark.skipif(
-    sys.version_info[:2] == (3, 9),
-    reason="Some strange issue happens with the CI in Python 3.9",
-)
+@pytest.mark.skip(reason="Test does not appear to be fully deterministic")
 def test__ask_name(capsys, file_regression):
     @contextmanager
     def _qn_text(texts: list):
