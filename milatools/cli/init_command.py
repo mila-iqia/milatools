@@ -54,34 +54,14 @@ def setup_ssh_config(
         UserKnownHostsFile="/dev/null",
         RequestTTY="force",
         ConnectTimeout=600,
+        ServerAliveInterval=120,
+        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap cannot share it
         ProxyCommand=(
-            """ssh mila "salloc """  #  --partition=unkillable --dependency=singleton
-            """--cpus-per-task=2 --mem=16G """
-            '''/usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"'''
+            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"'
         ),
-        RemoteCommand="srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l",
+        RemoteCommand="/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu",
     ):
         changed_entries_in_config.append("mila-cpu")
-
-    if _add_ssh_entry(
-        ssh_config,
-        "mila-gpu",
-        User=username,
-        Port=2222,
-        ForwardAgent="yes",
-        StrictHostKeyChecking="no",
-        LogLevel="ERROR",
-        UserKnownHostsFile="/dev/null",
-        RequestTTY="force",
-        ConnectTimeout=600,
-        ProxyCommand=(
-            """ssh mila "salloc """  # --partition=unkillable --dependency=singleton
-            """--cpus-per-task=2 --mem=16G --gres=gpu:1 """
-            '''/usr/bin/env bash -c 'nc \\$SLURM_NODELIST 22'"'''
-        ),
-        RemoteCommand="srun --cpus-per-task=2 --mem=16G --gres=gpu:1 --pty /usr/bin/env bash -l",
-    ):
-        changed_entries_in_config.append("mila-gpu")
 
     # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
 
