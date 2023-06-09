@@ -43,6 +43,7 @@ Set up your access to the mila cluster interactively. Have your username and pas
 * Set up your public key if you don't already have them
 * Copy your public key over to the cluster for passwordless auth
 * Set up a public key on the login node to enable ssh into compute nodes
+* **new**: Add a special SSH config for direct connection to a **compute node** with `ssh mila-cpu`
 
 
 ### mila docs/intranet

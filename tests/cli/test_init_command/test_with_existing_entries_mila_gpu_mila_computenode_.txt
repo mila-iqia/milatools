@@ -22,5 +22,6 @@ Host mila-cpu
   UserKnownHostsFile /dev/null
   RequestTTY force
   ConnectTimeout 600
-  ProxyCommand ssh mila "salloc --cpus-per-task=2 --mem=16G /usr/bin/env bash -c 'nc \$SLURM_NODELIST 22'"
-  RemoteCommand srun --cpus-per-task=2 --mem=16G --pty /usr/bin/env bash -l
+  ServerAliveInterval 120
+  ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
+  RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
