@@ -252,7 +252,7 @@ class milatools:
         remote = Remote("mila")
         here = Local()
 
-        cnode = _find_allocation(remote)
+        cnode = _find_allocation(remote, job_name="mila-code")
         if persist:
             cnode = cnode.persist()
         data, proc = cnode.ensure_allocation()
@@ -560,7 +560,7 @@ def _standard_server(
         ):
             exit(f"Exit: {program} is not installed.")
 
-        cnode = _find_allocation(remote)
+        cnode = _find_allocation(remote, job_name=f"mila-serve-{program}")
 
         patterns = {
             "node_name": "#### ([A-Za-z0-9_-]+)",
@@ -647,7 +647,7 @@ def _standard_server(
 
 
 @tooled
-def _find_allocation(remote):
+def _find_allocation(remote, job_name="mila-tools"):
     # Node to connect to
     node: Option = default(None)
 
@@ -670,6 +670,7 @@ def _find_allocation(remote):
         return Remote(node_name)
 
     else:
+        alloc = ["-J", job_name, *alloc]
         return SlurmRemote(
             connection=remote.connection,
             alloc=alloc,
