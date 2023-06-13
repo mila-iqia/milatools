@@ -214,9 +214,18 @@ class milatools:
         print("    ssh mila")
         print(T.bold("To allocate and connect to a compute node:"))
         print("    ssh mila-cpu")
+        print(T.bold("To open a directory on the cluster with VSCode:"))
+        print("    mila code path/to/code/on/cluster")
+        print(T.bold("Same as above, but allocate 1 GPU, 4 CPUs, 32G of RAM:"))
+        print(
+            "    mila code path/to/code/on/cluster --alloc --gres=gpu:1 --mem=32G -c 4"
+        )
         print()
         print(
-            "Make sure you read the Mila cluster documentation at",
+            "For more information, read the milatools documentation at",
+            T.bold_cyan("https://github.com/mila-iqia/milatools"),
+            "or run `mila --help`.",
+            "Also make sure you read the Mila cluster documentation at",
             T.bold_cyan("https://docs.mila.quebec/"),
             "and join the",
             T.bold_green("#mila-cluster"),
