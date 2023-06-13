@@ -198,6 +198,30 @@ class milatools:
             ):
                 pubkey = pubkeys[0]
                 remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
+            else:
+                exit("You will not be able to SSH to a compute node")
+
+        ###################
+        # Welcome message #
+        ###################
+
+        print(T.bold_cyan("=" * 60))
+        print(
+            T.bold_cyan("Congrats! You are now ready to start working on the cluster!")
+        )
+        print(T.bold_cyan("=" * 60))
+        print(T.bold("To connect to a login node:"))
+        print("    ssh mila")
+        print(T.bold("To allocate and connect to a compute node:"))
+        print("    ssh mila-cpu")
+        print()
+        print(
+            "Make sure you read the Mila cluster documentation at",
+            T.bold_cyan("https://docs.mila.quebec/"),
+            "and join the",
+            T.bold_green("#mila-cluster"),
+            "channel on Slack.",
+        )
 
     def forward():
         """Forward a port on a compute node to your local machine."""
