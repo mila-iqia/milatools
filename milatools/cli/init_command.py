@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 
 import questionary as qn
@@ -17,7 +18,6 @@ def setup_ssh_config(
     Entries:
     - "mila": Used to connect to a login node.
     - "mila-cpu": Used to connect to a compute node.
-    - "mila-gpu": Used to connect to a compute node with a GPU.
 
     Other entries:
     - "*.server.mila.quebec !*login.server.mila.quebec": Sets some useful attributes for connecting
@@ -29,9 +29,9 @@ def setup_ssh_config(
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
     ssh_config = SSHConfig(ssh_config_path)
     username: str = _get_username(ssh_config)
-    changed_entries_in_config: list[str] = []
+    orig_config = ssh_config.cfg.config()
 
-    if _add_ssh_entry(
+    _add_ssh_entry(
         ssh_config,
         "mila",
         HostName="login.server.mila.quebec",
@@ -40,10 +40,9 @@ def setup_ssh_config(
         Port=2222,
         ServerAliveInterval=120,
         ServerAliveCountMax=5,
-    ):
-        changed_entries_in_config.append("mila")
+    )
 
-    if _add_ssh_entry(
+    _add_ssh_entry(
         ssh_config,
         "mila-cpu",
         User=username,
@@ -60,34 +59,35 @@ def setup_ssh_config(
             'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"'
         ),
         RemoteCommand="/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu",
-    ):
-        changed_entries_in_config.append("mila-cpu")
+    )
 
     # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
 
+    old_cnode_pattern = "*.server.mila.quebec"
     cnode_pattern = "*.server.mila.quebec !*login.server.mila.quebec"
 
-    # TODO: What if there is a cnode_pattern and a '*.server.mila.quebec' entry?
-    if "*.server.mila.quebec" in ssh_config.hosts():
+    if old_cnode_pattern in ssh_config.hosts():
         if yn(
             "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should "
             "exclude login.server.mila.quebec. Fix this?"
         ):
-            ssh_config.rename("*.server.mila.quebec", cnode_pattern)
-            changed_entries_in_config.append(cnode_pattern)
-    elif _add_ssh_entry(
-        ssh_config,
-        cnode_pattern,
-        HostName="%h",
-        User=username,
-        ProxyJump="mila",
-    ):
-        changed_entries_in_config.append(cnode_pattern)
+            if cnode_pattern in ssh_config.hosts():
+                ssh_config.remove(old_cnode_pattern)
+            else:
+                ssh_config.rename(old_cnode_pattern, cnode_pattern)
+    else:
+        _add_ssh_entry(
+            ssh_config,
+            cnode_pattern,
+            HostName="%h",
+            User=username,
+            ProxyJump="mila",
+        )
 
-    # TODO: Might be better to display a diff of the current and the potential new config instead.
-    if not changed_entries_in_config:
+    new_config = ssh_config.cfg.config()
+    if orig_config == new_config:
         print("Did not change ssh config")
-    elif not _confirm_changes(ssh_config, hosts=changed_entries_in_config):
+    elif not _confirm_changes(ssh_config, previous=orig_config):
         exit("Did not change ssh config")
     else:
         ssh_config.save()
@@ -125,15 +125,21 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     return config_file
 
 
-def _confirm_changes(ssh_config: SSHConfig, hosts: list[str]) -> bool:
-    print(
-        T.bold(
-            "The following code will be appended or modified in your ~/.ssh/config:\n"
+def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
+    print(T.bold("The following modifications will be made to your ~/.ssh/config:\n"))
+    diff_lines = list(
+        difflib.unified_diff(
+            (previous + "\n").splitlines(True),
+            (ssh_config.cfg.config() + "\n").splitlines(True),
         )
     )
-    if isinstance(hosts, str):
-        hosts = [hosts]
-    print(*(ssh_config.hoststring(host) for host in hosts), sep="\n\n")
+    for line in diff_lines[2:]:
+        if line.startswith("-"):
+            print(T.red(line), end="")
+        elif line.startswith("+"):
+            print(T.green(line), end="")
+        else:
+            print(line, end="")
     return yn("\nIs this OK?")
 
 
