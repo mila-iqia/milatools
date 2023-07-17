@@ -44,6 +44,9 @@ def main():
     except MilatoolsUserError as exc:
         # These are user errors and should not be reported
         print("ERROR:", exc, file=sys.stderr)
+    except SSHConnectionError as err:
+        # These are errors coming from paramiko's failure to connect to the host
+        print("ERROR:",err, file=sys.stderr)
     except Exception:
         print(T.red(traceback.format_exc()), file=sys.stderr)
         options = {

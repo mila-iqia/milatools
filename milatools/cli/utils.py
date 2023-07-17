@@ -86,6 +86,13 @@ class CommandNotFoundError(MilatoolsUserError):
         return message
 
 
+class SSHConnectionError(Exception):
+    def __init__(self, node_hostname):
+        super().__init__()
+        self.node_hostname = node_hostname
+    def __str__(self):
+        return repr("An error happened while trying to establish a connection with {self.node_hostname}. Check the status of your connection and of the cluster by ssh'ing onto it. Workaround : try to exclude the node with -x [<node>] parameter")
+
 def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
 
