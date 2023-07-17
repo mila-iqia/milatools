@@ -4,11 +4,12 @@ import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
+import paramiko
 
 import questionary as qn
 from fabric import Connection
 
-from .utils import T, control_file_var, here, shjoin
+from .utils import T, control_file_var, here, shjoin, SSHConnectionError
 
 batch_template = """#!/bin/bash
 #SBATCH --output={output_file}
@@ -84,9 +85,10 @@ class Remote:
                 if keepalive:
                     connection.open()
                     connection.transport.set_keepalive(keepalive)
+        except paramiko.SSHException as err:
+            raise SSHConnectionError(node_hostname=self.hostname, error=err)
         except Exception as err:
-            raise SSHConnectionError
-            print(str(SSHConnectionError))
+            raise err
         self.connection = connection
         self.transforms = transforms
 

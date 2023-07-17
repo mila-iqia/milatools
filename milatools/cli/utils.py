@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import blessed
+import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import read_ssh_config
@@ -87,11 +88,20 @@ class CommandNotFoundError(MilatoolsUserError):
 
 
 class SSHConnectionError(Exception):
-    def __init__(self, node_hostname):
+    def __init__(self, node_hostname: str, error: paramiko.SSHException):
         super().__init__()
         self.node_hostname = node_hostname
+        self.error = error
+
     def __str__(self):
-        return repr("An error happened while trying to establish a connection with {self.node_hostname}. Check the status of your connection and of the cluster by ssh'ing onto it. Workaround : try to exclude the node with -x [<node>] parameter")
+        return repr(
+            f"An error happened while trying to establish a connection with {self.node_hostname}. "
+            "Check the status of your connection and of the cluster by ssh'ing onto it. "
+            "Workaround : try to exclude the node with -x [<node>] parameter"
+            "\n"
+            f"Exception: {self.error}"
+        )
+
 
 def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
