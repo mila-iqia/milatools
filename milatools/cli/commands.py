@@ -24,6 +24,7 @@ from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
     T,
+    get_fully_qualified_name,
     qualified,
     randname,
     with_control_file,
@@ -33,7 +34,7 @@ from .utils import (
 
 def main():
     """Entry point for milatools."""
-    on_mila = socket.getfqdn().endswith(".server.mila.quebec")
+    on_mila = get_fully_qualified_name().endswith(".server.mila.quebec")
     if on_mila:
         exit(
             "ERROR: 'mila ...' should be run on your local machine and not on the Mila cluster"
