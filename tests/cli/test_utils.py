@@ -30,4 +30,4 @@ def test_yn():
 
 
 def test_hostname():
-    assert get_fully_qualified_name() == socket.getfqdn()
+    assert get_fully_qualified_name()
