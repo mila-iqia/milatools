@@ -143,6 +143,6 @@ def get_fully_qualified_name() -> str:
     """
     try:
         return subprocess.check_output(["hostname", "-f"]).decode("utf-8").strip()
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except Exception:
         # Fall back, e.g. on Windows.
         return socket.getfqdn()
