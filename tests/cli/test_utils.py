@@ -1,11 +1,12 @@
 import functools
 import random
+import socket
 from unittest.mock import patch
 
 import pytest
 from prompt_toolkit.input.defaults import create_pipe_input
 
-from milatools.cli.utils import qn, randname, yn
+from milatools.cli.utils import get_fully_qualified_name, qn, randname, yn
 
 
 def test_randname(file_regression):
@@ -26,3 +27,7 @@ def test_yn():
             inp.send_text("n")
             result = yn("????")
             assert result == False
+
+
+def test_hostname():
+    assert get_fully_qualified_name()
