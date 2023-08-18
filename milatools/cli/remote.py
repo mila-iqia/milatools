@@ -4,12 +4,12 @@ import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
-import paramiko
 
+import paramiko
 import questionary as qn
 from fabric import Connection
 
-from .utils import T, control_file_var, here, shjoin, SSHConnectionError
+from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 
 batch_template = """#!/bin/bash
 #SBATCH --output={output_file}

@@ -87,20 +87,31 @@ class CommandNotFoundError(MilatoolsUserError):
         return message
 
 
-class SSHConnectionError(Exception):
+class SSHConnectionError(paramiko.SSHException):
     def __init__(self, node_hostname: str, error: paramiko.SSHException):
         super().__init__()
         self.node_hostname = node_hostname
         self.error = error
 
     def __str__(self):
-        return repr(
-            f"An error happened while trying to establish a connection with {self.node_hostname}. "
-            "Check the status of your connection and of the cluster by ssh'ing onto it. "
-            "Workaround : try to exclude the node with -x [<node>] parameter"
-            "\n"
-            f"Exception: {self.error}"
+        return (
+            "An error happened while trying to establish a connection with {0}".format(
+                self.node_hostname
+            )
+            + "\n\t"
+            + "-The cluster might be under maintenance"
+            + "\n\t   "
+            + "Check #mila-cluster for updates on the state of the cluster"
+            + "\n\t"
+            + "-Check the status of your connection to the cluster by ssh'ing onto it."
+            + "\n\t"
+            + "-Retry connecting with mila"
+            + "\n\t"
+            + "-Try to exclude the node with -x {0} parameter".format(
+                self.node_hostname
+            )
         )
+        # f"Exception: {self.error}"
 
 
 def yn(prompt: str, default: bool = True) -> bool:

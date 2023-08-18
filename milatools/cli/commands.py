@@ -23,6 +23,7 @@ from .remote import Remote, SlurmRemote
 from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
+    SSHConnectionError,
     T,
     qualified,
     randname,
@@ -46,7 +47,7 @@ def main():
         print("ERROR:", exc, file=sys.stderr)
     except SSHConnectionError as err:
         # These are errors coming from paramiko's failure to connect to the host
-        print("ERROR:",err, file=sys.stderr)
+        print("ERROR:", f"{err}", file=sys.stderr)
     except Exception:
         print(T.red(traceback.format_exc()), file=sys.stderr)
         options = {
