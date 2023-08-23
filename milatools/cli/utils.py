@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import blessed
+import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import read_ssh_config
@@ -86,6 +87,32 @@ class CommandNotFoundError(MilatoolsUserError):
         if supp:
             message += f" {supp}"
         return message
+
+
+class SSHConnectionError(paramiko.SSHException):
+    def __init__(self, node_hostname: str, error: paramiko.SSHException):
+        super().__init__()
+        self.node_hostname = node_hostname
+        self.error = error
+
+    def __str__(self):
+        return (
+            "An error happened while trying to establish a connection with {0}".format(
+                self.node_hostname
+            )
+            + "\n\t"
+            + "-The cluster might be under maintenance"
+            + "\n\t   "
+            + "Check #mila-cluster for updates on the state of the cluster"
+            + "\n\t"
+            + "-Check the status of your connection to the cluster by ssh'ing onto it."
+            + "\n\t"
+            + "-Retry connecting with mila"
+            + "\n\t"
+            + "-Try to exclude the node with -x {0} parameter".format(
+                self.node_hostname
+            )
+        )
 
 
 def yn(prompt: str, default: bool = True) -> bool:

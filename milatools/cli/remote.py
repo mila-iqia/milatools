@@ -5,10 +5,11 @@ import time
 from pathlib import Path
 from queue import Empty, Queue
 
+import paramiko
 import questionary as qn
 from fabric import Connection
 
-from .utils import T, control_file_var, here, shjoin
+from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 
 batch_template = """#!/bin/bash
 #SBATCH --output={output_file}
@@ -78,11 +79,14 @@ def get_first_node_name(node_names_out: str) -> str:
 class Remote:
     def __init__(self, hostname, connection=None, transforms=(), keepalive=60):
         self.hostname = hostname
-        if connection is None:
-            connection = Connection(hostname)
-            if keepalive:
-                connection.open()
-                connection.transport.set_keepalive(keepalive)
+        try:
+            if connection is None:
+                connection = Connection(hostname)
+                if keepalive:
+                    connection.open()
+                    connection.transport.set_keepalive(keepalive)
+        except paramiko.SSHException as err:
+            raise SSHConnectionError(node_hostname=self.hostname, error=err)
         self.connection = connection
         self.transforms = transforms
 
