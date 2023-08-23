@@ -87,8 +87,6 @@ class Remote:
                     connection.transport.set_keepalive(keepalive)
         except paramiko.SSHException as err:
             raise SSHConnectionError(node_hostname=self.hostname, error=err)
-        except Exception as err:
-            raise err
         self.connection = connection
         self.transforms = transforms
 

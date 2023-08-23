@@ -111,7 +111,6 @@ class SSHConnectionError(paramiko.SSHException):
                 self.node_hostname
             )
         )
-        # f"Exception: {self.error}"
 
 
 def yn(prompt: str, default: bool = True) -> bool:
