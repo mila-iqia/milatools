@@ -1,0 +1,8 @@
+usage: mila serve kill [-h] [--all] [IDENTIFIER]
+
+positional arguments:
+  IDENTIFIER  Server identifier output by the original mila serve command
+
+optional arguments:
+  -h, --help  show this help message and exit
+  --all       Kill all servers

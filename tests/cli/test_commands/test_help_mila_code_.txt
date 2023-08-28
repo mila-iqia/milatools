@@ -1,0 +1,15 @@
+usage: mila code [-h] [--alloc ...] [--command VALUE] [--job VALUE]
+                 [--node VALUE] [--persist]
+                 PATH
+
+positional arguments:
+  PATH             Path to open on the remote machine
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --alloc ...      Extra options to pass to slurm
+  --command VALUE  Command to use to start vscode (defaults to "code" or the
+                   value of $MILATOOLS_CODE_COMMAND)
+  --job VALUE      Job ID to connect to
+  --node VALUE     Node to connect to
+  --persist        Whether the server should persist or not

@@ -1,0 +1,7 @@
+usage: mila intranet [-h] ...
+
+positional arguments:
+  SEARCH      Search terms
+
+optional arguments:
+  -h, --help  show this help message and exit
