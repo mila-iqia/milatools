@@ -1,0 +1,2 @@
+usage: mila forward [-h] [--page VALUE] [--port VALUE] REMOTE
+mila forward: error: the following arguments are required: REMOTE

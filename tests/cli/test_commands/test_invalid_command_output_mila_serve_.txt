@@ -1,0 +1,3 @@
+usage: mila serve [-h]
+                  {connect,kill,list,lab,notebook,tensorboard,mlflow,aim} ...
+mila serve: error: the following arguments are required: <serve_subcommand>
