@@ -16,7 +16,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import init_command
 from milatools.cli.init_command import (
-    _get_username,
+    _get_mila_username,
     _setup_ssh_config_file,
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
@@ -50,6 +50,9 @@ def permission_bits_check_doesnt_work_on_windows():
         raises=AssertionError,
         reason="TODO: The check for permission bits is failing on Windows in CI.",
     )
+
+# Set a module-level mark: Each test cannot take longer than 1 second to run.
+pytestmark = pytest.mark.timeout(1)
 
 
 @pytest.fixture
@@ -484,7 +487,7 @@ def test_get_username(
         input_pipe.close()
     for prompt_input in prompt_inputs:
         input_pipe.send_text(prompt_input)
-    assert _get_username(ssh_config) == expected
+    assert _get_mila_username(ssh_config) == expected
 
 
 class TestSetupSshFile:

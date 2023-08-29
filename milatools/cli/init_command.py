@@ -11,6 +11,7 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Any
 
+from logging import getLogger as get_logger
 import questionary as qn
 
 from .local import Local
@@ -52,13 +53,19 @@ def setup_ssh_config(
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
     ssh_config = SSHConfig(ssh_config_path)
-    username: str = _get_username(ssh_config)
+    mila_username: str = _get_mila_username(ssh_config)
+    drac_username: str | None = _get_drac_username(ssh_config)
     orig_config = ssh_config.cfg.config()
 
     control_path_dir = Path("~/.cache/ssh")
     # note: a bit nicer to keep the "~" in the path in the ssh config file, but we need
     # to make sure that the directory actually exists.
     control_path_dir.expanduser().mkdir(exist_ok=True, parents=True)
+    if drac_username:
+        logger.debug(
+            f"Adding entries for the ComputeCanada/DRAC clusters to {ssh_config_path}."
+        )
+        add_drac_entries(ssh_config, drac_username)
 
     if sys.platform == "win32":
         ssh_multiplexing_config = {}
@@ -78,7 +85,7 @@ def setup_ssh_config(
         ssh_config,
         host="mila",
         HostName="login.server.mila.quebec",
-        User=username,
+        User=mila_username,
         PreferredAuthentications="publickey,keyboard-interactive",
         Port=2222,
         ServerAliveInterval=120,
@@ -89,7 +96,7 @@ def setup_ssh_config(
     _add_ssh_entry(
         ssh_config,
         "mila-cpu",
-        User=username,
+        User=mila_username,
         Port=2222,
         ForwardAgent="yes",
         StrictHostKeyChecking="no",
@@ -99,7 +106,7 @@ def setup_ssh_config(
         ConnectTimeout=600,
         ServerAliveInterval=120,
         # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
-        # cannot share it
+        # cannot share gpus
         ProxyCommand=(
             'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
             'mila-cpu --mem=8G"'
@@ -128,7 +135,7 @@ def setup_ssh_config(
             ssh_config,
             cnode_pattern,
             HostName="%h",
-            User=username,
+            User=mila_username,
             ProxyJump="mila",
             ForwardAgent="yes",
             ForwardX11="yes",
@@ -338,7 +345,7 @@ def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
     return ask_to_confirm_changes(before, after, ssh_config.path)
 
 
-def _get_username(ssh_config: SSHConfig) -> str:
+def _get_mila_username(ssh_config: SSHConfig) -> str:
     # Check for a mila entry in ssh config
     # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila'
     # entry.
@@ -362,6 +369,41 @@ def _get_username(ssh_config: SSHConfig) -> str:
             validate=_is_valid_username,
         ).unsafe_ask()
     return username.strip()
+
+
+def _get_drac_username(ssh_config: SSHConfig) -> str | None:
+    """Retrieve or ask the user for their username on the ComputeCanada/DRAC clusters."""
+    # Check for one of the DRAC entries in ssh config
+    username: str | None = None
+    hosts_with_cluster_in_name_and_a_user_entry = [
+        host
+        for host in ssh_config.hosts()
+        if any(
+            cc_cluster in host.split()
+            for cc_cluster in (
+                "beluga",
+                "cedar",
+                "graham",
+                "narval",
+                "niagara",
+            )
+        )
+        and "user" in ssh_config.host(host)
+    ]
+    # Note: If there are none, or more than one, then we'll ask the user for their username, just
+    # to be sure.
+    if len(hosts_with_cluster_in_name_and_a_user_entry) == 1:
+        username = ssh_config.host(hosts_with_cluster_in_name_and_a_user_entry[0]).get(
+            "user"
+        )
+
+    elif yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
+        while not username:
+            username = qn.text(
+                "What's your username on the CC/DRAC clusters?\n",
+                validate=_is_valid_username,
+            ).unsafe_ask()
+    return username.strip() if username else None
 
 
 def _is_valid_username(text: str) -> bool | str:
@@ -434,3 +476,104 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
                 if key.lower() not in unsupported_keys_lowercase
             },
         )
+
+
+DRAC_block_template = """\
+# Compute Canada
+Host beluga cedar graham narval niagara
+  Hostname %h.alliancecan.ca
+  User {user}
+Host mist
+  Hostname mist.scinet.utoronto.ca
+  User {user}
+Host !beluga  bc????? bg????? bl?????
+  ProxyJump beluga
+  User {user}
+Host !cedar   cdr? cdr?? cdr??? cdr????
+  ProxyJump cedar
+  User {user}
+Host !graham  gra??? gra????
+  ProxyJump graham
+  User {user}
+Host !narval  nc????? ng?????
+  ProxyJump narval
+  User {user}
+Host !niagara nia????
+  ProxyJump niagara
+  User {user}
+"""
+
+DRAC_docs_block = """\
+Host *
+  ServerAliveInterval 300
+
+Host beluga cedar graham narval
+  HostName %h.alliancecan.ca
+  IdentityFile ~/.ssh/ccdb
+  User {user}
+
+Host bc????? bg????? bl?????
+  ProxyJump beluga
+  IdentityFile ~/.ssh/ccdb
+  User {user}
+
+Host cdr*
+  ProxyJump cedar
+  IdentityFile ~/.ssh/ccdb
+  User {user}
+
+Host gra1* gra2* gra3* gra4* gra5* gra6* gra7* gra8* gra9*
+  ProxyJump graham
+  IdentityFile ~/.ssh/ccdb
+  User {user}
+
+Host nc????? ng????? nl?????
+  ProxyJump narval
+  IdentityFile ~/.ssh/ccdb
+  User {user}
+"""
+
+
+def add_drac_entries(ssh_config: SSHConfig, drac_username: str):
+    _add_ssh_entry(
+        ssh_config,
+        host="beluga cedar graham narval niagara",
+        Hostname="%h.computecanada.ca",
+        User=drac_username,
+    )
+    _add_ssh_entry(
+        ssh_config,
+        host="mist",
+        Hostname="mist.scinet.utoronto.ca",
+        User=drac_username,
+    )
+    _add_ssh_entry(
+        ssh_config,
+        host="!beluga  bc????? bg????? bl?????",
+        ProxyJump="beluga",
+        User=drac_username,
+    )
+    _add_ssh_entry(
+        ssh_config,
+        host="!cedar   cdr? cdr?? cdr??? cdr????",
+        ProxyJump="cedar",
+        User=drac_username,
+    )
+    _add_ssh_entry(
+        ssh_config,
+        host="!graham  gra??? gra????",
+        ProxyJump="graham",
+        User=drac_username,
+    )
+    _add_ssh_entry(
+        ssh_config,
+        host="!narval  nc????? ng?????",
+        ProxyJump="narval",
+        User=drac_username,
+    )
+    _add_ssh_entry(
+        ssh_config,
+        host="!niagara nia????",
+        ProxyJump="niagara",
+        User=drac_username,
+    )
