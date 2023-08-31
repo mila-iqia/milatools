@@ -176,6 +176,7 @@ def mila():
         nargs=argparse.REMAINDER,
         help="Extra options to pass to slurm",
         metavar="VALUE",
+        default=[],
     )
     code_parser.add_argument(
         "--command",
@@ -358,8 +359,9 @@ def _convert_uppercase_keys_to_lowercase(args_dict: dict[str, Any]) -> dict[str,
 
 def docs(search: Sequence[str]) -> None:
     url = "https://docs.mila.quebec"
-    terms = "+".join(search)
-    url = f"{url}/search.html?q={terms}"
+    if search:
+        terms = "+".join(search)
+        url = f"{url}/search.html?q={terms}"
     print(f"Opening the docs: {url}")
     webbrowser.open(url)
 
@@ -819,6 +821,7 @@ def _add_standard_server_args(parser: ArgumentParser):
         nargs=argparse.REMAINDER,
         help="Extra options to pass to slurm",
         metavar="VALUE",
+        default=[],
     )
     parser.add_argument(
         "--job",
