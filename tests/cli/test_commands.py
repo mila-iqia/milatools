@@ -98,7 +98,7 @@ def test_check_command_output(
     file_regression: FileRegressionFixture,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test that the --help text matches what's expected (and is stable over time)."""
+    """Run simple commands and check that their output matches what's expected."""
 
     monkeypatch.setattr("webbrowser.open", lambda url: None)
     monkeypatch.setattr("sys.argv", shlex.split(command))
