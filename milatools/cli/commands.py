@@ -8,6 +8,7 @@ import time
 import traceback
 import webbrowser
 from contextlib import ExitStack
+from logging import getLogger as get_logger
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -31,6 +32,8 @@ from .utils import (
     with_control_file,
     yn,
 )
+
+logger = get_logger(__name__)
 
 
 def main():
@@ -290,17 +293,14 @@ class milatools:
         remote = Remote("mila")
         here = Local()
 
+        check_disk_quota(remote)
+
         cnode = _find_allocation(remote, job_name="mila-code")
         if persist:
             cnode = cnode.persist()
         data, proc = cnode.ensure_allocation()
 
         node_name = data["node_name"]
-
-        if not path.startswith("/"):
-            # Get $HOME because we have to give the full path to code
-            home = remote.home()
-            path = "/".join([home, path])
 
         try:
             while True:
@@ -406,7 +406,8 @@ class milatools:
                     necessary_keys = {"node_name", "to_forward"}
                     if any(k not in info for k in necessary_keys):
                         qn.print(
-                            f"{identifier} ({program}, MISSING INFO)", style="bold red"
+                            f"{identifier} ({program}, MISSING INFO)",
+                            style="bold red",
                         )
                         to_purge.append((identifier, jobid))
                     else:
@@ -682,6 +683,94 @@ def _standard_server(
     finally:
         local_proc.kill()
         proc.kill()
+
+
+def _get_disk_quota_usage(
+    remote: Remote, print_command_output: bool = True
+) -> tuple[tuple[float, float], tuple[int, int]]:
+    """Checks the disk quota on the $HOME filesystem on the mila cluster.
+
+    Returns whether the quota is exceeded, in terms of storage space or number of files.
+
+    Here is what the output of `disk-quota` looks like on the Mila cluster:
+    ```console
+
+    Quota information for storage pool Default (ID: 1):
+
+          user/group     ||           size          ||    chunk files
+         name     |  id  ||    used    |    hard    ||  used   |  hard
+    --------------|------||------------|------------||---------|---------
+          normandf|1471600598||   97.20 GiB|  100.00 GiB||   806898|  1000000
+    ```
+    """
+    disk_quota_output = remote.get_output("disk-quota", hide=not print_command_output)
+    last_line_parts = disk_quota_output.splitlines()[-1]
+    (
+        _username,
+        _id,
+        _,
+        used_gb,
+        max_gb,
+        _,
+        used_files,
+        max_files,
+    ) = last_line_parts.split("|")
+    used_gb = float(used_gb.removesuffix("GiB").strip())
+    max_gb = float(max_gb.removesuffix("GiB").strip())
+    used_files = int(used_files.strip())
+    max_files = int(max_files.strip())
+    return (used_gb, max_gb), (used_files, max_files)
+
+
+def check_disk_quota(remote: Remote) -> None:
+    cluster = (
+        "mila"  # todo: if we run this on CC, then we should use `diskusage_report`
+    )
+    # todo: Check the disk-quota of other filesystems if needed.
+    filesystem = "$HOME"
+    logger.debug("Checking disk quota on $HOME...")
+    (used_gb, max_gb), (used_files, max_files) = _get_disk_quota_usage(remote)
+    logger.debug(
+        f"Disk usage: {used_gb} / {max_gb} GiB and {used_files} / {max_files} files"
+    )
+    size_ratio = used_gb / max_gb
+    files_ratio = used_files / max_files
+    reason = (
+        f"{used_gb} / {max_gb} GiB"
+        if size_ratio > files_ratio
+        else f"{used_files} / {max_files} files"
+    )
+
+    freeing_up_space_instructions = (
+        "For example, temporary files (logs, checkpoints, etc.) can be moved to $SCRATCH, "
+        "while files that need to be stored for longer periods can be moved to $ARCHIVE "
+        "or to a shared project folder under /network/projects.\n"
+        "Visit https://docs.mila.quebec/Information.html#storage to learn more about how to "
+        "best make use of the different filesystems available on the cluster."
+        ""
+    )
+
+    if used_gb >= max_gb or used_files >= max_files:
+        raise MilatoolsUserError(
+            T.red(
+                f"ERROR: Your disk quota on the {filesystem} filesystem is exceeded! ({reason}).\n"
+                f"To fix this, login to the cluster with `ssh {cluster}` and free up some space, "
+                f"either by deleting files, or by moving them to a suitable filesystem.\n"
+                + freeing_up_space_instructions
+            )
+        )
+    if max(size_ratio, files_ratio) > 0.9:
+        warning_message = (
+            f"WARNING: You are getting pretty close to your disk quota on the $HOME "
+            f"filesystem: ({reason})\n"
+            "Please consider freeing up some space in your $HOME folder, either by "
+            "deleting files, or by moving them to a more suitable filesystem.\n"
+            + freeing_up_space_instructions
+        )
+        # TODO: Perhaps we could use the logger or the warnings package instead of just printing?
+        # logger.warning(UserWarning(warning_message))
+        # warnings.warn(UserWarning(T.yellow(warning_message)))
+        print(UserWarning(T.yellow(warning_message)))
 
 
 @tooled
