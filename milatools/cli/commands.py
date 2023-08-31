@@ -155,8 +155,8 @@ def mila():
     forward_parser.add_argument(
         "--port",
         type=int,
-        help="Port to open on the local machine",
         default=None,
+        help="Port to open on the local machine",
         metavar="VALUE",
     )
     forward_parser.set_defaults(function=forward)
@@ -234,8 +234,8 @@ def mila():
     serve_connect_parser.add_argument(
         "--port",
         type=int,
-        help="Port to open on the local machine",
         default=None,
+        help="Port to open on the local machine",
         metavar="VALUE",
     )
     serve_connect_parser.set_defaults(function=connect)
@@ -597,7 +597,7 @@ def code(
         print(T.bold(f"  ssh mila scancel {data['jobid']}"))
 
 
-def connect(identifier: str, port: int | None = None):
+def connect(identifier: str, port: int | None):
     """Reconnect to a persistent server."""
 
     remote = Remote("mila")
@@ -607,7 +607,7 @@ def connect(identifier: str, port: int | None = None):
         node=f"{info['node_name']}.server.mila.quebec",
         to_forward=info["to_forward"],
         options={"token": info.get("token", None)},
-        port=port or info["local_port"],
+        port=port or int(info["local_port"]),
         through_login=info["host"] == "0.0.0.0",
     )
 
@@ -675,20 +675,26 @@ def serve_list(purge: bool):
 
 
 class StandardServerArgs(TypedDict):
-    profile: str | None
-    """Name of the profile to use"""
-    persist: bool
-    """Whether the server should persist or not"""
-    name: str | None
-    """Name of the persistent server"""
-    node: str | None
-    """Node to connect to"""
+    alloc: Sequence[str]
+    """Extra options to pass to slurm"""
 
     job: str | None
     """Job ID to connect to"""
 
-    alloc: Sequence[str]
-    """Extra options to pass to slurm"""
+    name: str | None
+    """Name of the persistent server"""
+
+    node: str | None
+    """Node to connect to"""
+
+    persist: bool
+    """Whether the server should persist or not"""
+
+    port: int | None
+    """Port to open on the local machine"""
+
+    profile: str | None
+    """Name of the profile to use"""
 
 
 def lab(path: str | None, **kwargs: Unpack[StandardServerArgs]):
@@ -873,6 +879,7 @@ def _standard_server(
     command,
     profile: str | None,
     persist: bool,
+    port: int | None,
     name: str | None,
     node: str | None,
     job: str | None,
@@ -1005,6 +1012,7 @@ def _standard_server(
         node=qualified(node_name),
         to_forward=to_forward,
         options=options,
+        port=port,
     )
 
     if cf is not None:
@@ -1143,9 +1151,9 @@ def _forward(
     local: Local,
     node: str,
     to_forward: int | str,
+    port: int | None,
     page: str | None = None,
     options: dict[str, str | None] = {},
-    port: int | str | None = None,
     through_login: bool = False,
 ):
     if port is None:
