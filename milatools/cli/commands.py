@@ -314,7 +314,7 @@ def mila():
         "LOGDIR", type=str, help="Path to the experiment logs"
     )
     _add_standard_server_args(serve_tensorboard_parser)
-    serve_notebook_parser.set_defaults(function=tensorboard)
+    serve_tensorboard_parser.set_defaults(function=tensorboard)
 
     # ----- mila serve mlflow ------
 
