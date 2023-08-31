@@ -881,7 +881,6 @@ def _standard_server(
     token_pattern=None,
 ):
     # Make the server visible from the login node (other users will be able to connect)
-    # share: Option & bool = default(False)
     # Temporarily disabled
     share = False
 
@@ -1121,16 +1120,6 @@ def _find_allocation(
     alloc: Sequence[str],
     job_name: str = "mila-tools",
 ):
-    # # Node to connect to
-    # node: Option = default(None)
-
-    # # Job ID to connect to
-    # job: Option = default(None)
-
-    # # Extra options to pass to slurm
-    # # [nargs: --]
-    # alloc: Option = default([])
-
     if (node is not None) + (job is not None) + bool(alloc) > 1:
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
