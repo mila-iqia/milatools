@@ -41,6 +41,7 @@ from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
     SSHConnectionError,
+    SSHConfig,
     T,
     get_fully_qualified_name,
     qualified,
@@ -139,7 +140,6 @@ def mila():
     intranet_parser.set_defaults(function=intranet)
 
     # ----- mila init ------
-
     init_parser = subparsers.add_parser(
         "init",
         help="Set up your configuration and credentials.",
@@ -396,6 +396,7 @@ def init():
     print("Checking ssh config")
 
     ssh_config = setup_ssh_config()
+
     print("# OK")
 
     # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
@@ -405,13 +406,15 @@ def init():
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
-    setup_passwordless_ssh_access()
+    # TODO: Move the rest of this command to functions in the init_command module,
+    # so they can more easily be tested.
+    setup_passwordless_ssh_access(ssh_config=ssh_config)
     setup_keys_on_login_node()
     setup_vscode_settings()
     print_welcome_message()
 
 
-def setup_passwordless_ssh_access():
+def setup_passwordless_ssh_access(ssh_config: SSHConfig):
     print("Checking passwordless authentication")
 
     here = Local()
@@ -431,7 +434,6 @@ def setup_passwordless_ssh_access():
             exit("No public keys.")
 
     # Check that it is possible to connect using the key
-
     if not here.check_passwordless("mila"):
         if yn(
             "Your public key does not appear be registered on the cluster. Register it?"
@@ -449,6 +451,34 @@ def setup_passwordless_ssh_access():
                 exit("ssh-copy-id appears to have failed")
         else:
             exit("No passwordless login.")
+
+    # Check the connection to the DRAC clusters.
+    drac_clusters = ["beluga", "narval", "cedar", "graham"]
+    for cluster in drac_clusters:
+        if all(cluster not in hostname for hostname in ssh_config.hosts()):
+            logger.debug(
+                f"Skipping {cluster} cluster because it is not in the ssh config"
+            )
+            continue
+        if here.check_passwordless(cluster):
+            logger.debug(
+                f"Passwordless authentication to {cluster} cluster is already setup."
+            )
+
+            continue
+        if yn(
+            f"Your public key does not appear be registered on the {cluster} cluster. "
+            "Register it?"
+        ):
+            here.run("ssh-copy-id", cluster)
+            if not here.check_passwordless(cluster):
+                exit("ssh-copy-id appears to have failed")
+        else:
+            exit("No passwordless login.")
+
+    #####################################
+    # Step 3: Set up keys on login node #
+    #####################################
 
 
 def setup_keys_on_login_node():
