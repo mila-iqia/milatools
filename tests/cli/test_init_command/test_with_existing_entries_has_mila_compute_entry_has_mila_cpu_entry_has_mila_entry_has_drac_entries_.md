@@ -8,6 +8,33 @@ Host mila
 Host mila-cpu
   HostName login.server.mila.quebec
 
+Host *.server.mila.quebec !*login.server.mila.quebec
+  HostName foooobar.com
+
+
+# Compute Canada
+Host beluga cedar graham narval niagara
+  Hostname %h.alliancecan.ca
+  User bob
+Host mist
+  Hostname mist.scinet.utoronto.ca
+  User bob
+Host !beluga  bc????? bg????? bl?????
+  ProxyJump beluga
+  User bob
+Host !cedar   cdr? cdr?? cdr??? cdr????
+  ProxyJump cedar
+  User bob
+Host !graham  gra??? gra????
+  ProxyJump graham
+  User bob
+Host !narval  nc????? ng?????
+  ProxyJump narval
+  User bob
+Host !niagara nia????
+  ProxyJump niagara
+  User bob
+
 ```
 
 and these user inputs: ['y']
@@ -43,9 +70,31 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   User bob
   ProxyJump mila
-  ForwardAgent yes
-  ForwardX11 yes
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
+
+
+# Compute Canada
+Host beluga cedar graham narval niagara
+  Hostname %h.computecanada.ca
+  User bob
+Host mist
+  Hostname mist.scinet.utoronto.ca
+  User bob
+Host !beluga  bc????? bg????? bl?????
+  ProxyJump beluga
+  User bob
+Host !cedar   cdr? cdr?? cdr??? cdr????
+  ProxyJump cedar
+  User bob
+Host !graham  gra??? gra????
+  ProxyJump graham
+  User bob
+Host !narval  nc????? ng?????
+  ProxyJump narval
+  User bob
+Host !niagara nia????
+  ProxyJump niagara
+  User bob
 ```

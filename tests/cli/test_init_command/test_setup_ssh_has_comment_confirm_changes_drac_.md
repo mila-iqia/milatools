@@ -1,22 +1,44 @@
 Running the `mila init` command with this initial content:
 
 ```
-Host mila
-  HostName login.server.mila.quebec
+# A comment in the file.
+
+```
+
+and these user inputs: ('bob\r', 'y', 'bob\r', 'y')
+leads the following ssh config file:
+
+```
+# A comment in the file.
+
+Host beluga cedar graham narval niagara
+  HostName %h.computecanada.ca
   User bob
 
-Host mila-cpu
-  HostName login.server.mila.quebec
+Host mist
+  HostName mist.scinet.utoronto.ca
+  User bob
 
-Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName foooobar.com
+Host !beluga  bc????? bg????? bl?????
+  ProxyJump beluga
+  User bob
 
-```
+Host !cedar   cdr? cdr?? cdr??? cdr????
+  ProxyJump cedar
+  User bob
 
-and these user inputs: ['y']
-leads to the following ssh config file:
+Host !graham  gra??? gra????
+  ProxyJump graham
+  User bob
 
-```
+Host !narval  nc????? ng?????
+  ProxyJump narval
+  User bob
+
+Host !niagara nia????
+  ProxyJump niagara
+  User bob
+
 Host mila
   HostName login.server.mila.quebec
   User bob
@@ -29,7 +51,6 @@ Host mila
   ControlPersist 600
 
 Host mila-cpu
-  HostName login.server.mila.quebec
   User bob
   Port 2222
   ForwardAgent yes
@@ -46,8 +67,6 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   User bob
   ProxyJump mila
-  ForwardAgent yes
-  ForwardX11 yes
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600

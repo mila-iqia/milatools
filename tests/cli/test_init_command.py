@@ -105,12 +105,27 @@ def _yn(accept: bool):
 def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
     ssh_config_path = tmp_path / "ssh_config"
 
-    for prompt in ["y", "bob\r", "y", "y", "y", "y", "y"]:
+    for prompt in [
+        "y",
+        "bob\r",  # mila username
+        "y",  # drac?
+        "bob\r",  # drac username
+        "y",
+        "y",
+        "y",
+        "y",
+        "y",
+    ]:
         input_pipe.send_text(prompt)
     setup_ssh_config(tmp_path / "ssh_config")
     assert ssh_config_path.exists()
 
 
+@pytest.mark.parametrize(
+    "drac_username",
+    [None, "bob"],
+    ids=["no_drac", "drac"],
+)
 @pytest.mark.parametrize(
     "confirm_changes",
     [False, True],
@@ -158,6 +173,7 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
 def test_setup_ssh(
     initial_contents: str,
     confirm_changes: bool,
+    drac_username: str | None,
     tmp_path: Path,
     file_regression: FileRegressionFixture,
     input_pipe: PipeInput,
@@ -175,7 +191,10 @@ def test_setup_ssh(
             f.write(initial_contents)
 
     user_inputs = [
-        "bob\r",  # username
+        "bob\r",  # username on Mila cluster
+        *(  # DRAC account? + enter username
+            ["n"] if drac_username is None else ["y", drac_username + "\r"]
+        ),
         _yn(confirm_changes),
     ]
     for prompt in user_inputs:
@@ -238,7 +257,12 @@ def test_fixes_overly_general_entry(
         f.write(initial_contents)
 
     # Enter username, accept fixing that entry, then confirm.
-    for user_input in ["bob\r", "y", "y"]:
+    for user_input in [
+        "bob\r",  # mila username
+        "n",  # DRAC account?
+        "y",
+        "y",
+    ]:
         input_pipe.send_text(user_input)
 
     setup_ssh_config(ssh_config_path=ssh_config_path)
@@ -281,6 +305,30 @@ def test_ssh_config_host(tmp_path: Path):
     }
 
 
+def parametrize_flags(*test_param_names: str):
+    flags = ("mila", "mila_cpu", "mila_gpu", "mila_computenode", "drac")
+    test_params = list(itertools.product([False, True], repeat=len(flags)))
+    test_accepted_prompt_names: list[list[str]] = [
+        sum(
+            ([flags[i]] if b else [] for i, b in enumerate(bs)),
+            [],
+        )
+        for bs in test_params
+    ]
+    test_ids = [
+        "-".join(accepted_prompt_names)
+        for accepted_prompt_names in test_accepted_prompt_names
+    ]
+    return pytest.mark.parametrize(
+        test_param_names,
+        test_params,
+        ids=test_ids,
+    )
+
+
+@pytest.mark.parametrize(
+    "already_has_drac", [True, False], ids=["has_drac_entries", "no_drac_entries"]
+)
 @pytest.mark.parametrize(
     "already_has_mila", [True, False], ids=["has_mila_entry", "no_mila_entry"]
 )
@@ -298,15 +346,17 @@ def test_with_existing_entries(
     already_has_mila: bool,
     already_has_mila_cpu: bool,
     already_has_mila_compute: bool,
+    already_has_drac: bool,
     file_regression: FileRegressionFixture,
     tmp_path: Path,
     input_pipe: PipeInput,
 ):
+    user = "bob"
     existing_mila = textwrap.dedent(
-        """\
+        f"""\
         Host mila
           HostName login.server.mila.quebec
-          User bob
+          User {user}
         """
     )
     existing_mila_cpu = textwrap.dedent(
@@ -321,11 +371,38 @@ def test_with_existing_entries(
           HostName foooobar.com
         """
     )
+    existing_drac = textwrap.dedent(
+        f"""
+        # Compute Canada
+        Host beluga cedar graham narval niagara
+          Hostname %h.alliancecan.ca
+          User {user}
+        Host mist
+          Hostname mist.scinet.utoronto.ca
+          User {user}
+        Host !beluga  bc????? bg????? bl?????
+          ProxyJump beluga
+          User {user}
+        Host !cedar   cdr? cdr?? cdr??? cdr????
+          ProxyJump cedar
+          User {user}
+        Host !graham  gra??? gra????
+          ProxyJump graham
+          User {user}
+        Host !narval  nc????? ng?????
+          ProxyJump narval
+          User {user}
+        Host !niagara nia????
+          ProxyJump niagara
+          User {user}
+        """
+    )
 
     initial_blocks = []
     initial_blocks += [existing_mila] if already_has_mila else []
     initial_blocks += [existing_mila_cpu] if already_has_mila_cpu else []
     initial_blocks += [existing_mila_compute] if already_has_mila_compute else []
+    initial_blocks += [existing_drac] if already_has_drac else []
     initial_contents = _join_blocks(*initial_blocks)
 
     # TODO: Need to insert the entries in the right place, in the right order!
@@ -349,11 +426,13 @@ def test_with_existing_entries(
             "  ControlPersist 600",
         ]
     )
+
     if not all(
         [
             already_has_mila and controlmaster_block in existing_mila,
             already_has_mila_cpu,
             already_has_mila_compute and controlmaster_block in existing_mila_compute,
+            already_has_drac,
         ]
     ):
         # There's a confirmation prompt only if we're adding some entry.
@@ -361,7 +440,10 @@ def test_with_existing_entries(
     else:
         confirm_inputs = []
 
-    prompt_inputs = username_input + confirm_inputs
+    drac_username_inputs = []
+    if not already_has_drac:
+        drac_username_inputs = ["y", f"{user}\r"]
+    prompt_inputs = username_input + drac_username_inputs + confirm_inputs
 
     for prompt_input in prompt_inputs:
         input_pipe.send_text(prompt_input)
