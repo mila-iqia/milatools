@@ -304,6 +304,11 @@ class milatools:
 
         node_name = data["node_name"]
 
+        if not path.startswith("/"):
+            # Get $HOME because we have to give the full path to code
+            home = remote.home()
+            path = "/".join([home, path])
+
         try:
             while True:
                 here.run(
@@ -408,8 +413,7 @@ class milatools:
                     necessary_keys = {"node_name", "to_forward"}
                     if any(k not in info for k in necessary_keys):
                         qn.print(
-                            f"{identifier} ({program}, MISSING INFO)",
-                            style="bold red",
+                            f"{identifier} ({program}, MISSING INFO)", style="bold red"
                         )
                         to_purge.append((identifier, jobid))
                     else:
