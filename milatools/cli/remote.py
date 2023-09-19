@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import re
 import socket
 import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
+from typing import TypedDict
 
+import fabric.runners
 import paramiko
 import questionary as qn
 from fabric import Connection
@@ -74,6 +78,15 @@ def get_first_node_name(node_names_out: str) -> str:
         return base + inside_brackets.split(",")[0]
     assert "-" in inside_brackets
     return base + inside_brackets.split("-")[0]
+
+
+class AllocationInfo(TypedDict):
+    node_name: str
+
+
+class PersistAllocationInfo(AllocationInfo):
+    node_name: str
+    jobid: str
 
 
 class Remote:
@@ -192,7 +205,7 @@ class Remote:
         )
         return self
 
-    def ensure_allocation(self):
+    def ensure_allocation(self) -> tuple[AllocationInfo, None]:
         return {"node_name": self.hostname}, None
 
     def run_script(self, name, *args, **kwargs):
@@ -252,7 +265,9 @@ class SlurmRemote(Remote):
     def persist(self):
         return self.with_transforms(persist=True)
 
-    def ensure_allocation(self):
+    def ensure_allocation(
+        self,
+    ) -> tuple[AllocationInfo | PersistAllocationInfo, fabric.runners.Remote]:
         if self._persist:
             proc, results = self.extract(
                 "echo @@@ $(hostname) @@@ && sleep 1000d",

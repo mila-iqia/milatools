@@ -155,7 +155,7 @@ class SSHConfig:
         return "\n".join(lines)
 
 
-def qualified(node_name):
+def qualified(node_name: str):
     """Return the fully qualified name corresponding to this node name."""
 
     if "." not in node_name and not node_name.endswith(".server.mila.quebec"):

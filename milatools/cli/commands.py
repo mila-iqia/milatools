@@ -31,10 +31,11 @@ from ..version import version as mversion
 from .init_command import setup_ssh_config
 from .local import Local
 from .profile import ensure_program, setup_profile
-from .remote import Remote, SlurmRemote
+from .remote import PersistAllocationInfo, Remote, SlurmRemote
 from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
+    SSHConfig,
     SSHConnectionError,
     T,
     get_fully_qualified_name,
@@ -536,27 +537,42 @@ def code(
         node: Node to connect to
         alloc: Extra options to pass to slurm
     """
+    if (node is not None) + (job is not None) + bool(alloc) > 1:
+        exit("ERROR: --node, --job and --alloc are mutually exclusive")
+
     here = Local()
-    remote = Remote("mila")
 
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-    check_disk_quota(remote)
-
-    cnode = _find_allocation(
-        remote, job_name="mila-code", job=job, node=node, alloc=alloc
-    )
-    if persist:
-        cnode = cnode.persist()
-    data, proc = cnode.ensure_allocation()
-
-    node_name = data["node_name"]
-
     if not path.startswith("/"):
         # Get $HOME because we have to give the full path to code
-        home = remote.home()
-        path = "/".join([home, path])
+        user = get_user_from_ssh_config()
+        path = f"/home/mila/{user[0]}/{user}/{path}"
+
+    if node is None:
+        remote = Remote("mila")
+
+        check_disk_quota(remote)
+
+        cnode = _find_allocation(
+            remote, job_name="mila-code", job=job, node=None, alloc=alloc
+        )
+        if persist:
+            cnode = cnode.persist()
+            data, proc = cnode.ensure_allocation()
+            assert "jobid" in data
+            job = data["jobid"]
+            assert isinstance(job, str)
+        else:
+            data, proc = cnode.ensure_allocation()
+            job = None
+
+        node_name = data["node_name"]
+        assert isinstance(node_name, str)
+        node = node_name
+    else:
+        proc = None
 
     command_path = shutil.which(command)
     if not command_path:
@@ -567,7 +583,7 @@ def code(
                 command_path,
                 "-nw",
                 "--remote",
-                f"ssh-remote+{qualified(node_name)}",
+                f"ssh-remote+{qualified(node)}",
                 path,
             )
             print(
@@ -580,14 +596,14 @@ def code(
         if not persist:
             if proc is not None:
                 proc.kill()
-            print(f"Ended session on '{node_name}'")
+            print(f"Ended session on '{node}'")
 
     if persist:
         print("This allocation is persistent and is still active.")
         print("To reconnect to this node:")
-        print(T.bold(f"  mila code {path} --node {node_name}"))
+        print(T.bold(f"  mila code {path} --node {node}"))
         print("To kill this allocation:")
-        print(T.bold(f"  ssh mila scancel {data['jobid']}"))
+        print(T.bold(f"  ssh mila scancel {job}"))
 
 
 def connect(identifier: str, port: int | None):
@@ -1207,6 +1223,14 @@ def _forward(
     )
     webbrowser.open(url)
     return proc, port
+
+
+def get_user_from_ssh_config() -> str:
+    ssh_config_path = Path("~/.ssh/config")
+    ssh_config = SSHConfig(ssh_config_path)
+    mila_entry = ssh_config.host("mila")
+    user: str = mila_entry["user"]
+    return user
 
 
 if __name__ == "__main__":
