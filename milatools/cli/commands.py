@@ -717,8 +717,8 @@ def _get_disk_quota_usage(
         used_files,
         max_files,
     ) = last_line_parts.split("|")
-    used_gb = float(used_gb.removesuffix("GiB").strip())
-    max_gb = float(max_gb.removesuffix("GiB").strip())
+    used_gb = float(used_gb.replace("GiB", "").strip())
+    max_gb = float(max_gb.replace("GiB", "").strip())
     used_files = int(used_files.strip())
     max_files = int(max_files.strip())
     return (used_gb, max_gb), (used_files, max_files)
