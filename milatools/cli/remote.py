@@ -90,6 +90,7 @@ class Remote:
         self.connection = connection
         self.transforms = transforms
 
+    # TODO: Add mock test w/o connection
     def with_transforms(self, *transforms):
         return Remote(
             hostname=self.hostname,
@@ -97,21 +98,27 @@ class Remote:
             transforms=(*self.transforms, *transforms),
         )
 
+    # TODO: Add mock test w/o connection
     def wrap(self, wrapper):
         return self.with_transforms(wrapper.format)
 
+    # TODO: Add mock test w/o connection
     def with_precommand(self, precommand):
         return self.wrap(f"{precommand} && {{}}")
 
+    # TODO: Add mock test w/o connection and run
     def with_profile(self, profile):
         return self.wrap(f"source {profile} && {{}}")
 
+    # TODO: Add mock test w/o connection and run
     def with_bash(self):
         return self.with_transforms(lambda cmd: shjoin(["bash", "-c", cmd]))
 
+    # TODO: Add test
     def display(self, cmd):
         print(T.bold_cyan(f"({self.hostname}) $ ", cmd))
 
+    # TODO: Add local / no-CI test
     def _run(self, cmd, **kwargs):
         try:
             return self.connection.run(cmd, **kwargs)
@@ -120,9 +127,11 @@ class Remote:
                 f"Error: Could not connect to host '{self.hostname}', did you run 'mila init'?"
             )
 
+    # TODO: Add local / no-CI test
     def simple_run(self, cmd, **kwargs):
         return self._run(cmd, hide=True, **kwargs)
 
+    # TODO: Add local / no-CI test
     def run(self, cmd, display=None, hide=False, **kwargs):
         if display is None:
             display = not hide
@@ -132,12 +141,15 @@ class Remote:
             cmd = transform(cmd)
         return self._run(cmd, hide=hide, **kwargs)
 
+    # TODO: Add mock test w/o connection and run
     def get_output(self, cmd, **kwargs):
         return self.run(cmd, **kwargs).stdout.strip()
 
+    # TODO: Add mock test w/o connection and run
     def get_lines(self, cmd, **kwargs):
         return self.get_output(cmd, **kwargs).split()
 
+    # TODO: Add local / no-CI test
     def extract(self, cmd, patterns, wait=False, **kwargs):
         kwargs.setdefault("pty", True)
         qio = QueueIO()
@@ -168,12 +180,15 @@ class Remote:
         proc.join()
         return proc.runner, results
 
+    # TODO: Add local / no-CI test
     def get(self, src, dest):
         return self.connection.get(src, dest)
 
+    # TODO: Add local / no-CI test
     def put(self, src, dest):
         return self.connection.put(src, dest)
 
+    # TODO: Add local / no-CI test
     def puttext(self, text, dest):
         base = Path(dest).parent
         self.simple_run(f"mkdir -p {base}")
@@ -182,18 +197,22 @@ class Remote:
             f.flush()
             self.put(f.name, dest)
 
+    # TODO: Add local / no-CI test
     def home(self):
         return self.get_output("echo $HOME", hide=True)
 
+    # TODO: Add mock test w/o connection and run
     def persist(self):
         qn.print(
             "Warning: --persist does not work with --node or --job", style="orange"
         )
         return self
 
+    # TODO: Add mock test w/o connection and run
     def ensure_allocation(self):
         return {"node_name": self.hostname}, None
 
+    # TODO: Add local / no-CI test
     def run_script(self, name, *args, **kwargs):
         base = ".milatools/scripts"
         dest = f"{base}/{name}"
@@ -202,6 +221,7 @@ class Remote:
         self.put(here / name, dest)
         return self.run(shjoin([dest, *args]), **kwargs)
 
+    # TODO: Add local / no-CI test
     def extract_script(self, name, *args, pattern, **kwargs):
         base = ".milatools/scripts"
         dest = f"{base}/{name}"
@@ -224,9 +244,11 @@ class SlurmRemote(Remote):
             ],
         )
 
+    # TODO: Add mock test w/o connection and run
     def srun_transform(self, cmd):
         return shjoin(["srun", *self.alloc, "bash", "-c", cmd])
 
+    # TODO: Add mock test w/o connection and run
     def srun_transform_persist(self, cmd):
         tag = time.time_ns()
         batch_file = f".milatools/batch/batch-{tag}.sh"
@@ -240,6 +262,7 @@ class SlurmRemote(Remote):
         cmd = shjoin(["sbatch", *self.alloc, batch_file])
         return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
 
+    # TODO: Add mock test w/o connection and run
     def with_transforms(self, *transforms, persist=None):
         return SlurmRemote(
             connection=self.connection,
@@ -248,9 +271,11 @@ class SlurmRemote(Remote):
             persist=self._persist if persist is None else persist,
         )
 
+    # TODO: Add mock test w/o connection and run
     def persist(self):
         return self.with_transforms(persist=True)
 
+    # TODO: Add local / no-CI test
     def ensure_allocation(self):
         if self._persist:
             proc, results = self.extract(

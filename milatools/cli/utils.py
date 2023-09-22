@@ -44,6 +44,7 @@ def randname():
     return f"{a}{b}-{c}{d}"
 
 
+# TODO: Add local / no-CI test
 @contextmanager
 def with_control_file(remote, name=None):
     name = name or randname()
@@ -67,6 +68,7 @@ class MilatoolsUserError(Exception):
     pass
 
 
+# TODO: Add test
 class CommandNotFoundError(MilatoolsUserError):
     # Instructions to install certain commands if they are not found
     instructions = {
@@ -89,6 +91,7 @@ class CommandNotFoundError(MilatoolsUserError):
         return message
 
 
+# TODO: Add test
 class SSHConnectionError(paramiko.SSHException):
     def __init__(self, node_hostname: str, error: paramiko.SSHException):
         super().__init__()
@@ -119,6 +122,7 @@ def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
 
 
+# TODO: Add local / no-CI test
 def askpath(prompt, remote):
     while True:
         pth = qn.text(prompt).unsafe_ask()
@@ -130,12 +134,14 @@ def askpath(prompt, remote):
         return pth
 
 
+# TODO: Add test only in Python >= 3.8 to validate the output with shlex.join
 # This is the implementation of shlex.join in Python >= 3.8
 def shjoin(split_command):
     """Return a shell-escaped string from *split_command*."""
     return " ".join(shlex.quote(arg) for arg in split_command)
 
 
+# TODO: Add test
 class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 
@@ -155,6 +161,7 @@ class SSHConfig:
         return "\n".join(lines)
 
 
+# TODO: Add test
 def qualified(node_name):
     """Return the fully qualified name corresponding to this node name."""
 
@@ -163,6 +170,7 @@ def qualified(node_name):
     return node_name
 
 
+# TODO: Add test
 def get_fully_qualified_name() -> str:
     """Return the fully qualified name of the current machine.
 

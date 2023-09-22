@@ -27,6 +27,7 @@ def _ask_name(message, default=""):
             qn.print(f"Invalid name: {name}", style="bold red")
 
 
+# TODO: Add local / no-CI test
 def setup_profile(remote, path):
     profile = select_preferred(remote, path)
     preferred = profile is not None
@@ -46,6 +47,7 @@ def setup_profile(remote, path):
     return profile
 
 
+# TODO: Add local / no-CI test
 def select_preferred(remote, path):
     preferred = f"{path}/.milatools-profile"
     qn.print(f"Checking for preferred profile in {preferred}")
@@ -59,6 +61,7 @@ def select_preferred(remote, path):
     return preferred
 
 
+# TODO: Add local / no-CI test
 def select_profile(remote):
     profdir = "~/.milatools/profiles"
 
@@ -96,6 +99,7 @@ def select_profile(remote):
     return profile
 
 
+# TODO: Add local / no-CI test
 def create_profile(remote, path="~"):
     modules = select_modules(remote)
 
@@ -125,6 +129,8 @@ def create_profile(remote, path="~"):
     return prof_file
 
 
+# TODO: Add local / no-CI test
+# TODO: Shouldn't these be defined in the profiles?
 def select_modules(remote):
     choices = [
         qn.Choice(
@@ -184,6 +190,7 @@ def select_modules(remote):
     return modules
 
 
+# TODO: Add test
 def _env_basename(pth):
     base = pth.split("/")[-1]
     if base == "3":
@@ -191,6 +198,7 @@ def _env_basename(pth):
     return base
 
 
+# TODO: Add local / no-CI test
 def select_conda_environment(remote, loader="module load miniconda/3"):
     qn.print("Fetching the list of conda environments...")
     envstr = remote.get_output(f"conda env list --json", hide=True)
@@ -244,6 +252,7 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
     return env
 
 
+# TODO: Add local / no-CI test
 def select_virtual_environment(remote, path):
     envstr = remote.get_output(
         f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/* ~/scratch/virtualenvs/*",
@@ -281,6 +290,7 @@ def select_virtual_environment(remote, path):
     return env
 
 
+# TODO: Add local / no-CI test
 def ensure_program(remote, program, installers):
     to_test = [program, *installers.keys()]
     progs = [

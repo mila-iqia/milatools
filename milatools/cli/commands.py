@@ -102,6 +102,8 @@ class milatools:
         if version:
             print(f"milatools v{mversion}")
 
+    # TODO: add mock test
+    # TODO: move url to config
     def docs():
         """Open the Mila cluster documentation."""
         # Search terms
@@ -114,6 +116,8 @@ class milatools:
         print(f"Opening the docs: {url}")
         webbrowser.open(url)
 
+    # TODO: add mock test
+    # TODO: move url to config
     def intranet():
         """Open the Mila intranet in a browser."""
         # Search terms
@@ -127,6 +131,7 @@ class milatools:
         print(f"Opening the intranet: {url}")
         webbrowser.open(url)
 
+    # TODO: Add local / no-CI test
     def init():
         """Set up your configuration and credentials."""
 
@@ -242,6 +247,7 @@ class milatools:
             "channel on Slack.",
         )
 
+    # TODO: Add local / no-CI test
     def forward():
         """Forward a port on a compute node to your local machine."""
 
@@ -272,6 +278,7 @@ class milatools:
         finally:
             local_proc.kill()
 
+    # TODO: Add local / no-CI test
     def code():
         """Open a remote VSCode session on a compute node."""
         # Path to open on the remote machine
@@ -337,6 +344,7 @@ class milatools:
             print(f"To kill this allocation:")
             print(T.bold(f"  ssh mila scancel {data['jobid']}"))
 
+    # TODO: Add local / no-CI test
     class serve:
         """Start services on compute nodes and forward them to your local machine."""
 
@@ -527,6 +535,7 @@ class milatools:
             )
 
 
+# TODO: Add mock test w/o connection
 def _get_server_info(remote, identifier, hide=False):
     text = remote.get_output(f"cat .milatools/control/{identifier}", hide=hide)
     info = dict(line.split(" = ") for line in text.split("\n") if line)
@@ -542,6 +551,7 @@ def _get_server_info_command(remote):
     return identifier, _get_server_info(remote, identifier)
 
 
+# TODO: Add local / no-CI test
 @tooled
 def _standard_server(
     path,
@@ -673,6 +683,7 @@ def _standard_server(
         options=options,
     )
 
+    # Is this not always echoing to /dev/null since `cf`` has hexited ExitStack()?
     if cf is not None:
         remote.simple_run(f"echo local_port = {local_proc.local_port} >> {cf}")
 
@@ -691,6 +702,7 @@ def _standard_server(
         proc.kill()
 
 
+# TODO: Add mock test w/o connection
 def _get_disk_quota_usage(
     remote: Remote, print_command_output: bool = True
 ) -> tuple[tuple[float, float], tuple[int, int]]:
@@ -728,6 +740,7 @@ def _get_disk_quota_usage(
     return (used_gb, max_gb), (used_files, max_files)
 
 
+# TODO: Add mock test w/o connection
 def check_disk_quota(remote: Remote) -> None:
     cluster = (
         "mila"  # todo: if we run this on CC, then we should use `diskusage_report`
@@ -779,6 +792,7 @@ def check_disk_quota(remote: Remote) -> None:
         print(UserWarning(T.yellow(warning_message)))
 
 
+# TODO: Add local / no-CI test
 @tooled
 def _find_allocation(remote, job_name="mila-tools"):
     # Node to connect to
@@ -810,6 +824,7 @@ def _find_allocation(remote, job_name="mila-tools"):
         )
 
 
+# TODO: Add local / no-CI test
 @tooled
 def _forward(
     local,

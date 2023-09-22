@@ -8,6 +8,8 @@ import questionary as qn
 from .utils import SSHConfig, T, yn
 
 
+# TODO: check if there's anything else to test here but a bunch of tests seams
+# to already be existing
 def setup_ssh_config(
     ssh_config_path: str | Path = "~/.ssh/config",
 ):
@@ -125,6 +127,7 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     return config_file
 
 
+# TODO: should this be tested?
 def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
     print(T.bold("The following modifications will be made to your ~/.ssh/config:\n"))
     diff_lines = list(
@@ -167,6 +170,7 @@ def _get_username(ssh_config: SSHConfig) -> str:
     return username.strip()
 
 
+# TODO: add test
 def _is_valid_username(text: str) -> bool | str:
     return (
         "Please enter your username on the mila cluster."
@@ -180,6 +184,7 @@ def _is_valid_username(text: str) -> bool | str:
 # from typing_extensions import Unpack
 
 
+# TODO: Add test
 def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,

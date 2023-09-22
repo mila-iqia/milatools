@@ -44,6 +44,7 @@ class Local:
             **kwargs,
         )
 
+    # TODO: Add local / no-CI test
     def check_passwordless(self, host):
         results = self.run(
             "ssh",
