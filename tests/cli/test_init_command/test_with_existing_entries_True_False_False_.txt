@@ -1,8 +1,10 @@
-Host mila-gpu
-  HostName login.server.mila.quebec
-
 Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName foooobar.com
+  HostName %h
+  User bob
+  ProxyJump mila
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 
 Host mila
   HostName login.server.mila.quebec
@@ -11,6 +13,9 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 
 
 Host mila-cpu
