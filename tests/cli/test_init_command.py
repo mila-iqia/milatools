@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import itertools
-from re import escape
-import re
-import shlex
 import textwrap
 from functools import partial
 from pathlib import Path
