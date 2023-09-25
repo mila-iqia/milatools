@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import itertools
+from re import escape
+import re
+import shlex
 import textwrap
 from functools import partial
 from pathlib import Path
@@ -56,7 +59,9 @@ def test_questionary_uses_input_pipe(input_pipe: PipeInput):
 
 
 def _join_blocks(*blocks: str, user: str = "bob") -> str:
-    return "\n".join(textwrap.dedent(block) for block in blocks).format(user=user)
+    return "\n".join(textwrap.dedent(block) for block in blocks).format(
+        user=user
+    )
 
 
 def _yn(accept: bool):
@@ -133,13 +138,42 @@ def test_setup_ssh(
 
     should_exit = not confirm_changes
 
-    with pytest.raises(SystemExit) if should_exit else contextlib.nullcontext():
+    with pytest.raises(
+        SystemExit
+    ) if should_exit else contextlib.nullcontext():
         setup_ssh_config(ssh_config_path=ssh_config_path)
 
     assert ssh_config_path.exists()
     with open(ssh_config_path) as f:
         resulting_contents = f.read()
-    file_regression.check(resulting_contents)
+
+    expected_text = "\n".join(
+        [
+            "Running the `mila init` command with "
+            + (
+                "\n".join(
+                    [
+                        "this initial content:",
+                        "",
+                        "```",
+                        initial_contents,
+                        "```",
+                    ]
+                )
+                if initial_contents
+                else "no initial ssh config file"
+            ),
+            "",
+            f"and these user inputs: {user_inputs}",
+            "leads the following ssh config file:",
+            "",
+            "```",
+            resulting_contents,
+            "```",
+        ]
+    )
+
+    file_regression.check(expected_text, extension=".md")
 
 
 def test_fixes_overly_general_entry(
@@ -247,7 +281,9 @@ def test_with_existing_entries(
     initial_blocks = []
     initial_blocks += [existing_mila] if already_has_mila else []
     initial_blocks += [existing_mila_cpu] if already_has_mila_cpu else []
-    initial_blocks += [existing_mila_compute] if already_has_mila_compute else []
+    initial_blocks += (
+        [existing_mila_compute] if already_has_mila_compute else []
+    )
     initial_contents = _join_blocks(*initial_blocks)
 
     # TODO: Need to insert the entries in the right place, in the right order!
@@ -260,7 +296,8 @@ def test_with_existing_entries(
     # Accept all the prompts.
     username_input = (
         ["bob\r"]
-        if not already_has_mila or (already_has_mila and "User" not in existing_mila)
+        if not already_has_mila
+        or (already_has_mila and "User" not in existing_mila)
         else []
     )
 
@@ -275,7 +312,8 @@ def test_with_existing_entries(
         [
             already_has_mila and controlmaster_block in existing_mila,
             already_has_mila_cpu,
-            already_has_mila_compute and controlmaster_block in existing_mila_compute,
+            already_has_mila_compute
+            and controlmaster_block in existing_mila_compute,
         ]
     ):
         # There's a confirmation prompt only if we're adding some entry.
@@ -311,7 +349,7 @@ def test_with_existing_entries(
             ),
             "",
             f"and these user inputs: {prompt_inputs}",
-            "resulted in creating the following ssh config file:",
+            "leads to the following ssh config file:",
             "",
             "```",
             resulting_contents,
@@ -400,7 +438,6 @@ def test_get_username(
 ):
     # TODO: We should probably also have a test that checks that keyboard interrupts work.
     # Seems like the text to send for that would be "\x03".
-
     ssh_config_path = tmp_path / "config"
     with open(ssh_config_path, "w") as f:
         f.write(contents)
