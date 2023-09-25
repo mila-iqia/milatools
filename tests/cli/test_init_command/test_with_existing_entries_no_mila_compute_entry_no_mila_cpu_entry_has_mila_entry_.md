@@ -8,7 +8,7 @@ Host mila
 ```
 
 and these user inputs: ['y']
-resulted in creating the following ssh config file:
+leads to the following ssh config file:
 
 ```
 Host mila

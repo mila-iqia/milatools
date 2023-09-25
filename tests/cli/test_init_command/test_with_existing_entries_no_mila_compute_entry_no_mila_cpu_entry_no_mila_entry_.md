@@ -1,7 +1,7 @@
 Running the `mila init` command with no initial ssh config file
 
 and these user inputs: ['bob\r', 'y']
-resulted in creating the following ssh config file:
+leads to the following ssh config file:
 
 ```
 
