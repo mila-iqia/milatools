@@ -380,7 +380,7 @@ def _get_drac_username(ssh_config: SSHConfig) -> str | None:
         host
         for host in ssh_config.hosts()
         if any(
-            cc_cluster in host.split()
+            cc_cluster in host.split() or f"!{cc_cluster}" in host.split()
             for cc_cluster in (
                 "beluga",
                 "cedar",
@@ -391,13 +391,14 @@ def _get_drac_username(ssh_config: SSHConfig) -> str | None:
         )
         and "user" in ssh_config.host(host)
     ]
+    users_from_drac_config_entries = set(
+        ssh_config.host(host)["user"]
+        for host in hosts_with_cluster_in_name_and_a_user_entry
+    )
     # Note: If there are none, or more than one, then we'll ask the user for their username, just
     # to be sure.
-    if len(hosts_with_cluster_in_name_and_a_user_entry) == 1:
-        username = ssh_config.host(hosts_with_cluster_in_name_and_a_user_entry[0]).get(
-            "user"
-        )
-
+    if len(users_from_drac_config_entries) == 1:
+        username = users_from_drac_config_entries.pop()
     elif yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
         while not username:
             username = qn.text(
@@ -479,68 +480,11 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
         )
 
 
-DRAC_block_template = """\
-# Compute Canada
-Host beluga cedar graham narval niagara
-  Hostname %h.alliancecan.ca
-  User {user}
-Host mist
-  Hostname mist.scinet.utoronto.ca
-  User {user}
-Host !beluga  bc????? bg????? bl?????
-  ProxyJump beluga
-  User {user}
-Host !cedar   cdr? cdr?? cdr??? cdr????
-  ProxyJump cedar
-  User {user}
-Host !graham  gra??? gra????
-  ProxyJump graham
-  User {user}
-Host !narval  nc????? ng?????
-  ProxyJump narval
-  User {user}
-Host !niagara nia????
-  ProxyJump niagara
-  User {user}
-"""
-
-DRAC_docs_block = """\
-Host *
-  ServerAliveInterval 300
-
-Host beluga cedar graham narval
-  HostName %h.alliancecan.ca
-  IdentityFile ~/.ssh/ccdb
-  User {user}
-
-Host bc????? bg????? bl?????
-  ProxyJump beluga
-  IdentityFile ~/.ssh/ccdb
-  User {user}
-
-Host cdr*
-  ProxyJump cedar
-  IdentityFile ~/.ssh/ccdb
-  User {user}
-
-Host gra1* gra2* gra3* gra4* gra5* gra6* gra7* gra8* gra9*
-  ProxyJump graham
-  IdentityFile ~/.ssh/ccdb
-  User {user}
-
-Host nc????? ng????? nl?????
-  ProxyJump narval
-  IdentityFile ~/.ssh/ccdb
-  User {user}
-"""
-
-
 def add_drac_entries(ssh_config: SSHConfig, drac_username: str):
     _add_ssh_entry(
         ssh_config,
         host="beluga cedar graham narval niagara",
-        Hostname="%h.computecanada.ca",
-        User=drac_username,
+        Hostname="%h.computecanada.ca",  # note: would be made redundant by the Match entry below
     )
     _add_ssh_entry(
         ssh_config,
@@ -578,3 +522,9 @@ def add_drac_entries(ssh_config: SSHConfig, drac_username: str):
         ProxyJump="niagara",
         User=drac_username,
     )
+    # NOTE: might be cleaner to add this Match entry, but unsure how to do it with SshConfigFile
+    _match_host_entry = """\
+    Match host *.computecanada.ca
+      User normandf
+      PreferredAuthentications publickey,keyboard-interactive
+    """

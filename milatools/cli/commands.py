@@ -145,6 +145,16 @@ def mila():
         help="Set up your configuration and credentials.",
         formatter_class=SortingHelpFormatter,
     )
+    # init_parser.add_argument(
+    #     "--drac",
+    #     action="store_true",
+    #     default=False,
+    #     help=(
+    #         "Set up your configuration and credentials for the DRAC (a.k.a. ComputeCanada) "
+    #         "clusters."
+    #     ),
+    # )
+
     init_parser.set_defaults(function=init)
 
     # ----- mila forward ------
@@ -448,31 +458,30 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
             else:
                 here.run("ssh-copy-id", "mila")
             if not here.check_passwordless("mila"):
-                exit("ssh-copy-id appears to have failed")
+                exit("'ssh-copy-id mila' appears to have failed")
         else:
             exit("No passwordless login.")
 
     # Check the connection to the DRAC clusters.
-    drac_clusters = ["beluga", "narval", "cedar", "graham"]
-    for cluster in drac_clusters:
+    # TODO: This doesn't yet work correctly.
+    for cluster in []:  # ["beluga", "narval", "cedar", "graham"]:
         if all(cluster not in hostname for hostname in ssh_config.hosts()):
             logger.debug(
                 f"Skipping {cluster} cluster because it is not in the ssh config"
             )
             continue
-        if here.check_passwordless(cluster):
+        if here.check_passwordless_drac(cluster):
             logger.debug(
                 f"Passwordless authentication to {cluster} cluster is already setup."
             )
-
             continue
         if yn(
             f"Your public key does not appear be registered on the {cluster} cluster. "
             "Register it?"
         ):
             here.run("ssh-copy-id", cluster)
-            if not here.check_passwordless(cluster):
-                exit("ssh-copy-id appears to have failed")
+            if not here.check_passwordless_drac(cluster):
+                exit(f"'ssh-copy-id {cluster}' appears to have failed!")
         else:
             exit("No passwordless login.")
 

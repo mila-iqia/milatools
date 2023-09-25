@@ -8,6 +8,9 @@ from typing import IO, Any
 from typing_extensions import deprecated
 
 from .utils import CommandNotFoundError, T, shjoin
+from logging import getLogger as get_logger
+
+logger = get_logger(__name__)
 
 
 class Local:
@@ -71,3 +74,41 @@ class Local:
         else:
             print("# OK")
             return True
+
+    def check_passwordless_drac(self, host: str):
+        """NOTE: Temporarily doing a different check for the DRAC nodes, since they don't work
+        with just -oPreferredAuthentications=publickey
+        """
+        if self.check_passwordless(host):
+            return True
+        try:
+            results = self.run(
+                "ssh",
+                "-oPreferredAuthentications=publickey,keyboard-interactive",
+                host,
+                "echo OK",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired as err:
+            if err.stdout is None and err.stderr is None:
+                logger.debug(
+                    f"Timeout while connecting to {host}, must be waiting for a password."
+                )
+                return False
+            raise RuntimeError(
+                f"Timeout while connecting to {host}, and got unexpected output:\n"
+                f"stdout: {err.stdout}\n"
+                f"stderr: {err.stderr}"
+            )
+
+        if results.returncode != 0:
+            if "Permission denied" in results.stderr:
+                return False
+            print(results.stdout)
+            print(results.stderr)
+            exit(f"Failed to connect to {host}, could not understand error")
+        else:
+            print("# OK")
+        return True
