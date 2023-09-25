@@ -164,7 +164,6 @@ class SSHConfig:
         host: The Host entry to add.
         **kwargs: The parameters for the host (without "Host" parameter itself)
         """
-        # filename_to_config: list[tuple[str, SshConfigFile]] =
         config_file: SshConfigFile = self.cfg.configs_[0][1]
         config_file_lines: list[ConfigLine] = config_file.lines_
 
