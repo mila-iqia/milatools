@@ -35,7 +35,6 @@ Host mila
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
 
-
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   User bob
@@ -43,5 +42,4 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
-
 ```

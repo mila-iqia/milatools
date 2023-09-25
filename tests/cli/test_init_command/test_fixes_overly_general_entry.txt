@@ -12,7 +12,6 @@ Host mila
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
 
-
 Host mila-cpu
   User bob
   Port 2222

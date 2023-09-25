@@ -29,7 +29,6 @@ Host mila
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
 
-
 Host mila-cpu
   User bob
   Port 2222
@@ -42,5 +41,4 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
-
 ```

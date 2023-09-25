@@ -46,5 +46,4 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
-
 ```
