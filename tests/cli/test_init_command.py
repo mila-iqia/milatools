@@ -95,12 +95,24 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
 
         # another comment
         """,
+        """\
+        # a comment
+
+        Host foo
+          HostName foobar.com
+
+
+
+
+        # another comment after lots of empty lines.
+        """,
     ],
     ids=[
         "empty",
         "has_comment",
         "has_different_indent",
         "has_comment_and_entry",
+        "has_comment_and_entry_with_extra_space",
     ],
 )
 def test_setup_ssh(
