@@ -213,6 +213,7 @@ def test_with_existing_entries(
     file_regression: FileRegressionFixture,
     tmp_path: Path,
     input_pipe: PipeInput,
+    capsys: pytest.CaptureFixture,
 ):
     existing_mila = textwrap.dedent(
         """\
@@ -280,14 +281,43 @@ def test_with_existing_entries(
 
     setup_ssh_config(ssh_config_path=ssh_config_path)
 
+    captured_out = capsys.readouterr()
+    # NOTE: Unused, but could be used to check the output of the command.
+    _stdout, _stderr = captured_out.out, captured_out.err
+
     with open(ssh_config_path) as f:
         resulting_contents = f.read()
 
-    file_regression.check(resulting_contents)
+    expected_text = "\n".join(
+        [
+            "Running the `mila init` command with "
+            + (
+                "\n".join(
+                    [
+                        "this initial content:",
+                        "```",
+                        initial_contents,
+                        "```",
+                    ]
+                )
+                if initial_contents
+                else "no initial ssh config file"
+            ),
+            f"and these user inputs: {prompt_inputs}",
+            "resulted in creating the following ssh config file:",
+            "```",
+            resulting_contents,
+            "```",
+        ]
+    )
+    file_regression.check(
+        expected_text,
+        extension=".md",
+    )
 
 
 @pytest.mark.parametrize(
-    "contents, prompt_inputs, expected",
+    ("contents", "prompt_inputs", "expected"),
     [
         pytest.param(
             "",  # empty file.
