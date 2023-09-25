@@ -13,7 +13,7 @@ import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
-from sshconf import read_ssh_config
+from sshconf import SshConfigFile, read_ssh_config
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
@@ -144,10 +144,27 @@ class SSHConfig:
         self.add = self.cfg.add
         self.remove = self.cfg.remove
         self.rename = self.cfg.rename
-        self.save = self.cfg.save
+        # self.save = self.cfg.save
         self.host = self.cfg.host
         self.hosts = self.cfg.hosts
         self.set = self.cfg.set
+
+    def save(self) -> None:
+        assert len(self.cfg.configs_) == 1
+
+        filename, cfg = self.cfg.configs_[0]
+        assert isinstance(cfg, SshConfigFile)
+        lines: list[str] = [x.line for x in cfg.lines_]
+        # Remove unnecessary blank lines between groups:
+        lines = [line.rstrip() for line in lines]
+        kept_lines = []
+        for current_line, next_line in zip(lines, lines[1:] + [""]):
+            if current_line == "" and next_line == "":
+                continue
+            kept_lines.append(current_line)
+
+        with open(filename, "w") as fh:
+            fh.write("\n".join(kept_lines))
 
     def hoststring(self, host):
         lines = []

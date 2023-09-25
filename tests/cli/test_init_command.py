@@ -59,9 +59,7 @@ def test_questionary_uses_input_pipe(input_pipe: PipeInput):
 
 
 def _join_blocks(*blocks: str, user: str = "bob") -> str:
-    return "\n".join(textwrap.dedent(block) for block in blocks).format(
-        user=user
-    )
+    return "\n".join(textwrap.dedent(block) for block in blocks).format(user=user)
 
 
 def _yn(accept: bool):
@@ -138,9 +136,7 @@ def test_setup_ssh(
 
     should_exit = not confirm_changes
 
-    with pytest.raises(
-        SystemExit
-    ) if should_exit else contextlib.nullcontext():
+    with pytest.raises(SystemExit) if should_exit else contextlib.nullcontext():
         setup_ssh_config(ssh_config_path=ssh_config_path)
 
     assert ssh_config_path.exists()
@@ -281,9 +277,7 @@ def test_with_existing_entries(
     initial_blocks = []
     initial_blocks += [existing_mila] if already_has_mila else []
     initial_blocks += [existing_mila_cpu] if already_has_mila_cpu else []
-    initial_blocks += (
-        [existing_mila_compute] if already_has_mila_compute else []
-    )
+    initial_blocks += [existing_mila_compute] if already_has_mila_compute else []
     initial_contents = _join_blocks(*initial_blocks)
 
     # TODO: Need to insert the entries in the right place, in the right order!
@@ -296,8 +290,7 @@ def test_with_existing_entries(
     # Accept all the prompts.
     username_input = (
         ["bob\r"]
-        if not already_has_mila
-        or (already_has_mila and "User" not in existing_mila)
+        if not already_has_mila or (already_has_mila and "User" not in existing_mila)
         else []
     )
 
@@ -312,8 +305,7 @@ def test_with_existing_entries(
         [
             already_has_mila and controlmaster_block in existing_mila,
             already_has_mila_cpu,
-            already_has_mila_compute
-            and controlmaster_block in existing_mila_compute,
+            already_has_mila_compute and controlmaster_block in existing_mila_compute,
         ]
     ):
         # There's a confirmation prompt only if we're adding some entry.
