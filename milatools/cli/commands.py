@@ -542,14 +542,7 @@ def code(
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-        check_disk_quota(remote)
-
-        cnode = _find_allocation(
-            remote, job=job, node=node, alloc=alloc, job_name="mila-code"
-        )
-        if persist:
-            cnode = cnode.persist()
-        data, proc = cnode.ensure_allocation()
+    check_disk_quota(remote)
 
     cnode = _find_allocation(
         remote, job_name="mila-code", job=job, node=node, alloc=alloc
