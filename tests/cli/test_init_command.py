@@ -31,7 +31,8 @@ def input_pipe(monkeypatch: pytest.MonkeyPatch):
     """
     with create_pipe_input() as input_pipe:
         monkeypatch.setattr(
-            "questionary.confirm", partial(questionary.confirm, input=input_pipe)
+            "questionary.confirm",
+            partial(questionary.confirm, input=input_pipe),
         )
         monkeypatch.setattr(
             "questionary.text", partial(questionary.text, input=input_pipe)
@@ -96,7 +97,12 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
         # another comment
         """,
     ],
-    ids=["empty", "has_comment", "has_different_indent", "has_comment_and_entry"],
+    ids=[
+        "empty",
+        "has_comment",
+        "has_different_indent",
+        "has_comment_and_entry",
+    ],
 )
 def test_setup_ssh(
     initial_contents: str,
@@ -137,7 +143,9 @@ def test_setup_ssh(
 
 
 def test_fixes_overly_general_entry(
-    tmp_path: Path, input_pipe: PipeInput, file_regression: FileRegressionFixture
+    tmp_path: Path,
+    input_pipe: PipeInput,
+    file_regression: FileRegressionFixture,
 ):
     """Test the case where the user has a *.server.mila.quebec entry."""
     ssh_config_path = tmp_path / ".ssh" / "config"
@@ -195,34 +203,12 @@ def test_ssh_config_host(tmp_path: Path):
     }
 
 
-def parametrize_flags(test_param_names: str):
-    flags = ("mila", "mila_cpu", "mila_gpu", "mila_computenode")
-    test_params = list(itertools.product([False, True], repeat=4))
-    test_accepted_prompt_names: list[list[str]] = [
-        sum(
-            ([flags[i]] if b else [] for i, b in enumerate(bs)),
-            [],
-        )
-        for bs in test_params
-    ]
-    test_ids = [
-        "-".join(accepted_prompt_names)
-        for accepted_prompt_names in test_accepted_prompt_names
-    ]
-    return pytest.mark.parametrize(
-        test_param_names,
-        test_params,
-        ids=test_ids,
-    )
-
-
-@parametrize_flags(
-    "already_has_mila, already_has_mila_cpu, already_has_mila_gpu, already_has_mila_compute",
-)
+@pytest.mark.parametrize("already_has_mila", [True, False])
+@pytest.mark.parametrize("already_has_mila_cpu", [True, False])
+@pytest.mark.parametrize("already_has_mila_compute", [True, False])
 def test_with_existing_entries(
     already_has_mila: bool,
     already_has_mila_cpu: bool,
-    already_has_mila_gpu: bool,
     already_has_mila_compute: bool,
     file_regression: FileRegressionFixture,
     tmp_path: Path,
@@ -241,12 +227,6 @@ def test_with_existing_entries(
           HostName login.server.mila.quebec
         """
     )
-    existing_mila_gpu = textwrap.dedent(
-        """\
-        Host mila-gpu
-          HostName login.server.mila.quebec
-        """
-    )
     existing_mila_compute = textwrap.dedent(
         """\
         Host *.server.mila.quebec !*login.server.mila.quebec
@@ -257,7 +237,6 @@ def test_with_existing_entries(
     initial_blocks = []
     initial_blocks += [existing_mila] if already_has_mila else []
     initial_blocks += [existing_mila_cpu] if already_has_mila_cpu else []
-    initial_blocks += [existing_mila_gpu] if already_has_mila_gpu else []
     initial_blocks += [existing_mila_compute] if already_has_mila_compute else []
     initial_contents = _join_blocks(*initial_blocks)
 
@@ -269,21 +248,32 @@ def test_with_existing_entries(
         f.write(initial_contents)
 
     # Accept all the prompts.
-    prompt_inputs = (
+    username_input = (
         ["bob\r"]
         if not already_has_mila or (already_has_mila and "User" not in existing_mila)
         else []
     )
+
+    controlmaster_block = "\n".join(
+        [
+            "  ControlMaster auto",
+            "  ControlPath ~/.cache/ssh/%r@%h:%p",
+            "  ControlPersist 600",
+        ]
+    )
     if not all(
         [
-            already_has_mila,
+            already_has_mila and controlmaster_block in existing_mila,
             already_has_mila_cpu,
-            already_has_mila_gpu,
-            already_has_mila_compute,
+            already_has_mila_compute and controlmaster_block in existing_mila_compute,
         ]
     ):
         # There's a confirmation prompt only if we're adding some entry.
-        prompt_inputs += ["y"]
+        confirm_inputs = ["y"]
+    else:
+        confirm_inputs = []
+
+    prompt_inputs = username_input + confirm_inputs
 
     for prompt_input in prompt_inputs:
         input_pipe.send_text(prompt_input)
