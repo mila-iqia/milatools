@@ -206,6 +206,8 @@ def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,
     Host: str | None = None,
+    _space_before: bool = True,
+    _space_after: bool = False,
     **entry,
 ) -> None:
     """Interactively add an entry to the ssh config file.
@@ -223,5 +225,10 @@ def _add_ssh_entry(
         ssh_config.cfg.set(host, **existing_entry)
         logger.debug(f"Updated {host} entry in ssh config.")
     else:
-        ssh_config.add(host, **entry)
+        ssh_config.add(
+            host,
+            _space_before=_space_before,
+            _space_after=_space_after,
+            **entry,
+        )
         logger.debug(f"Adding new {host} entry in ssh config.")
