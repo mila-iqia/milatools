@@ -139,7 +139,7 @@ def shjoin(split_command):
 class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 
-    def __init__(self, path):
+    def __init__(self, path: str | Path):
         self.cfg = read_ssh_config(path)
         self.add = self.cfg.add
         self.remove = self.cfg.remove
@@ -147,6 +147,7 @@ class SSHConfig:
         self.save = self.cfg.save
         self.host = self.cfg.host
         self.hosts = self.cfg.hosts
+        self.set = self.cfg.set
 
     def hoststring(self, host):
         lines = []
