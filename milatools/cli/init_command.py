@@ -484,7 +484,8 @@ def add_drac_entries(ssh_config: SSHConfig, drac_username: str):
     _add_ssh_entry(
         ssh_config,
         host="beluga cedar graham narval niagara",
-        Hostname="%h.computecanada.ca",  # note: would be made redundant by the Match entry below
+        Hostname="%h.computecanada.ca",
+        User=drac_username,  # note: would be made redundant by the Match entry below
     )
     _add_ssh_entry(
         ssh_config,
