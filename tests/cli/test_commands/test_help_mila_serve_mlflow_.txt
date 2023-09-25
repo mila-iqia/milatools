@@ -1,0 +1,17 @@
+usage: mila serve mlflow [-h] [--alloc ...] [--job VALUE] [--name VALUE]
+                         [--node VALUE] [--persist] [--port VALUE]
+                         [--profile VALUE]
+                         LOGDIR
+
+positional arguments:
+  LOGDIR           Path to the experiment logs
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --alloc ...      Extra options to pass to slurm
+  --job VALUE      Job ID to connect to
+  --name VALUE     Name of the persistent server
+  --node VALUE     Node to connect to
+  --persist        Whether the server should persist or not
+  --port VALUE     Port to open on the local machine
+  --profile VALUE  Name of the profile to use

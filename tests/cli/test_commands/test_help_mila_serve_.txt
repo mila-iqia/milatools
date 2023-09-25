@@ -1,0 +1,16 @@
+usage: mila serve [-h]
+                  {connect,kill,list,lab,notebook,tensorboard,mlflow,aim} ...
+
+positional arguments:
+  {connect,kill,list,lab,notebook,tensorboard,mlflow,aim}
+    connect             Reconnect to a persistent server.
+    kill                Kill a persistent server.
+    list                List active servers.
+    lab                 Start a Jupyterlab server.
+    notebook            Start a Jupyter Notebook server.
+    tensorboard         Start a Tensorboard server.
+    mlflow              Start an MLFlow server.
+    aim                 Start an AIM server.
+
+optional arguments:
+  -h, --help            show this help message and exit

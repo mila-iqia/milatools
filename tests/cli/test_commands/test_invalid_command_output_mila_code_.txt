@@ -1,0 +1,4 @@
+usage: mila code [-h] [--alloc ...] [--command VALUE] [--job VALUE]
+                 [--node VALUE] [--persist]
+                 PATH
+mila code: error: the following arguments are required: PATH

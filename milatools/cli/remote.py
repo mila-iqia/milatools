@@ -187,7 +187,8 @@ class Remote:
 
     def persist(self):
         qn.print(
-            "Warning: --persist does not work with --node or --job", style="orange"
+            "Warning: --persist does not work with --node or --job",
+            style="orange",
         )
         return self
 

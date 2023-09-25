@@ -1,0 +1,9 @@
+usage: mila forward [-h] [--page VALUE] [--port VALUE] REMOTE
+
+positional arguments:
+  REMOTE        node:port to forward
+
+optional arguments:
+  -h, --help    show this help message and exit
+  --page VALUE  String to append after the URL
+  --port VALUE  Port to open on the local machine

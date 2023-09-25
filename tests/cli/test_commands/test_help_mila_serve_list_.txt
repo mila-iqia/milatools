@@ -1,0 +1,5 @@
+usage: mila serve list [-h] [--purge]
+
+optional arguments:
+  -h, --help  show this help message and exit
+  --purge     Purge dead or invalid servers

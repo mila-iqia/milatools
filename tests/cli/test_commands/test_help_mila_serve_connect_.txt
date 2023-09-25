@@ -1,0 +1,8 @@
+usage: mila serve connect [-h] [--port VALUE] IDENTIFIER
+
+positional arguments:
+  IDENTIFIER    Server identifier output by the original mila serve command
+
+optional arguments:
+  -h, --help    show this help message and exit
+  --port VALUE  Port to open on the local machine
