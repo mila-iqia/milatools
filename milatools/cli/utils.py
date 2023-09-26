@@ -11,6 +11,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterable
 
 import blessed
 import paramiko
@@ -134,7 +135,7 @@ def askpath(prompt, remote):
 
 
 # This is the implementation of shlex.join in Python >= 3.8
-def shjoin(split_command):
+def shjoin(split_command: Iterable[str]) -> str:
     """Return a shell-escaped string from *split_command*."""
     return " ".join(shlex.quote(arg) for arg in split_command)
 

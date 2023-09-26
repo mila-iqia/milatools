@@ -1219,13 +1219,15 @@ def _forward(
         args = [f"localhost:{port}:{to_forward}", node]
 
     proc = local.popen(
-        "ssh",
-        "-o",
-        "UserKnownHostsFile=/dev/null",
-        "-o",
-        "StrictHostKeyChecking=no",
-        "-nNL",
-        *args,
+        [
+            "ssh",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-nNL",
+            *args,
+        ]
     )
 
     url = f"http://localhost:{port}"
@@ -1245,7 +1247,7 @@ def _forward(
         time.sleep(period)
         try:
             # This feels stupid, there's probably a better way
-            local.silent_get("nc", "-z", "localhost", str(port))
+            local.silent_get(["nc", "-z", "localhost", str(port)])
         except subprocess.CalledProcessError:
             continue
         except Exception:
