@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import re
 import socket
 import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
+from typing import Callable, Mapping, MutableMapping, Sequence, TypedDict
 
+import fabric
+import fabric.transfer
+import invoke
 import paramiko
 import questionary as qn
 from fabric import Connection
@@ -19,6 +25,15 @@ echo jobid = $SLURM_JOB_ID >> {control_file}
 
 {command}
 """
+
+
+class JobInfo(TypedDict):
+    node_name: str
+
+
+class PersistentJobInfo(JobInfo):
+    node_name: str
+    jobid: str
 
 
 class QueueIO:
@@ -77,42 +92,49 @@ def get_first_node_name(node_names_out: str) -> str:
 
 
 class Remote:
-    def __init__(self, hostname, connection=None, transforms=(), keepalive=60):
+    def __init__(
+        self,
+        hostname: str,
+        connection: fabric.connection.Connection | None = None,
+        transforms: Sequence[Callable[[str], str]] = (),
+        keepalive: int = 60,
+    ):
         self.hostname = hostname
         try:
             if connection is None:
                 connection = Connection(hostname)
                 if keepalive:
                     connection.open()
+                    assert isinstance(connection.transport, paramiko.Transport)
                     connection.transport.set_keepalive(keepalive)
         except paramiko.SSHException as err:
             raise SSHConnectionError(node_hostname=self.hostname, error=err)
         self.connection = connection
         self.transforms = transforms
 
-    def with_transforms(self, *transforms):
+    def with_transforms(self, *transforms: Callable[[str], str]):
         return Remote(
             hostname=self.hostname,
             connection=self.connection,
             transforms=(*self.transforms, *transforms),
         )
 
-    def wrap(self, wrapper):
+    def wrap(self, wrapper: str):
         return self.with_transforms(wrapper.format)
 
-    def with_precommand(self, precommand):
+    def with_precommand(self, precommand: str):
         return self.wrap(f"{precommand} && {{}}")
 
-    def with_profile(self, profile):
+    def with_profile(self, profile: str):
         return self.wrap(f"source {profile} && {{}}")
 
     def with_bash(self):
         return self.with_transforms(lambda cmd: shjoin(["bash", "-c", cmd]))
 
-    def display(self, cmd):
+    def display(self, cmd: str) -> None:
         print(T.bold_cyan(f"({self.hostname}) $ ", cmd))
 
-    def _run(self, cmd, **kwargs):
+    def _run(self, cmd: str, **kwargs) -> invoke.runners.Promise:
         try:
             return self.connection.run(cmd, **kwargs)
         except socket.gaierror:
@@ -120,10 +142,16 @@ class Remote:
                 f"Error: Could not connect to host '{self.hostname}', did you run 'mila init'?"
             )
 
-    def simple_run(self, cmd, **kwargs):
+    def simple_run(self, cmd: str, **kwargs):
         return self._run(cmd, hide=True, **kwargs)
 
-    def run(self, cmd, display=None, hide=False, **kwargs):
+    def run(
+        self,
+        cmd: str,
+        display: bool | None = None,
+        hide: bool = False,
+        **kwargs,
+    ) -> invoke.runners.Promise:
         if display is None:
             display = not hide
         if display:
@@ -132,17 +160,23 @@ class Remote:
             cmd = transform(cmd)
         return self._run(cmd, hide=hide, **kwargs)
 
-    def get_output(self, cmd, **kwargs):
+    def get_output(self, cmd: str, **kwargs) -> str:
         return self.run(cmd, **kwargs).stdout.strip()
 
-    def get_lines(self, cmd, **kwargs):
+    def get_lines(self, cmd: str, **kwargs) -> list[str]:
         return self.get_output(cmd, **kwargs).split()
 
-    def extract(self, cmd, patterns, wait=False, **kwargs):
+    def extract(
+        self,
+        cmd: str,
+        patterns: dict[str, str],
+        wait: bool = False,
+        **kwargs,
+    ) -> tuple[invoke.runners.Runner, dict[str, str]]:
         kwargs.setdefault("pty", True)
         qio = QueueIO()
         proc = self.run(cmd, asynchronous=True, out_stream=qio, **kwargs)
-        results = {}
+        results: dict[str, str] = {}
         try:
             for line in qio.readlines(lambda: proc.runner.process_is_finished):
                 print(line, end="")
@@ -168,13 +202,13 @@ class Remote:
         proc.join()
         return proc.runner, results
 
-    def get(self, src, dest):
+    def get(self, src: str, dest: str | None) -> fabric.transfer.Result:
         return self.connection.get(src, dest)
 
-    def put(self, src, dest):
+    def put(self, src: str | Path, dest: str) -> fabric.transfer.Result:
         return self.connection.put(src, dest)
 
-    def puttext(self, text, dest):
+    def puttext(self, text: str, dest: str) -> None:
         base = Path(dest).parent
         self.simple_run(f"mkdir -p {base}")
         with tempfile.NamedTemporaryFile("w") as f:
@@ -182,7 +216,7 @@ class Remote:
             f.flush()
             self.put(f.name, dest)
 
-    def home(self):
+    def home(self) -> str:
         return self.get_output("echo $HOME", hide=True)
 
     def persist(self):
@@ -192,21 +226,27 @@ class Remote:
         )
         return self
 
-    def ensure_allocation(self):
+    def ensure_allocation(self) -> tuple[JobInfo, None]:
         return {"node_name": self.hostname}, None
 
-    def run_script(self, name, *args, **kwargs):
+    def run_script(self, name: str, *args: str, **kwargs):
         base = ".milatools/scripts"
         dest = f"{base}/{name}"
-        print(T.bold_cyan(f"({self.host}) WRITE ", dest))
+        print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
         self.simple_run(f"mkdir -p {base}")
         self.put(here / name, dest)
         return self.run(shjoin([dest, *args]), **kwargs)
 
-    def extract_script(self, name, *args, pattern, **kwargs):
+    def extract_script(
+        self,
+        name: str,
+        *args: str,
+        pattern: dict[str, re.Pattern[str] | str],
+        **kwargs,
+    ):
         base = ".milatools/scripts"
         dest = f"{base}/{name}"
-        print(T.bold_cyan(f"({self.host}) WRITE ", dest))
+        print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
         self.simple_run(f"mkdir -p {base}")
         self.put(here / name, dest)
         return self.extract(shjoin([dest, *args]), pattern=pattern, **kwargs)
@@ -225,10 +265,10 @@ class SlurmRemote(Remote):
             ],
         )
 
-    def srun_transform(self, cmd):
+    def srun_transform(self, cmd: str) -> str:
         return shjoin(["srun", *self.alloc, "bash", "-c", cmd])
 
-    def srun_transform_persist(self, cmd):
+    def srun_transform_persist(self, cmd: str) -> str:
         tag = time.time_ns()
         batch_file = f".milatools/batch/batch-{tag}.sh"
         output_file = f".milatools/batch/out-{tag}.txt"
@@ -241,7 +281,9 @@ class SlurmRemote(Remote):
         cmd = shjoin(["sbatch", *self.alloc, batch_file])
         return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
 
-    def with_transforms(self, *transforms, persist=None):
+    def with_transforms(
+        self, *transforms: Callable[[str], str], persist: bool | None = None
+    ):
         return SlurmRemote(
             connection=self.connection,
             alloc=self.alloc,
@@ -252,7 +294,9 @@ class SlurmRemote(Remote):
     def persist(self):
         return self.with_transforms(persist=True)
 
-    def ensure_allocation(self):
+    def ensure_allocation(
+        self,
+    ) -> tuple[JobInfo | PersistentJobInfo, invoke.runners.Runner]:
         if self._persist:
             proc, results = self.extract(
                 "echo @@@ $(hostname) @@@ && sleep 1000d",
