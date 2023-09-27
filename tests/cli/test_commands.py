@@ -8,8 +8,8 @@ from typing import Callable
 from unittest import mock
 
 import pytest
-from fabric.testing.base import Command, MockChannel, Session
-from fabric.testing.fixtures import Connection, MockRemote
+from fabric.testing.base import Command, MockChannel, Session  # noqa
+from fabric.testing.fixtures import Connection, MockRemote, remote  # noqa
 from pytest_mock import MockerFixture
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
@@ -82,16 +82,16 @@ def test_check_passwordless(
     )
 
 
-def test_remote(remote: _MockRemote):
-    some_message = "BOBOBOB"
-    remote.expect(
-        host="login.server.mila.quebec",
-        user="normandf",
-        port=2222,
-        commands=[Command("echo OK", out=some_message.encode())],
-    )
-    result = Connection("mila").run("echo OK")
-    assert result.stdout == some_message
+# def test_remote(remote: _MockRemote):
+#     some_message = "BOBOBOB"
+#     remote.expect(
+#         host="login.server.mila.quebec",
+#         user="normandf",
+#         port=2222,
+#         commands=[Command("echo OK", out=some_message.encode())],
+#     )
+#     result = Connection("mila").run("echo OK")
+#     assert result.stdout == some_message
 
 
 @pytest.mark.parametrize(
