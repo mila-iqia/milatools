@@ -633,6 +633,7 @@ def code(
         print("To reconnect to this node:")
         print(T.bold(f"  mila code {path} --node {node_name}"))
         print("To kill this allocation:")
+        assert "jobid" in data
         print(T.bold(f"  ssh mila scancel {data['jobid']}"))
 
 
@@ -914,8 +915,8 @@ def _standard_server(
     path: str | None,
     *,
     program: str,
-    installers,
-    command,
+    installers: dict[str, str],
+    command: str,
     profile: str | None,
     persist: bool,
     port: int | None,
@@ -1166,7 +1167,7 @@ def check_disk_quota(remote: Remote) -> None:
 
 
 def _find_allocation(
-    remote,
+    remote: Remote,
     node: str | None,
     job: str | None,
     alloc: Sequence[str],

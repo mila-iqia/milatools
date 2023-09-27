@@ -17,9 +17,7 @@ def test_display(
     capsys: pytest.CaptureFixture,
     file_regression: FileRegressionFixture,
 ):
-    output_tester(
-        lambda: (Local().display(cmd), None), capsys, file_regression
-    )
+    output_tester(lambda: (Local().display(cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
@@ -28,9 +26,7 @@ def test_silent_get(
     capsys: pytest.CaptureFixture,
     file_regression: FileRegressionFixture,
 ):
-    output_tester(
-        lambda: (Local().silent_get(cmd), None), capsys, file_regression
-    )
+    output_tester(lambda: (Local().silent_get(cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
