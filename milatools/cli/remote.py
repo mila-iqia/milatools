@@ -6,7 +6,7 @@ import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Callable, Mapping, MutableMapping, Sequence, TypedDict
+from typing import Callable, Iterable, Sequence, TypedDict
 
 import fabric
 import fabric.transfer
@@ -14,6 +14,7 @@ import invoke
 import paramiko
 import questionary as qn
 from fabric import Connection
+from typing_extensions import Self
 
 from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 
@@ -27,28 +28,31 @@ echo jobid = $SLURM_JOB_ID >> {control_file}
 """
 
 
-class JobInfo(TypedDict):
+class NodeNameDict(TypedDict):
     node_name: str
 
 
-class PersistentJobInfo(JobInfo):
+class NodeNameAndJobidDict(TypedDict):
     node_name: str
     jobid: str
 
 
 class QueueIO:
-    def __init__(self):
-        self.q = Queue()
+    """A Queue used to store the output of the remote command."""
 
-    def write(self, s):
+    def __init__(self):
+        self.q: Queue[str] = Queue()
+
+    def write(self, s: str) -> None:
         self.q.put(s)
 
-    def flush(self):
+    def flush(self) -> None:
         pass
 
-    def readlines(self, stop):
-        current = ""
-        lines = tuple()
+    def readlines(self, stop: Callable[[], bool]) -> Iterable[str]:
+        """Read lines from the queue until the stop condition is met."""
+        current = ""  # the last line of text that was yielded.
+        lines: Sequence[str] = tuple()
         while True:
             try:
                 current += self.q.get(timeout=0.05)
@@ -95,7 +99,7 @@ class Remote:
     def __init__(
         self,
         hostname: str,
-        connection: fabric.connection.Connection | None = None,
+        connection: fabric.Connection | None = None,
         transforms: Sequence[Callable[[str], str]] = (),
         keepalive: int = 60,
     ):
@@ -105,77 +109,115 @@ class Remote:
                 connection = Connection(hostname)
                 if keepalive:
                     connection.open()
-                    assert isinstance(connection.transport, paramiko.Transport)
-                    connection.transport.set_keepalive(keepalive)
+                    transport: paramiko.Transport
+                    transport = connection.transport  # type: ignore
+                    transport.set_keepalive(keepalive)
         except paramiko.SSHException as err:
             raise SSHConnectionError(node_hostname=self.hostname, error=err)
         self.connection = connection
         self.transforms = transforms
 
-    def with_transforms(self, *transforms: Callable[[str], str]):
+    def with_transforms(self, *transforms: Callable[[str], str]) -> Self:
         return Remote(
             hostname=self.hostname,
             connection=self.connection,
             transforms=(*self.transforms, *transforms),
         )
 
-    def wrap(self, wrapper: str):
+    def wrap(self, wrapper: str) -> Self:
         return self.with_transforms(wrapper.format)
 
-    def with_precommand(self, precommand: str):
+    def with_precommand(self, precommand: str) -> Self:
         return self.wrap(f"{precommand} && {{}}")
 
-    def with_profile(self, profile: str):
+    def with_profile(self, profile: str) -> Self:
         return self.wrap(f"source {profile} && {{}}")
 
-    def with_bash(self):
+    def with_bash(self) -> Self:
         return self.with_transforms(lambda cmd: shjoin(["bash", "-c", cmd]))
 
     def display(self, cmd: str) -> None:
         print(T.bold_cyan(f"({self.hostname}) $ ", cmd))
 
-    def _run(self, cmd: str, **kwargs) -> invoke.runners.Promise:
+    def _run(
+        self, cmd: str, hide: bool = False, warn: bool = False, **kwargs
+    ) -> invoke.runners.Promise:
         try:
-            return self.connection.run(cmd, **kwargs)
+            # NOTE: See invoke.runners.Runner.run for possible **kwargs
+            return self.connection.run(cmd, hide=hide, warn=warn, **kwargs)
         except socket.gaierror:
             exit(
-                f"Error: Could not connect to host '{self.hostname}', did you run 'mila init'?"
+                f"Error: Could not connect to host '{self.hostname}', did you "
+                f"run 'mila init'?"
             )
 
-    def simple_run(self, cmd: str, **kwargs):
-        return self._run(cmd, hide=True, **kwargs)
+    def simple_run(self, cmd: str):
+        return self._run(cmd, hide=True)
 
     def run(
         self,
         cmd: str,
         display: bool | None = None,
         hide: bool = False,
+        warn: bool = False,
+        asynchronous: bool = False,
         **kwargs,
     ) -> invoke.runners.Promise:
+        # NOTE: See invoke.runners.Runner.run for possible values in **kwargs
         if display is None:
             display = not hide
         if display:
             self.display(cmd)
         for transform in self.transforms:
             cmd = transform(cmd)
-        return self._run(cmd, hide=hide, **kwargs)
+        return self._run(
+            cmd, hide=hide, warn=warn, asynchronous=asynchronous, **kwargs
+        )
 
-    def get_output(self, cmd: str, **kwargs) -> str:
-        return self.run(cmd, **kwargs).stdout.strip()
+    def get_output(
+        self,
+        cmd: str,
+        display: bool | None = None,
+        hide: bool = False,
+        warn: bool = False,
+    ) -> str:
+        return self.run(
+            cmd,
+            display=display,
+            hide=hide,
+            warn=warn,
+        ).stdout.strip()
 
-    def get_lines(self, cmd: str, **kwargs) -> list[str]:
-        return self.get_output(cmd, **kwargs).split()
+    def get_lines(
+        self,
+        cmd: str,
+        hide: bool = False,
+        warn: bool = False,
+    ) -> list[str]:
+        return self.get_output(
+            cmd,
+            hide=hide,
+            warn=warn,
+        ).split()
 
     def extract(
         self,
         cmd: str,
         patterns: dict[str, str],
         wait: bool = False,
+        pty: bool = True,
+        hide: bool = False,
         **kwargs,
     ) -> tuple[invoke.runners.Runner, dict[str, str]]:
-        kwargs.setdefault("pty", True)
         qio = QueueIO()
-        proc = self.run(cmd, asynchronous=True, out_stream=qio, **kwargs)
+        proc = self.run(
+            cmd,
+            hide=hide,
+            asynchronous=True,
+            out_stream=qio,
+            pty=pty,
+            **kwargs,
+        )
         results: dict[str, str] = {}
         try:
             for line in qio.readlines(lambda: proc.runner.process_is_finished):
@@ -226,10 +268,11 @@ class Remote:
         )
         return self
 
-    def ensure_allocation(self) -> tuple[JobInfo, None]:
+    def ensure_allocation(self) -> tuple[NodeNameDict, None]:
         return {"node_name": self.hostname}, None
 
     def run_script(self, name: str, *args: str, **kwargs):
+        # TODO: This method doesn't seem to be used.
         base = ".milatools/scripts"
         dest = f"{base}/{name}"
         print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
@@ -244,6 +287,7 @@ class Remote:
         pattern: dict[str, re.Pattern[str] | str],
         **kwargs,
     ):
+        # TODO: This method doesn't seem to be used.
         base = ".milatools/scripts"
         dest = f"{base}/{name}"
         print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
@@ -253,7 +297,13 @@ class Remote:
 
 
 class SlurmRemote(Remote):
-    def __init__(self, connection, alloc, transforms=(), persist=False):
+    def __init__(
+        self,
+        connection: fabric.Connection,
+        alloc: Sequence[str],
+        transforms: Sequence[Callable[[str], str]] = (),
+        persist: bool = False,
+    ):
         self.alloc = alloc
         self._persist = persist
         super().__init__(
@@ -261,7 +311,9 @@ class SlurmRemote(Remote):
             connection=connection,
             transforms=[
                 *transforms,
-                self.srun_transform_persist if persist else self.srun_transform,
+                self.srun_transform_persist
+                if persist
+                else self.srun_transform,
             ],
         )
 
@@ -296,7 +348,12 @@ class SlurmRemote(Remote):
 
     def ensure_allocation(
         self,
-    ) -> tuple[JobInfo | PersistentJobInfo, invoke.runners.Runner]:
+    ) -> tuple[NodeNameDict | NodeNameAndJobidDict, invoke.Runner]:
+        """Requests a compute node from the cluster if not already allocated.
+
+        Returns a dictionary with the `node_name`, and additionally the `jobid`
+        if this Remote is already connected to a compute node.
+        """
         if self._persist:
             proc, results = self.extract(
                 "echo @@@ $(hostname) @@@ && sleep 1000d",
@@ -309,13 +366,17 @@ class SlurmRemote(Remote):
             node_name = get_first_node_name(results["node_name"])
             return {"node_name": node_name, "jobid": results["jobid"]}, proc
         else:
-            remote = Remote(hostname="->", connection=self.connection).with_bash()
+            remote = Remote(
+                hostname="->", connection=self.connection
+            ).with_bash()
             proc, results = remote.extract(
                 shjoin(["salloc", *self.alloc]),
-                patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
+                patterns={
+                    "node_name": "salloc: Nodes ([^ ]+) are ready for job"
+                },
             )
             # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
-            # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to a
-            # single one, though, so we will simply pick the first one.
+            # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to
+            # a single one, though, so we will simply pick the first one.
             node_name = get_first_node_name(results["node_name"])
             return {"node_name": node_name}, proc
