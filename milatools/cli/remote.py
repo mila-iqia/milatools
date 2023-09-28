@@ -109,6 +109,8 @@ class Remote:
                 connection = Connection(hostname)
                 if keepalive:
                     connection.open()
+                    # NOTE: Not doing an assertion on the type here so that we
+                    # are able to mock the Connection object during tests.
                     transport: paramiko.Transport
                     transport = connection.transport  # type: ignore
                     transport.set_keepalive(keepalive)
@@ -162,7 +164,7 @@ class Remote:
         warn: bool = False,
         asynchronous: bool = False,
         **kwargs,
-    ) -> invoke.runners.Promise:
+    ) -> invoke.Promise:
         # NOTE: See invoke.runners.Runner.run for possible values in **kwargs
         if display is None:
             display = not hide
