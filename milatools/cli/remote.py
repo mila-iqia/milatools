@@ -6,7 +6,7 @@ import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Callable, Iterable, Sequence, TypedDict
+from typing import Callable, Iterable, Literal, Sequence, TypedDict, overload
 
 import fabric
 import fabric.transfer
@@ -109,10 +109,10 @@ class Remote:
                 connection = Connection(hostname)
                 if keepalive:
                     connection.open()
-                    # NOTE: Not doing an assertion on the type here so that we
-                    # are able to mock the Connection object during tests.
-                    transport: paramiko.Transport
-                    transport = connection.transport  # type: ignore
+                    # NOTE: this transport gets mocked in tests, so we use a "soft" typing override
+                    # instead of an assertion check here.
+                    # assert isinstance(connection.transport, paramiko.Transport)
+                    transport: paramiko.Transport = connection.transport  # type: ignore
                     transport.set_keepalive(keepalive)
         except paramiko.SSHException as err:
             raise SSHConnectionError(node_hostname=self.hostname, error=err)
@@ -142,11 +142,18 @@ class Remote:
         print(T.bold_cyan(f"({self.hostname}) $ ", cmd))
 
     def _run(
-        self, cmd: str, hide: bool = False, warn: bool = False, **kwargs
-    ) -> invoke.runners.Promise:
+        self,
+        cmd: str,
+        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        warn: bool = False,
+        asynchronous: bool = False,
+        **kwargs,
+    ) -> invoke.Result | invoke.Promise:
         try:
             # NOTE: See invoke.runners.Runner.run for possible **kwargs
-            return self.connection.run(cmd, hide=hide, warn=warn, **kwargs)
+            return self.connection.run(
+                cmd, hide=hide, warn=warn, asynchronous=asynchronous, **kwargs
+            )
         except socket.gaierror:
             exit(
                 f"Error: Could not connect to host '{self.hostname}', did you "
@@ -156,15 +163,61 @@ class Remote:
     def simple_run(self, cmd: str):
         return self._run(cmd, hide=True)
 
+    @overload
     def run(
         self,
         cmd: str,
         display: bool | None = None,
         hide: bool = False,
         warn: bool = False,
-        asynchronous: bool = False,
+        asynchronous: Literal[True] = True,
         **kwargs,
     ) -> invoke.Promise:
+        ...
+
+    @overload
+    def run(
+        self,
+        cmd: str,
+        display: bool | None = None,
+        hide: bool = False,
+        warn: bool = False,
+        asynchronous: Literal[False] = False,
+        **kwargs,
+    ) -> invoke.Result:
+        ...
+
+    def run(
+        self,
+        cmd: str,
+        display: bool | None = None,
+        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        warn: bool = False,
+        asynchronous: bool = False,
+        **kwargs,
+    ) -> invoke.Promise | invoke.Result:
+        """Run a command on the remote host, returning the `invoke.Result`.
+
+        NOTE: The arguments of this method are passed to `invoke.runners.Runner.run`. See that
+        method for more info on the possible arguments.
+        
+        Parameters
+        ----------
+        cmd: The command to run
+        display: TODO, by default None
+        hide: ``'out'`` (or ``'stdout'``) to hide only the stdout stream, ``hide='err'`` \
+            (or ``'stderr'``) to hide only stderr, or ``hide='both'`` (or ``True``) to \
+            hide both streams. Defaults to `False`.
+        warn: Whether to warn and continue, instead of raising `invoke.runners.UnexpectedExit`, \
+            when the executed command exits with a nonzero status. Defaults to ``False``.
+        asynchronous : bool, optional
+            _description_, by default False
+
+        Returns
+        -------
+        invoke.Promise | invoke.Result
+            _description_
+        """
         # NOTE: See invoke.runners.Runner.run for possible values in **kwargs
         if display is None:
             display = not hide
@@ -172,9 +225,7 @@ class Remote:
             self.display(cmd)
         for transform in self.transforms:
             cmd = transform(cmd)
-        return self._run(
-            cmd, hide=hide, warn=warn, asynchronous=asynchronous, **kwargs
-        )
+        return self._run(cmd, hide=hide, warn=warn, asynchronous=asynchronous, **kwargs)
 
     def get_output(
         self,
@@ -313,9 +364,7 @@ class SlurmRemote(Remote):
             connection=connection,
             transforms=[
                 *transforms,
-                self.srun_transform_persist
-                if persist
-                else self.srun_transform,
+                self.srun_transform_persist if persist else self.srun_transform,
             ],
         )
 
@@ -368,14 +417,10 @@ class SlurmRemote(Remote):
             node_name = get_first_node_name(results["node_name"])
             return {"node_name": node_name, "jobid": results["jobid"]}, proc
         else:
-            remote = Remote(
-                hostname="->", connection=self.connection
-            ).with_bash()
+            remote = Remote(hostname="->", connection=self.connection).with_bash()
             proc, results = remote.extract(
                 shjoin(["salloc", *self.alloc]),
-                patterns={
-                    "node_name": "salloc: Nodes ([^ ]+) are ready for job"
-                },
+                patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
             )
             # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
             # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to

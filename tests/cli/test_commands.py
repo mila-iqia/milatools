@@ -68,9 +68,7 @@ def test_check_passwordless(
     mock_subprocess_run: mock.Mock,
 ):
     # NOTE: Trying out https://stackoverflow.com/questions/25692440/mocking-a-subprocess-call-in-python
-    mock_subprocess_run.return_value = CompletedProcess(
-        ["echo OK"], 0, stdout="BOBOBO"
-    )
+    mock_subprocess_run.return_value = CompletedProcess(["echo OK"], 0, stdout="BOBOBO")
     local = Local()
     local.check_passwordless("mila")
 
@@ -156,9 +154,7 @@ def test_invalid_command_output(
         SystemExit
     ), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
         main()
-    file_regression.check(
-        _convert_argparse_output_to_pre_py311_format(buf.getvalue())
-    )
+    file_regression.check(_convert_argparse_output_to_pre_py311_format(buf.getvalue()))
 
 
 # TODO: Perhaps we could use something like this so we can run all tests

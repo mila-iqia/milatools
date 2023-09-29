@@ -1,20 +1,15 @@
 from __future__ import annotations
+
 import json
 import re
+import typing
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Sequence,
-    TypeVar,
-)
-from typing_extensions import ParamSpec, Concatenate
+from typing import Any, Callable, Generic, Sequence, TypeVar
+
 import invoke
 import questionary as qn
-import typing
-
 from questionary.prompts.common import FormattedText
+from typing_extensions import Concatenate, ParamSpec
 
 from .utils import askpath, shjoin, yn
 

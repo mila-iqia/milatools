@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from subprocess import PIPE
 
 import pytest
+from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local
-from pytest_regressions.file_regression import FileRegressionFixture
+
 from .common import output_tester
 
 _ECHO_CMD = ["echo", "--arg1", "val1", "--arg2=val2", "X"]

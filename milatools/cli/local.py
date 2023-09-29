@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import subprocess
-from typing import Callable, Iterable, Sequence
-from typing_extensions import Concatenate, ParamSpec
 from subprocess import CompletedProcess
+from typing import Callable, Iterable, Sequence
+
+from typing_extensions import Concatenate, ParamSpec
+
 from .utils import CommandNotFoundError, T, shjoin
 
 P = ParamSpec("P")
