@@ -50,7 +50,8 @@ class QueueIO:
         pass
 
     def readlines(self, stop: Callable[[], bool]) -> Iterable[str]:
-        """Read lines from the queue until the stop condition is met."""
+        """Read lines from the queue until empty and the stop condition is
+        met."""
         current = ""  # the last line of text that was yielded.
         lines: Sequence[str] = tuple()
         while True:
@@ -200,7 +201,7 @@ class Remote:
 
         NOTE: The arguments of this method are passed to `invoke.runners.Runner.run`. See that
         method for more info on the possible arguments.
-        
+
         Parameters
         ----------
         cmd: The command to run

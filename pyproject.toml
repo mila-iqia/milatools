@@ -33,7 +33,6 @@ mila = "milatools.cli.__main__:main"
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
 pytest-regressions = "^2.4.2"
-mock = "^5.1.0"
 pytest-mock = "^3.11.1"
 pytest-socket = "^0.6.0"
 

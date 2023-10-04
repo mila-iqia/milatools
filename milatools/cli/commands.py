@@ -61,7 +61,8 @@ def main():
         ".server.mila.quebec"
     ):
         exit(
-            "ERROR: 'mila ...' should be run on your local machine and not on the Mila cluster"
+            "ERROR: 'mila ...' should be run on your local machine and not on "
+            "the Mila cluster"
         )
 
     try:
@@ -70,7 +71,8 @@ def main():
         # These are user errors and should not be reported
         print("ERROR:", exc, file=sys.stderr)
     except SSHConnectionError as err:
-        # These are errors coming from paramiko's failure to connect to the host
+        # These are errors coming from paramiko's failure to connect to the
+        # host
         print("ERROR:", f"{err}", file=sys.stderr)
     except Exception:
         print(T.red(traceback.format_exc()), file=sys.stderr)
@@ -716,25 +718,25 @@ def serve_list(purge: bool):
 
 class StandardServerArgs(TypedDict):
     alloc: Sequence[str]
-    """Extra options to pass to slurm"""
+    """Extra options to pass to slurm."""
 
     job: str | None
-    """Job ID to connect to"""
+    """Job ID to connect to."""
 
     name: str | None
-    """Name of the persistent server"""
+    """Name of the persistent server."""
 
     node: str | None
-    """Node to connect to"""
+    """Node to connect to."""
 
     persist: bool
-    """Whether the server should persist or not"""
+    """Whether the server should persist or not."""
 
     port: int | None
-    """Port to open on the local machine"""
+    """Port to open on the local machine."""
 
     profile: str | None
-    """Name of the profile to use"""
+    """Name of the profile to use."""
 
 
 def lab(path: str | None, **kwargs: Unpack[StandardServerArgs]):
@@ -850,7 +852,7 @@ def _get_server_info(
 
 
 class SortingHelpFormatter(argparse.HelpFormatter):
-    """Taken and adapted from https://stackoverflow.com/a/12269143/6388696"""
+    """Taken and adapted from https://stackoverflow.com/a/12269143/6388696."""
 
     def add_arguments(self, actions):
         actions = sorted(actions, key=operator.attrgetter("option_strings"))

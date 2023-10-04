@@ -12,12 +12,16 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable
+import typing
 
 import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
+
+if typing.TYPE_CHECKING:
+    from milatools.cli.remote import Remote
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
@@ -49,7 +53,7 @@ def randname():
 
 
 @contextmanager
-def with_control_file(remote, name=None):
+def with_control_file(remote: Remote, name=None):
     name = name or randname()
     pth = f".milatools/control/{name}"
     remote.run("mkdir -p ~/.milatools/control", hide=True)
@@ -101,9 +105,8 @@ class SSHConnectionError(paramiko.SSHException):
 
     def __str__(self):
         return (
-            "An error happened while trying to establish a connection with {0}".format(
-                self.node_hostname
-            )
+            "An error happened while trying to establish a connection with "
+            f"{self.node_hostname}"
             + "\n\t"
             + "-The cluster might be under maintenance"
             + "\n\t   "
@@ -113,9 +116,8 @@ class SSHConnectionError(paramiko.SSHException):
             + "\n\t"
             + "-Retry connecting with mila"
             + "\n\t"
-            + "-Try to exclude the node with -x {0} parameter".format(
-                self.node_hostname
-            )
+            + f"-Try to exclude the node with -x {self.node_hostname} "
+            "parameter"
         )
 
 
@@ -218,7 +220,8 @@ def qualified(node_name):
 def get_fully_qualified_name() -> str:
     """Return the fully qualified name of the current machine.
 
-    Much faster than socket.getfqdn() on Mac. Falls back to that if the hostname command is not available.
+    Much faster than socket.getfqdn() on Mac. Falls back to that if the
+    hostname command is not available.
     """
     try:
         return subprocess.check_output(["hostname", "-f"]).decode("utf-8").strip()

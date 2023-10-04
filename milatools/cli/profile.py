@@ -337,7 +337,13 @@ class Choice(qn.Choice, Generic[_T]):
         checked: bool | None = False,
         shortcut_key: str | bool | None = True,
     ) -> None:
-        super().__init__(title, value, disabled, checked, shortcut_key)
+        super().__init__(
+            title=title,
+            value=value,
+            disabled=disabled,
+            checked=checked,
+            shortcut_key=shortcut_key,
+        )
 
 
 def _select_unsafe_ask(

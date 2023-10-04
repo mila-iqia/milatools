@@ -4,11 +4,9 @@ import io
 import shlex
 import subprocess
 from subprocess import CompletedProcess
-from typing import Callable
 from unittest import mock
 
 import pytest
-from fabric.testing.base import Command, MockChannel, Session  # noqa
 from fabric.testing.fixtures import Connection, MockRemote, remote  # noqa
 from pytest_mock import MockerFixture
 from pytest_regressions.file_regression import FileRegressionFixture
@@ -24,18 +22,6 @@ def _convert_argparse_output_to_pre_py311_format(output: str) -> str:
 
 
 P = ParamSpec("P")
-
-
-class _MockRemote(MockRemote):
-    # NOTE: This class isn't actually used. It's just here so we can see what
-    # the signature of the test methods are.
-    def expect(
-        self,
-        __session_fn: Callable[P, Session] = Session,
-        *session_args: P.args,
-        **session_kwargs: P.kwargs,
-    ) -> MockChannel:
-        return super().expect(*session_args, **session_kwargs)
 
 
 def reload_module():
@@ -80,18 +66,6 @@ def test_check_passwordless(
     )
 
 
-# def test_remote(remote: _MockRemote):
-#     some_message = "BOBOBOB"
-#     remote.expect(
-#         host="login.server.mila.quebec",
-#         user="normandf",
-#         port=2222,
-#         commands=[Command("echo OK", out=some_message.encode())],
-#     )
-#     result = Connection("mila").run("echo OK")
-#     assert result.stdout == some_message
-
-
 @pytest.mark.parametrize(
     "command",
     ["mila"]
@@ -118,7 +92,8 @@ def test_help(
     file_regression: FileRegressionFixture,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test that the --help text matches what's expected (and is stable over time)."""
+    """Test that the --help text matches what's expected (and is stable over
+    time)."""
     monkeypatch.setattr("sys.argv", shlex.split(command + " --help"))
     buf = io.StringIO()
     with contextlib.suppress(SystemExit), contextlib.redirect_stdout(
@@ -178,7 +153,8 @@ def test_check_command_output(
     file_regression: FileRegressionFixture,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Run simple commands and check that their output matches what's expected."""
+    """Run simple commands and check that their output matches what's
+    expected."""
 
     monkeypatch.setattr("webbrowser.open", lambda url: None)
     monkeypatch.setattr("sys.argv", shlex.split(command))
