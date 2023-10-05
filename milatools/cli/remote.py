@@ -6,7 +6,15 @@ import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Callable, Iterable, Literal, Sequence, TypedDict, overload
+from typing import (
+    Callable,
+    Iterable,
+    Literal,
+    Sequence,
+    TextIO,
+    TypedDict,
+    overload,
+)
 
 import fabric
 import fabric.transfer
@@ -39,6 +47,8 @@ class NodeNameAndJobidDict(TypedDict):
 
 class QueueIO:
     """A Queue used to store the output of the remote command."""
+
+    # TODO: Why aren't we using something like `io.StringIO`?
 
     def __init__(self):
         self.q: Queue[str] = Queue()
@@ -147,12 +157,19 @@ class Remote:
         hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
         warn: bool = False,
         asynchronous: bool = False,
+        out_stream: TextIO | None = None,
         **kwargs,
     ) -> invoke.Result | invoke.Promise:
         try:
             # NOTE: See invoke.runners.Runner.run for possible **kwargs
+            # invoke.runners.Runner.run
             return self.connection.run(
-                cmd, hide=hide, warn=warn, asynchronous=asynchronous, **kwargs
+                cmd,
+                hide=hide,
+                warn=warn,
+                asynchronous=asynchronous,
+                **kwargs,
+                out_stream=out_stream,
             )
         except socket.gaierror:
             exit(
@@ -171,6 +188,7 @@ class Remote:
         hide: bool = False,
         warn: bool = False,
         asynchronous: Literal[True] = True,
+        out_stream: TextIO | None = None,
         **kwargs,
     ) -> invoke.Promise:
         ...
@@ -183,6 +201,7 @@ class Remote:
         hide: bool = False,
         warn: bool = False,
         asynchronous: Literal[False] = False,
+        out_stream: TextIO | None = None,
         **kwargs,
     ) -> invoke.Result:
         ...
@@ -195,6 +214,7 @@ class Remote:
         hide: bool = False,
         warn: bool = False,
         asynchronous: bool = False,
+        out_stream: TextIO | None = None,
         **kwargs,
     ) -> invoke.Result | invoke.Promise:
         ...
@@ -206,6 +226,7 @@ class Remote:
         hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
         warn: bool = False,
         asynchronous: bool = False,
+        out_stream: TextIO | None = None,
         **kwargs,
     ) -> invoke.Promise | invoke.Result:
         """Run a command on the remote host, returning the `invoke.Result`.
@@ -227,6 +248,9 @@ class Remote:
         warn: Whether to warn and continue, instead of raising \
             `invoke.runners.UnexpectedExit`, when the executed command exits with a \
             nonzero status.
+        out_stream: A file-like stream object to which the subprocess' standard output \
+            should be written. If ``None`` (the default), ``sys.stdout`` will be used.
+
         asynchronous : Whether to run the command asynchronously or not.
 
         Returns
@@ -240,7 +264,14 @@ class Remote:
             self.display(cmd)
         for transform in self.transforms:
             cmd = transform(cmd)
-        return self._run(cmd, hide=hide, warn=warn, asynchronous=asynchronous, **kwargs)
+        return self._run(
+            cmd,
+            hide=hide,
+            warn=warn,
+            asynchronous=asynchronous,
+            out_stream=out_stream,
+            **kwargs,
+        )
 
     def get_output(
         self,
@@ -260,6 +291,7 @@ class Remote:
         "This method will be removed because its name is misleading: This "
         "returns a list with all the words in the output instead of all the "
         "lines. Use get_output(cmd).split() instead.",
+        category=None,  # TODO: Remove this so a warning is raised at runtime.
     )
     def get_lines(
         self,
@@ -281,8 +313,16 @@ class Remote:
         pty: bool = True,
         hide: bool = False,
         **kwargs,
-    ) -> tuple[invoke.runners.Runner, dict[str, str]]:
+    ) -> tuple[fabric.runners.Remote, dict[str, str]]:
+        # TODO: We pass this `QueueIO` class to `connection.run`, which expects a
+        # file-like object and defaults to sys.stdout (a TextIO). However they only use
+        # the `write` and `flush` methods, which means that this QueueIO is actually
+        # okay to use. If we wanted to be 100% legit with this, we should probably use
+        # something like a `io.StringIO` here instead, and create an object that manages
+        # reading from it, and pass that `io.StringIO` buffer to `self.run`.
+        # expects to get a file-like
         qio = QueueIO()
+
         proc = self.run(
             cmd,
             hide=hide,
