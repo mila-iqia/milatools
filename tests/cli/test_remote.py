@@ -1,10 +1,12 @@
 from __future__ import annotations
+import re
 
 import shlex
+import typing
 import unittest
 import unittest.mock
 from typing import Callable
-from unittest.mock import ANY, Mock, create_autospec
+from unittest.mock import Mock, create_autospec
 
 import invoke
 import paramiko
@@ -17,31 +19,60 @@ from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
 from milatools.cli.remote import QueueIO, Remote, get_first_node_name
+import sys
 
-no_internet = pytest.mark.disable_socket
+# TODO: Enable running the tests "for real" on the mila cluster using a flag?
+# - This would require us to use "proper" commands e.g. 'echo OK' can't output "bobobo".
+RUN_COMMANDS_FOR_REAL = "--enable-internet" in sys.argv
 
-# Disable internet access for all unit tests here to prevent false positives
-pytestmark = no_internet
+only_runs_for_real = pytest.mark.skipif(
+    not RUN_COMMANDS_FOR_REAL,
+    reason="Test needs to have real internet access to the cluster.",
+)
+disable_internet_access = pytest.mark.disable_socket
+can_run_for_real = (
+    pytest.mark.enable_socket if RUN_COMMANDS_FOR_REAL else pytest.mark.disable_socket
+)
+pytestmark = pytest.mark.disable_socket
 
 P = ParamSpec("P")
 
 
-class _MockRemote(MockRemote):
-    # NOTE: This class isn't actually used. It's just here so we can see what
-    # the signature of the test methods are.
-    def expect(
-        self,
-        _session_fn: Callable[P, Session] = Session,
-        *session_args: P.args,
-        **session_kwargs: P.kwargs,
-    ) -> MockChannel:
-        return super().expect(*session_args, **session_kwargs)
+if typing.TYPE_CHECKING:
+    # Note: Tryign to use this so that <Mock instance>.foo.baz.bob is also shown as of
+    # type Mock. Doesn't currently work though.
+
+    # class _Mock(unittest.mock.Mock):
+    #     def __getattr__(self, name: str) -> _Mock:
+    #         ...
+
+    #     def __getattribute__(self, name: str) -> _Mock:
+    #         ...
+
+    class _MockRemote(MockRemote):
+        # NOTE: This class isn't actually used. It's just here so we can see what
+        # the signature of the test methods are.
+        def expect(
+            self,
+            _session_fn: Callable[P, Session] = Session,
+            *session_args: P.args,
+            **session_kwargs: P.kwargs,
+        ) -> MockChannel:
+            # NOTE: Check this method for the main stuff:
+            import fabric.testing.base
+
+            fabric.testing.base.Session.generate_mocks
+            return super().expect(*session_args, **session_kwargs)
 
 
+@disable_internet_access
 @pytest.mark.skip(
-    reason="Seems to require reading from stdin? Works with the -s flag, but other tests don't"
+    reason=(
+        "Seems to require reading from stdin? Works with the -s flag, but other "
+        "tests might not."
+    )
 )
-def test_run_remote(remote: _MockRemote):
+def test_run_remote(remote: _MockRemote):  # noqa: F811
     command = "echo OK"
     some_message = "BOBOBOB"
     remote.expect(
@@ -55,14 +86,13 @@ def test_run_remote(remote: _MockRemote):
     assert result.stdout == some_message
 
 
-@no_internet
+@disable_internet_access
 @pytest.mark.parametrize("keepalive", [0, 123])
 @pytest.mark.parametrize("host", ["mila", "bob"])
 def test_init(
     keepalive: int,
     host: str,
     monkeypatch: pytest.MonkeyPatch,
-    mocker: pytest_mock.MockerFixture,
 ):
     """
 
@@ -106,53 +136,109 @@ def host() -> str:
     return "mila"
 
 
-# TODO: Make it possible to run the tests "for real" (i.e. really connecting to Mila) using a flag
 @pytest.fixture
-def mock_connection(host: str, mocker: pytest_mock.MockerFixture):
-    MockConnection: Mock = create_autospec(Connection, spec_set=True)
-    mock_connection = MockConnection(host)
-    MockTransport: Mock = create_autospec(paramiko.Transport, spec_set=True)
+def mock_connection(host: str, mocker: pytest_mock.MockerFixture) -> Connection | Mock:
+    if RUN_COMMANDS_FOR_REAL:
+        return Connection(host)
+    MockConnection: Mock = create_autospec(
+        Connection, spec_set=True, _name="MockConnection"
+    )
+    mock_connection: Mock = MockConnection(host)
+    # mock_connection.configure_mock(name="mock_connection")
+    MockTransport: Mock = create_autospec(
+        paramiko.Transport, spec_set=True, _name="MockTransport"
+    )
     mock_transport: Mock = MockTransport.return_value
+    # mock_transport.configure_mock(name="mock_transport")
     mock_connection.transport = mock_transport
     mocker.patch("paramiko.Transport", MockTransport)
-    yield mock_connection
+    return mock_connection
     # return mock_connection
 
 
-@no_internet
-def test_with_transforms(mock_connection: Connection | Mock, host: str):
+@can_run_for_real
+def test_with_transforms(
+    mock_connection: Connection | Mock,
+    host: str,
+):
     r = Remote(host, connection=mock_connection)
-    r = r.with_transforms(lambda cmd: f"bash -c {cmd}")
-    _ = r.run("echo OK", display=None, hide=False, warn=False, asynchronous=False)
-    mock_connection.run.assert_called_once_with(
-        "bash -c echo OK", asynchronous=False, hide=False, warn=False
+    r = r.with_transforms(
+        lambda cmd: f"echo 'this is printed before the command' && {cmd}"
     )
-    mock_connection.local.assert_not_called()
+    result = r.run("echo OK", display=None, hide=False, warn=False, asynchronous=False)
+    if RUN_COMMANDS_FOR_REAL:
+        assert result.stdout == "this is printed before the command\nOK\n"
+        assert result.stderr == ""
+    else:
+        mock_connection.run.assert_called_once_with(
+            "echo 'this is printed before the command' && echo OK",
+            asynchronous=False,
+            hide=False,
+            out_stream=None,
+            warn=False,
+        )
+        mock_connection.local.assert_not_called()
 
 
+@can_run_for_real
 def test_wrap(mock_connection: Connection | Mock, host: str):
     r = Remote(host, connection=mock_connection)
-    r = r.wrap("hello, this is the command: <{}>")
-    _ = r.run("echo OK", display=None, hide=False, warn=False, asynchronous=False)
-    mock_connection.run.assert_called_once_with(
-        "hello, this is the command: <echo OK>",
-        asynchronous=False,
+    command = "echo OK"
+    template = "echo 'hello, this is the command: <{}>'"
+    command_output = "hello, this is the command: <echo OK>"
+    r = r.wrap(template)
+    result = r.run(
+        command,
+        display=None,
         hide=False,
         warn=False,
+        asynchronous=False,
     )
-    mock_connection.local.assert_not_called()
+    if RUN_COMMANDS_FOR_REAL:
+        assert result.stdout == command_output + "\n"
+        assert result.stderr == ""
+    else:
+        mock_connection.run.assert_called_once_with(
+            template.format(command),
+            asynchronous=False,
+            hide=False,
+            warn=False,
+            out_stream=None,
+        )
+        mock_connection.local.assert_not_called()
 
 
+@can_run_for_real
 def test_with_precommand(mock_connection: Connection | Mock, host: str):
     r = Remote(host, connection=mock_connection)
-    some_command = "hostname"
     precommand = "echo BEFORE"
+    some_command = "hostname"
     r = r.with_precommand(precommand)
-    _ = r.run(some_command, display=None, hide=False, warn=False, asynchronous=False)
-    mock_connection.run.assert_called_once_with(
-        f"{precommand} && {some_command}", asynchronous=False, hide=False, warn=False
+    result = r.run(
+        some_command,
+        display=None,
+        hide=False,
+        warn=False,
+        asynchronous=False,
     )
-    mock_connection.local.assert_not_called()
+    if RUN_COMMANDS_FOR_REAL:
+        # TODO: write this in a way that isn't as specific to the mila cluster.
+        # The actual output looks like this:
+        # assert result.stdout == "BEFORE\nlogin-1\n"
+        before_n_login, dash, number_n = result.stdout.partition("-")
+        assert before_n_login == "BEFORE\nlogin"
+        assert dash == "-"
+        assert number_n.endswith("\n")
+        assert number_n.rstrip().isdigit()
+    else:
+        mock_connection.run.assert_called_once_with(
+            f"{precommand} && {some_command}",
+            asynchronous=False,
+            hide=False,
+            warn=False,
+            out_stream=None,
+        )
+        mock_connection.local.assert_not_called()
 
 
 def test_with_profile(mock_connection: Connection | Mock, host: str):
@@ -160,12 +246,20 @@ def test_with_profile(mock_connection: Connection | Mock, host: str):
     some_command = "whoami"
     profile = "my_profile"
     r = r.with_profile(profile)
-    _ = r.run(some_command, display=None, hide=False, warn=False, asynchronous=False)
+    _ = r.run(
+        some_command,
+        display=None,
+        hide=False,
+        warn=False,
+        out_stream=None,
+        asynchronous=False,
+    )
     mock_connection.run.assert_called_once_with(
         f"source {profile} && {some_command}",
         asynchronous=False,
         hide=False,
         warn=False,
+        out_stream=None,
     )
     mock_connection.local.assert_not_called()
 
@@ -174,56 +268,48 @@ def test_with_bash(mock_connection: Connection | Mock, host: str):
     r = Remote(host, connection=mock_connection)
     some_command = "echo 'hello my name is $USER'"
     r = r.with_bash()
-    _ = r.run(some_command, display=None, hide=False, warn=False, asynchronous=False)
+    _ = r.run(
+        some_command,
+        display=None,
+        hide=False,
+        warn=False,
+        out_stream=None,
+        asynchronous=False,
+    )
     mock_connection.run.assert_called_once_with(
         shlex.join(["bash", "-c", some_command]),
         asynchronous=False,
         hide=False,
         warn=False,
+        out_stream=None,
     )
     mock_connection.local.assert_not_called()
 
 
+@can_run_for_real
+@pytest.mark.parametrize("message", ["foobar"])
 def test_display(
+    message: str,
     mock_connection: Connection | Mock,
     host: str,
     capsys: pytest.CaptureFixture,
 ):
-    some_message = "foo"
     r = Remote(host, connection=mock_connection)
-    r.display(some_message)
+    r.display(message)
     output = capsys.readouterr().out
-    assert output == f"({host}) $ {some_message}\n"
-    # file_regression.check(output)
+    assert output == f"({host}) $ {message}\n"
 
 
-# def test_simple_run(
-#     mock_connection: Connection | Mock,
-#     host: str,
-#     mocker: pytest_mock.MockerFixture,
-# ):
-#     # patcher.patch
-#     command = "echo OK"
-#     command_output = "BOBOBOBO"
-
-#     r = Remote(host, connection=mock_connection)
-#     result = r.simple_run(command)
-#     assert result == command_output
-#     mock_connection.run.assert_called_once_with(
-#         command,
-#         asynchronous=False,
-#         hide=True,
-#         warn=False,
-#     )
-#     mock_connection.local.assert_not_called()
-
-
-@no_internet
+@disable_internet_access
 @pytest.mark.parametrize("asynchronous", [True, False])
 @pytest.mark.parametrize("hide", [True, False])
 @pytest.mark.parametrize("warn", [True, False])
 def test_run(
-    mock_connection: Connection, host: str, asynchronous: bool, hide: bool, warn: bool
+    mock_connection: Connection,
+    host: str,
+    asynchronous: bool,
+    hide: bool,
+    warn: bool,
 ):
     command = "echo OK"
     command_output = "bob"
@@ -242,13 +328,13 @@ def test_run(
         command, display=None, hide=hide, warn=warn, asynchronous=asynchronous
     )
     mock_connection.run.assert_called_once_with(
-        command, asynchronous=asynchronous, hide=hide, warn=warn
+        command, asynchronous=asynchronous, hide=hide, warn=warn, out_stream=None
     )
     mock_connection.local.assert_not_called()
     assert output == mock_promise
 
 
-@no_internet
+@disable_internet_access
 @pytest.mark.parametrize("hide", [True, False])
 @pytest.mark.parametrize("warn", [True, False])
 def test_get_output(mock_connection: Connection, host: str, hide: bool, warn: bool):
@@ -258,22 +344,29 @@ def test_get_output(mock_connection: Connection, host: str, hide: bool, warn: bo
     mock_connection.run.return_value = invoke.Result(stdout=command_output)
     output = r.get_output(command, display=None, hide=hide, warn=warn)
     mock_connection.run.assert_called_once_with(
-        command, asynchronous=False, hide=hide, warn=warn
+        command, asynchronous=False, hide=hide, out_stream=None, warn=warn
     )
     assert output == command_output
 
 
-# TODO: If `hide==True`, then we should not see anything in either stdout or stderr. Need to add
-# a fixture or something else that actually checks for that.
+# TODO: If `hide==True`, then we should not see anything in either stdout or stderr.
+# Need to add a fixture or something else that actually checks for that.
 @pytest.mark.xfail(
-    reason="Seems like the name is a little bit deceptive. Splits based on spaces, not lines!",
+    reason=(
+        "BUG: Seems like either a bug or the name is misleading! `get_lines` "
+        "splits the output based on spaces, not lines!"
+    ),
     strict=True,
+    raises=AssertionError,
 )
 @pytest.mark.parametrize("hide", [True, False])
 @pytest.mark.parametrize("warn", [True, False])
 def test_get_lines(mock_connection: Connection, host: str, hide: bool, warn: bool):
     command = "echo OK"
-    command_output_lines = ["Line 1 has this value", "Line 2 has this other value"]
+    command_output_lines = [
+        "Line 1 has this value",
+        "Line 2 has this other value",
+    ]
     command_output = "\n".join(command_output_lines)
     mock_connection.run.return_value = invoke.Result(stdout=command_output)
     r = Remote(host, connection=mock_connection)
@@ -281,14 +374,85 @@ def test_get_lines(mock_connection: Connection, host: str, hide: bool, warn: boo
     assert lines == command_output_lines
 
 
-# def run(
-#     self,
+@disable_internet_access
+@pytest.mark.parametrize("wait", [True, False])
+@pytest.mark.parametrize("pty", [True, False])
+@pytest.mark.parametrize("hide", [True, False])
+def test_extract(
+    mock_connection: Connection,
+    host: str,
+    wait: bool,
+    pty: bool,
+    hide: bool,
+):
+    command = "echo 'hello my name is $USER'"
+    command_output = "hello my name is bob"
+    pattern = r"hello my name is ([A-Za-z0-9_-]+)"
+    expected_out = "bob"
 
-# def get_output(
-#     self,
+    import fabric.testing.base
 
-# def get_lines(
-#     self,
+    fabric.testing.base.Session.generate_mocks
+
+    # TODO: Need to create a mock Runner since it's being accessed here.
+    mock_runner: Mock = create_autospec(
+        invoke.runners.Runner,
+        spec_set=True,
+        instance=True,
+        _name="mock_runner",
+    )
+
+    # NOTE: The runner needs to write stuff to into the out_stream. This is getting
+    # tricky.
+    write_stuff_was_called = False
+
+    def write_stuff(
+        command: str,
+        asynchronous: bool,
+        hide: bool,
+        warn: bool,
+        pty: bool,
+        out_stream: QueueIO,
+    ):
+        nonlocal write_stuff_was_called
+        write_stuff_was_called = True
+        out_stream.write(command_output)
+        return unittest.mock.DEFAULT
+        # return invoke.runners.Promise(mock_runner)
+
+    mock_runner.run.side_effect = write_stuff
+    mock_runner.process_is_finished = Mock(spec=bool, side_effect=[False, False, True])
+
+    mock_connection._remote_runner.return_value = mock_runner
+
+    mock_promise = create_autospec(
+        invoke.runners.Promise,
+        _name="mock_promise",
+        # spec_set=True,
+        instance=True,
+        runner=mock_runner,
+    )
+    mock_connection.run.return_value = mock_promise
+    mock_connection.run.side_effect = write_stuff
+    r = Remote(hostname=host, connection=mock_connection)
+    import fabric.runners
+
+    match = re.match(pattern, command_output)
+    assert match and match.groups()[0] == "bob"
+
+    some_key = "foo"
+    runner, out = r.extract(
+        command,
+        patterns={
+            some_key: pattern,
+        },
+        wait=wait,
+        pty=pty,
+        hide=hide,
+    )
+    assert write_stuff_was_called
+    assert out == {some_key: expected_out}
+
 
 # def extract(
 #     self,
