@@ -14,7 +14,7 @@ import invoke
 import paramiko
 import questionary as qn
 from fabric import Connection
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 
@@ -50,8 +50,7 @@ class QueueIO:
         pass
 
     def readlines(self, stop: Callable[[], bool]) -> Iterable[str]:
-        """Read lines from the queue until empty and the stop condition is
-        met."""
+        """Read lines from the queue until empty and the stop condition is met."""
         current = ""  # the last line of text that was yielded.
         lines: Sequence[str] = tuple()
         while True:
@@ -69,8 +68,8 @@ class QueueIO:
 
 
 def get_first_node_name(node_names_out: str) -> str:
-    """Returns the name of the first node that was granted, given the string
-    that salloc outputs to stdout.
+    """Returns the name of the first node that was granted, given the string that salloc
+    outputs to stdout.
 
     >>> get_first_node_name("cn-c001")
     'cn-c001'
@@ -110,8 +109,8 @@ class Remote:
                 connection = Connection(hostname)
                 if keepalive:
                     connection.open()
-                    # NOTE: this transport gets mocked in tests, so we use a "soft" typing override
-                    # instead of an assertion check here.
+                    # NOTE: this transport gets mocked in tests, so we use a "soft"
+                    # typing override instead of an assertion check here.
                     # assert isinstance(connection.transport, paramiko.Transport)
                     transport: paramiko.Transport = connection.transport  # type: ignore
                     transport.set_keepalive(keepalive)
@@ -188,6 +187,18 @@ class Remote:
     ) -> invoke.Result:
         ...
 
+    @overload
+    def run(
+        self,
+        cmd: str,
+        display: bool | None = None,
+        hide: bool = False,
+        warn: bool = False,
+        asynchronous: bool = False,
+        **kwargs,
+    ) -> invoke.Result | invoke.Promise:
+        ...
+
     def run(
         self,
         cmd: str,
@@ -199,25 +210,28 @@ class Remote:
     ) -> invoke.Promise | invoke.Result:
         """Run a command on the remote host, returning the `invoke.Result`.
 
-        NOTE: The arguments of this method are passed to `invoke.runners.Runner.run`. See that
-        method for more info on the possible arguments.
+        NOTE: The arguments of this method are passed to `invoke.runners.Runner.run`.
+        See that method for more info on the possible arguments.
+
+        By the way, the \\'s  in the param descriptions below are there so that
+        hovering over the arguments shows the entire description in code editors (i.e.
+        VsCode for me).
 
         Parameters
         ----------
         cmd: The command to run
-        display: TODO, by default None
-        hide: ``'out'`` (or ``'stdout'``) to hide only the stdout stream, ``hide='err'`` \
-            (or ``'stderr'``) to hide only stderr, or ``hide='both'`` (or ``True``) to \
-            hide both streams. Defaults to `False`.
-        warn: Whether to warn and continue, instead of raising `invoke.runners.UnexpectedExit`, \
-            when the executed command exits with a nonzero status. Defaults to ``False``.
-        asynchronous : bool, optional
-            _description_, by default False
+        display: TODO: add a description of what this argument does.
+        hide: ``'out'`` (or ``'stdout'``) to hide only the stdout stream, \
+            ``hide='err'`` (or ``'stderr'``) to hide only stderr, or ``hide='both'`` \
+            (or ``True``) to hide both streams.
+        warn: Whether to warn and continue, instead of raising \
+            `invoke.runners.UnexpectedExit`, when the executed command exits with a \
+            nonzero status.
+        asynchronous : Whether to run the command asynchronously or not.
 
         Returns
         -------
-        invoke.Promise | invoke.Result
-            _description_
+        an `invoke.Result` if ``asynchronous=False``, else an `invoke.Promise`.
         """
         # NOTE: See invoke.runners.Runner.run for possible values in **kwargs
         if display is None:
@@ -242,6 +256,11 @@ class Remote:
             warn=warn,
         ).stdout.strip()
 
+    @deprecated(
+        "This method will be removed because its name is misleading: This "
+        "returns a list with all the words in the output instead of all the "
+        "lines. Use get_output(cmd).split() instead.",
+    )
     def get_lines(
         self,
         cmd: str,
@@ -403,8 +422,8 @@ class SlurmRemote(Remote):
     ) -> tuple[NodeNameDict | NodeNameAndJobidDict, invoke.Runner]:
         """Requests a compute node from the cluster if not already allocated.
 
-        Returns a dictionary with the `node_name`, and additionally the `jobid`
-        if this Remote is already connected to a compute node.
+        Returns a dictionary with the `node_name`, and additionally the `jobid` if this
+        Remote is already connected to a compute node.
         """
         if self._persist:
             proc, results = self.extract(
