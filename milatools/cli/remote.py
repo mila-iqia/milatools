@@ -6,12 +6,12 @@ import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from typing import TypedDict
 
 import fabric.runners
 import paramiko
 import questionary as qn
 from fabric import Connection
+from typing_extensions import TypedDict
 
 from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 
