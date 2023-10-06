@@ -1,10 +1,12 @@
 from __future__ import annotations
-import re
 
+import re
 import shlex
+import sys
 import typing
 import unittest
 import unittest.mock
+from pathlib import Path
 from typing import Callable
 from unittest.mock import Mock, create_autospec
 
@@ -13,13 +15,11 @@ import paramiko
 import pytest
 import pytest_mock
 from fabric.testing.base import Command, MockChannel, Session
-from fabric.testing.fixtures import remote  # noqa
 from fabric.testing.fixtures import Connection, MockRemote  # client,
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
 from milatools.cli.remote import QueueIO, Remote, get_first_node_name
-import sys
 
 # TODO: Enable running the tests "for real" on the mila cluster using a flag?
 # - This would require us to use "proper" commands e.g. 'echo OK' can't output "bobobo".
@@ -63,6 +63,9 @@ if typing.TYPE_CHECKING:
 
             fabric.testing.base.Session.generate_mocks
             return super().expect(*session_args, **session_kwargs)
+
+
+# from fabric.testing.fixtures import remote  # noqa
 
 
 @disable_internet_access
@@ -111,7 +114,9 @@ def test_init(
     MockConnection: Mock = create_autospec(Connection, spec_set=True)
     monkeypatch.setattr(milatools.cli.remote, "Connection", MockConnection)
     mock_connection: Mock = MockConnection.return_value
-    mock_transport: Mock = create_autospec(paramiko.Transport, spec_set=True, instance=True)
+    mock_transport: Mock = create_autospec(
+        paramiko.Transport, spec_set=True, instance=True
+    )
     mock_connection.transport = mock_transport
 
     r = Remote(host, keepalive=keepalive)
@@ -138,10 +143,14 @@ def host() -> str:
 def mock_connection(host: str, mocker: pytest_mock.MockerFixture) -> Connection | Mock:
     if RUN_COMMANDS_FOR_REAL:
         return Connection(host)
-    MockConnection: Mock = create_autospec(Connection, spec_set=True, _name="MockConnection")
+    MockConnection: Mock = create_autospec(
+        Connection, spec_set=True, _name="MockConnection"
+    )
     mock_connection: Mock = MockConnection(host)
     # mock_connection.configure_mock(name="mock_connection")
-    MockTransport: Mock = create_autospec(paramiko.Transport, spec_set=True, _name="MockTransport")
+    MockTransport: Mock = create_autospec(
+        paramiko.Transport, spec_set=True, _name="MockTransport"
+    )
     mock_transport: Mock = MockTransport.return_value
     # mock_transport.configure_mock(name="mock_transport")
     mock_connection.transport = mock_transport
@@ -156,7 +165,9 @@ def test_with_transforms(
     host: str,
 ):
     r = Remote(host, connection=mock_connection)
-    r = r.with_transforms(lambda cmd: f"echo 'this is printed before the command' && {cmd}")
+    r = r.with_transforms(
+        lambda cmd: f"echo 'this is printed before the command' && {cmd}"
+    )
     result = r.run("echo OK", display=None, hide=False, warn=False, asynchronous=False)
     if RUN_COMMANDS_FOR_REAL:
         assert result.stdout == "this is printed before the command\nOK\n"
@@ -316,7 +327,9 @@ def test_run(
     )
     mock_connection.run.return_value = mock_promise
 
-    output = r.run(command, display=None, hide=hide, warn=warn, asynchronous=asynchronous)
+    output = r.run(
+        command, display=None, hide=hide, warn=warn, asynchronous=asynchronous
+    )
     mock_connection.run.assert_called_once_with(
         command, asynchronous=asynchronous, hide=hide, warn=warn, out_stream=None
     )
@@ -365,6 +378,9 @@ def test_get_lines(mock_connection: Connection, host: str, hide: bool, warn: boo
     assert lines == command_output_lines
 
 
+# @pytest.mark.skip(
+#     reason=
+# )
 @disable_internet_access
 @pytest.mark.parametrize("wait", [True, False])
 @pytest.mark.parametrize("pty", [True, False])
@@ -376,7 +392,8 @@ def test_extract(
     pty: bool,
     hide: bool,
 ):
-    """TODO: It's actually very hard to write this test in a way where it isn't testing itself..."""
+    """TODO: It's very hard to write this test in such a way where it isn't testing itself..."""
+
     test_command = "echo 'hello my name is $USER'"
     command_output = "hello my name is bob"
     pattern = r"hello my name is ([A-Za-z0-9_-]+)"
@@ -419,19 +436,11 @@ def test_extract(
         instance=True,
         runner=mock_runner,
     )
-
-    # mock_result = create_autospec(
-    #     invoke.runners.Result,
-    #     _name="mock_result",
-    #     spec_set=True,
-    #     instance=True,
-    # )
-    # if not wait:
     mock_connection.run.return_value = mock_promise
-    # else:
-    #     mock_connection.run.return_value = mock_result
 
-    # mock_connection.run.side_effect = write_stuff
+    # TODO: This makes the test pass, but it becomes pretty meaningless at this point. Both the
+    # Promise/Result, Runner, etc don't get used. I'm (@lebrice) not sure
+    mock_connection.run.side_effect = write_stuff
     r = Remote(hostname=host, connection=mock_connection)
 
     match = re.match(pattern, command_output)
@@ -451,32 +460,67 @@ def test_extract(
     assert out == {some_key: expected_out}
 
 
-# def extract(
-#     self,
+@disable_internet_access
+def test_get(mock_connection: Connection, host: str):
+    # TODO: Make this test smarter? or no need? (because we'd be testing fabric at that point?)
+    r = Remote(host, connection=mock_connection)
+    _result = r.get("foo", "bar")
+    mock_connection.get.assert_called_once_with("foo", "bar")
 
-# def get(self, src: str, dest: str | None) -> fabric.transfer.Result:
-#     return self.connection.get(src, dest)
 
-# def put(self, src: str | Path, dest: str) -> fabric.transfer.Result:
-#     return self.connection.put(src, dest)
+@disable_internet_access
+def test_put(mock_connection: Connection, host: str):
+    r = Remote(host, connection=mock_connection)
+    _result = r.put("foo", "bar")
+    mock_connection.put.assert_called_once_with("foo", "bar")
 
-# def puttext(self, text: str, dest: str) -> None:
-#     base = Path(dest).parent
 
-# def home(self) -> str:
-#     return self.get_output("echo $HOME", hide=True)
+@disable_internet_access
+def test_puttext(mock_connection: Connection, host: str):
+    r = Remote(host, connection=mock_connection)
+    dest_dir = "bar/baz"
+    dest = f"{dest_dir}/bob.txt"
+    _result = r.puttext("foo", dest)
+    mock_connection.run.assert_called_once_with(
+        f"mkdir -p {dest_dir}",
+        asynchronous=False,
+        hide=True,
+        warn=False,
+        out_stream=None,
+    )
+    mock_connection.put.assert_called_once_with(unittest.mock.ANY, dest)
 
-# def persist(self):
-#     qn.print(
 
-# def ensure_allocation(self) -> tuple[NodeNameDict, None]:
-#     return {"node_name": self.hostname}, None
+@can_run_for_real
+def test_home(mock_connection: Connection, host: str):
+    r = Remote(host, connection=mock_connection)
+    home_dir = r.home()
+    if RUN_COMMANDS_FOR_REAL:
+        assert home_dir.startswith("/home/mila/")
+    else:
+        mock_connection.run.assert_called_once_with(
+            "echo $HOME", asynchronous=False, hide=True, warn=False, out_stream=None
+        )
+        mock_connection.local.assert_not_called()
 
-# def run_script(self, name: str, *args: str, **kwargs):
-#     # TODO: This method doesn't seem to be used.
 
-# def extract_script(
-#     self,
+@disable_internet_access
+def test_persist(mock_connection: Connection, host: str, capsys: pytest.CaptureFixture):
+    r = Remote(host, connection=mock_connection)
+    r.persist()
+    assert (
+        "Warning: --persist does not work with --node or --job"
+        in capsys.readouterr().out
+    )
+
+
+@pytest.fixture
+def remote(mock_connection: Connection, host: str) -> Remote:
+    return Remote(hostname=host, connection=mock_connection)
+
+
+def test_ensure_allocation(remote: Remote):
+    assert remote.ensure_allocation() == {"node_name": remote.hostname}, None
 
 
 def test_QueueIO(file_regression: FileRegressionFixture):

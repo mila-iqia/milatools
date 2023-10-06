@@ -9,10 +9,10 @@ import shutil
 import socket
 import subprocess
 import sys
+import typing
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable
-import typing
 
 import blessed
 import paramiko

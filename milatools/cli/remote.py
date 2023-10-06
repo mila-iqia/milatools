@@ -375,6 +375,7 @@ class Remote:
         return self.get_output("echo $HOME", hide=True)
 
     def persist(self):
+        # TODO: I don't really understand why this is here.
         qn.print(
             "Warning: --persist does not work with --node or --job",
             style="orange",
@@ -384,6 +385,9 @@ class Remote:
     def ensure_allocation(self) -> tuple[NodeNameDict, None]:
         return {"node_name": self.hostname}, None
 
+    @deprecated(
+        "Seems to be unused, so we'll remove it. Don't start using it.", category=None
+    )
     def run_script(self, name: str, *args: str, **kwargs):
         # TODO: This method doesn't seem to be used.
         base = ".milatools/scripts"
@@ -393,6 +397,9 @@ class Remote:
         self.put(here / name, dest)
         return self.run(shjoin([dest, *args]), **kwargs)
 
+    @deprecated(
+        "Seems to be unused, so we'll remove it. Don't start using it.", category=None
+    )
     def extract_script(
         self,
         name: str,
