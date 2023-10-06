@@ -13,7 +13,7 @@ import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
-from sshconf import SshConfigFile, read_ssh_config, ConfigLine
+from sshconf import ConfigLine, SshConfigFile, read_ssh_config
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
