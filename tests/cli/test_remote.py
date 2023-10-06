@@ -111,9 +111,7 @@ def test_init(
     MockConnection: Mock = create_autospec(Connection, spec_set=True)
     monkeypatch.setattr(milatools.cli.remote, "Connection", MockConnection)
     mock_connection: Mock = MockConnection.return_value
-    mock_transport: Mock = create_autospec(
-        paramiko.Transport, spec_set=True, instance=True
-    )
+    mock_transport: Mock = create_autospec(paramiko.Transport, spec_set=True, instance=True)
     mock_connection.transport = mock_transport
 
     r = Remote(host, keepalive=keepalive)
@@ -140,14 +138,10 @@ def host() -> str:
 def mock_connection(host: str, mocker: pytest_mock.MockerFixture) -> Connection | Mock:
     if RUN_COMMANDS_FOR_REAL:
         return Connection(host)
-    MockConnection: Mock = create_autospec(
-        Connection, spec_set=True, _name="MockConnection"
-    )
+    MockConnection: Mock = create_autospec(Connection, spec_set=True, _name="MockConnection")
     mock_connection: Mock = MockConnection(host)
     # mock_connection.configure_mock(name="mock_connection")
-    MockTransport: Mock = create_autospec(
-        paramiko.Transport, spec_set=True, _name="MockTransport"
-    )
+    MockTransport: Mock = create_autospec(paramiko.Transport, spec_set=True, _name="MockTransport")
     mock_transport: Mock = MockTransport.return_value
     # mock_transport.configure_mock(name="mock_transport")
     mock_connection.transport = mock_transport
@@ -162,9 +156,7 @@ def test_with_transforms(
     host: str,
 ):
     r = Remote(host, connection=mock_connection)
-    r = r.with_transforms(
-        lambda cmd: f"echo 'this is printed before the command' && {cmd}"
-    )
+    r = r.with_transforms(lambda cmd: f"echo 'this is printed before the command' && {cmd}")
     result = r.run("echo OK", display=None, hide=False, warn=False, asynchronous=False)
     if RUN_COMMANDS_FOR_REAL:
         assert result.stdout == "this is printed before the command\nOK\n"
@@ -324,9 +316,7 @@ def test_run(
     )
     mock_connection.run.return_value = mock_promise
 
-    output = r.run(
-        command, display=None, hide=hide, warn=warn, asynchronous=asynchronous
-    )
+    output = r.run(command, display=None, hide=hide, warn=warn, asynchronous=asynchronous)
     mock_connection.run.assert_called_once_with(
         command, asynchronous=asynchronous, hide=hide, warn=warn, out_stream=None
     )
@@ -359,10 +349,11 @@ def test_get_output(mock_connection: Connection, host: str, hide: bool, warn: bo
     strict=True,
     raises=AssertionError,
 )
+@can_run_for_real
 @pytest.mark.parametrize("hide", [True, False])
 @pytest.mark.parametrize("warn", [True, False])
 def test_get_lines(mock_connection: Connection, host: str, hide: bool, warn: bool):
-    command = "echo OK"
+    command = "echo 'Line 1 has this value' && echo 'Line 2 has this other value'"
     command_output_lines = [
         "Line 1 has this value",
         "Line 2 has this other value",
@@ -385,16 +376,12 @@ def test_extract(
     pty: bool,
     hide: bool,
 ):
-    command = "echo 'hello my name is $USER'"
+    """TODO: It's actually very hard to write this test in a way where it isn't testing itself..."""
+    test_command = "echo 'hello my name is $USER'"
     command_output = "hello my name is bob"
     pattern = r"hello my name is ([A-Za-z0-9_-]+)"
     expected_out = "bob"
 
-    import fabric.testing.base
-
-    fabric.testing.base.Session.generate_mocks
-
-    # TODO: Need to create a mock Runner since it's being accessed here.
     mock_runner: Mock = create_autospec(
         invoke.runners.Runner,
         spec_set=True,
@@ -402,8 +389,7 @@ def test_extract(
         _name="mock_runner",
     )
 
-    # NOTE: The runner needs to write stuff to into the out_stream. This is getting
-    # tricky.
+    # NOTE: The runner needs to write stuff to into the out_stream. This is a bit tricky.
     write_stuff_was_called = False
 
     def write_stuff(
@@ -415,14 +401,15 @@ def test_extract(
         out_stream: QueueIO,
     ):
         nonlocal write_stuff_was_called
+        assert command == test_command
         write_stuff_was_called = True
         out_stream.write(command_output)
         return unittest.mock.DEFAULT
         # return invoke.runners.Promise(mock_runner)
 
     mock_runner.run.side_effect = write_stuff
-    mock_runner.process_is_finished = Mock(spec=bool, side_effect=[False, False, True])
-
+    mock_runner.process_is_finished = Mock(spec=bool, side_effect=[False, True])
+    # mock_connection.
     mock_connection._remote_runner.return_value = mock_runner
 
     mock_promise = create_autospec(
@@ -432,17 +419,27 @@ def test_extract(
         instance=True,
         runner=mock_runner,
     )
+
+    # mock_result = create_autospec(
+    #     invoke.runners.Result,
+    #     _name="mock_result",
+    #     spec_set=True,
+    #     instance=True,
+    # )
+    # if not wait:
     mock_connection.run.return_value = mock_promise
-    mock_connection.run.side_effect = write_stuff
+    # else:
+    #     mock_connection.run.return_value = mock_result
+
+    # mock_connection.run.side_effect = write_stuff
     r = Remote(hostname=host, connection=mock_connection)
-    import fabric.runners
 
     match = re.match(pattern, command_output)
     assert match and match.groups()[0] == "bob"
 
     some_key = "foo"
     runner, out = r.extract(
-        command,
+        test_command,
         patterns={
             some_key: pattern,
         },
