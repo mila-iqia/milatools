@@ -13,8 +13,8 @@ python = "^3.7"
 blessed = "^1.18.1"
 sshconf = "^0.2.2"
 questionary = "^1.10.0"
-Fabric = "^2.7.0"
 typing-extensions = "^4.7.1"
+fabric = "^3.2.2"
 
 [tool.poetry.dev-dependencies]
 black = ">= 21.8b0"
@@ -35,6 +35,7 @@ pytest = "^7.2.1"
 pytest-regressions = "^2.4.2"
 pytest-mock = "^3.11.1"
 pytest-socket = "^0.6.0"
+fabric = {extras = ["pytest"], version = "^3.2.2"}
 
 [tool.isort]
 multi_line_output = 3
