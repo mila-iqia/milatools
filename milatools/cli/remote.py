@@ -189,7 +189,7 @@ class Remote:
         asynchronous: Literal[True] = True,
         out_stream: TextIO | None = None,
         **kwargs,
-    ) -> invoke.Promise:
+    ) -> invoke.runners.Promise:
         ...
 
     @overload
@@ -202,7 +202,7 @@ class Remote:
         asynchronous: Literal[False] = False,
         out_stream: TextIO | None = None,
         **kwargs,
-    ) -> invoke.Result:
+    ) -> invoke.runners.Result:
         ...
 
     @overload
@@ -215,7 +215,7 @@ class Remote:
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
         **kwargs,
-    ) -> invoke.Result | invoke.Promise:
+    ) -> invoke.runners.Result | invoke.runners.Promise:
         ...
 
     def run(
@@ -227,7 +227,7 @@ class Remote:
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
         **kwargs,
-    ) -> invoke.Promise | invoke.Result:
+    ) -> invoke.runners.Promise | invoke.runners.Result:
         """Run a command on the remote host, returning the `invoke.Result`.
 
         NOTE: The arguments of this method are passed to `invoke.runners.Runner.run`.
@@ -312,7 +312,7 @@ class Remote:
         pty: bool = True,
         hide: bool = False,
         **kwargs,
-    ) -> tuple[fabric.runners.Remote, dict[str, str]]:
+    ) -> tuple[fabric.runners.Runner, dict[str, str]]:
         # TODO: We pass this `QueueIO` class to `connection.run`, which expects a
         # file-like object and defaults to sys.stdout (a TextIO). However they only use
         # the `write` and `flush` methods, which means that this QueueIO is actually
@@ -320,7 +320,7 @@ class Remote:
         # something like a `io.StringIO` here instead, and create an object that manages
         # reading from it, and pass that `io.StringIO` buffer to `self.run`.
         # expects to get a file-like
-        qio = QueueIO()
+        qio: TextIO = QueueIO()
 
         proc = self.run(
             cmd,
@@ -465,7 +465,7 @@ class SlurmRemote(Remote):
 
     def ensure_allocation(
         self,
-    ) -> tuple[NodeNameDict | NodeNameAndJobidDict, invoke.Runner]:
+    ) -> tuple[NodeNameDict | NodeNameAndJobidDict, invoke.runners.Runner]:
         """Requests a compute node from the cluster if not already allocated.
 
         Returns a dictionary with the `node_name`, and additionally the `jobid` if this
