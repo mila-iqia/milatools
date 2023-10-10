@@ -9,7 +9,6 @@ from queue import Empty, Queue
 from typing import (
     Callable,
     Iterable,
-    Literal,
     Sequence,
     TextIO,
     TypedDict,
@@ -22,7 +21,7 @@ import invoke
 import paramiko
 import questionary as qn
 from fabric import Connection
-from typing_extensions import Self, deprecated
+from typing_extensions import Self, deprecated, Literal
 
 from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 
