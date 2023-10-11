@@ -8,3 +8,4 @@ prof/
 dist/
 .benchmarks/
 .DS_Store
+.vscode
