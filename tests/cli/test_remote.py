@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import shlex
 import sys
 import unittest
 import unittest.mock
@@ -22,6 +21,7 @@ from milatools.cli.remote import (
     SlurmRemote,
     get_first_node_name,
 )
+from milatools.cli.utils import shjoin
 
 from .conftest import internet_access
 
@@ -273,7 +273,7 @@ def test_with_bash(
         assert result.stderr == ""
     else:
         mock_connection.run.assert_called_once_with(
-            shlex.join(["bash", "-c", some_command]),
+            shjoin(["bash", "-c", some_command]),
             asynchronous=False,
             hide=False,
             warn=False,
@@ -706,7 +706,7 @@ class TestSlurmRemote:
             pty: bool,
             out_stream: QueueIO,
         ):
-            assert command == f"bash -c 'salloc {shlex.join(alloc)}'"
+            assert command == f"bash -c 'salloc {shjoin(alloc)}'"
             out_stream.write("salloc: Nodes bob-123 are ready for job")
             return unittest.mock.DEFAULT
 
@@ -714,7 +714,7 @@ class TestSlurmRemote:
         results, runner = remote.ensure_allocation()
 
         mock_connection.run.assert_called_once_with(
-            f"bash -c 'salloc {shlex.join(alloc)}'",
+            f"bash -c 'salloc {shjoin(alloc)}'",
             hide=False,
             asynchronous=True,
             out_stream=unittest.mock.ANY,
