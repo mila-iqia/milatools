@@ -3,21 +3,19 @@ from __future__ import annotations
 import re
 import shlex
 import sys
-import typing
 import unittest
 import unittest.mock
-from typing import Callable
 from unittest.mock import Mock, create_autospec
 
 import invoke
 import paramiko
 import pytest
 import pytest_mock
-from fabric.testing.base import Command, MockChannel, Session
+from fabric.testing.base import Command
 from fabric.testing.fixtures import Connection, MockRemote  # client,
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
-
+from .conftest import internet_access
 from milatools.cli.remote import (
     QueueIO,
     Remote,
@@ -27,63 +25,27 @@ from milatools.cli.remote import (
 
 # TODO: Enable running the tests "for real" on the mila cluster using a flag?
 # - This would require us to use "proper" commands e.g. 'echo OK' can't output "bobobo".
-RUN_COMMANDS_FOR_REAL = "--enable-internet" in sys.argv
+# RUN_COMMANDS_FOR_REAL = "--enable-internet" in sys.argv
 
-only_runs_for_real = pytest.mark.skipif(
-    not RUN_COMMANDS_FOR_REAL,
-    reason="Test needs to have real internet access to the cluster.",
-)
 disable_internet_access = pytest.mark.disable_socket
-dont_run_for_real = pytest.mark.skipif(
-    RUN_COMMANDS_FOR_REAL,
-    reason="Test shouldn't run with real internet access to the cluster.",
-)
-can_run_for_real = (
-    pytest.mark.enable_socket if RUN_COMMANDS_FOR_REAL else pytest.mark.disable_socket
-)
-pytestmark = pytest.mark.disable_socket
+only_runs_for_real = internet_access("remote_only")
+dont_run_for_real = internet_access("local_only")
+can_run_for_real = internet_access("either")
 
 P = ParamSpec("P")
 
-
-if typing.TYPE_CHECKING:
-    # Note: Tryign to use this so that <Mock instance>.foo.baz.bob is also shown as of
-    # type Mock. Doesn't currently work though.
-
-    # class _Mock(unittest.mock.Mock):
-    #     def __getattr__(self, name: str) -> _Mock:
-    #         ...
-
-    #     def __getattribute__(self, name: str) -> _Mock:
-    #         ...
-
-    class _MockRemote(MockRemote):
-        # NOTE: This class isn't actually used. It's just here so we can see what
-        # the signature of the test methods are.
-        def expect(
-            self,
-            _session_fn: Callable[P, Session] = Session,
-            *session_args: P.args,
-            **session_kwargs: P.kwargs,
-        ) -> MockChannel:
-            # NOTE: Check this method for the main stuff:
-            import fabric.testing.base
-
-            fabric.testing.base.Session.generate_mocks
-            return super().expect(*session_args, **session_kwargs)
-
-
-# from fabric.testing.fixtures import remote  # noqa
-
-
-@disable_internet_access
-@pytest.mark.skip(
+requires_s_flag = pytest.mark.skipif(
+    "-s" not in sys.argv,
     reason=(
         "Seems to require reading from stdin? Works with the -s flag, but other "
         "tests might not."
-    )
+    ),
 )
-def test_run_remote(remote: _MockRemote):  # noqa: F811
+
+
+@disable_internet_access
+@requires_s_flag
+def test_run_remote(remote: MockRemote):  # noqa: F811
     command = "echo OK"
     some_message = "BOBOBOB"
     remote.expect(
@@ -148,8 +110,11 @@ def host() -> str:
 
 
 @pytest.fixture
-def mock_connection(host: str, mocker: pytest_mock.MockerFixture) -> Connection | Mock:
-    if RUN_COMMANDS_FOR_REAL:
+def mock_connection(
+    host: str, mocker: pytest_mock.MockerFixture, internet_enabled: bool
+) -> Connection | Mock:
+    if internet_enabled:
+        # Return a real connection to the host!
         return Connection(host)
     MockConnection: Mock = create_autospec(
         Connection, spec_set=True, _name="MockConnection"
@@ -171,13 +136,20 @@ def mock_connection(host: str, mocker: pytest_mock.MockerFixture) -> Connection 
 def test_with_transforms(
     mock_connection: Connection | Mock,
     host: str,
+    internet_enabled: bool,
 ):
     r = Remote(host, connection=mock_connection)
     r = r.with_transforms(
         lambda cmd: f"echo 'this is printed before the command' && {cmd}"
     )
-    result = r.run("echo OK", display=None, hide=False, warn=False, asynchronous=False)
-    if RUN_COMMANDS_FOR_REAL:
+    result = r.run(
+        "echo OK",
+        display=None,
+        hide=False,
+        warn=False,
+        asynchronous=False,
+    )
+    if internet_enabled:
         assert result.stdout == "this is printed before the command\nOK\n"
         assert result.stderr == ""
     else:
@@ -192,7 +164,7 @@ def test_with_transforms(
 
 
 @can_run_for_real
-def test_wrap(mock_connection: Connection | Mock, host: str):
+def test_wrap(mock_connection: Connection | Mock, host: str, internet_enabled: bool):
     r = Remote(host, connection=mock_connection)
     command = "echo OK"
     template = "echo 'hello, this is the command: <{}>'"
@@ -205,7 +177,7 @@ def test_wrap(mock_connection: Connection | Mock, host: str):
         warn=False,
         asynchronous=False,
     )
-    if RUN_COMMANDS_FOR_REAL:
+    if internet_enabled:
         assert result.stdout == command_output + "\n"
         assert result.stderr == ""
     else:
@@ -220,7 +192,9 @@ def test_wrap(mock_connection: Connection | Mock, host: str):
 
 
 @can_run_for_real
-def test_with_precommand(mock_connection: Connection | Mock, host: str):
+def test_with_precommand(
+    mock_connection: Connection | Mock, host: str, internet_enabled: bool
+):
     r = Remote(host, connection=mock_connection)
     precommand = "echo BEFORE"
     some_command = "hostname"
@@ -232,7 +206,7 @@ def test_with_precommand(mock_connection: Connection | Mock, host: str):
         warn=False,
         asynchronous=False,
     )
-    if RUN_COMMANDS_FOR_REAL:
+    if internet_enabled:
         # TODO: write this in a way that isn't as specific to the mila cluster.
         # The actual output looks like this:
         # assert result.stdout == "BEFORE\nlogin-1\n"
@@ -277,7 +251,9 @@ def test_with_profile(mock_connection: Connection | Mock, host: str):
 
 
 @can_run_for_real
-def test_with_bash(mock_connection: Connection | Mock, host: str):
+def test_with_bash(
+    mock_connection: Connection | Mock, host: str, internet_enabled: bool
+):
     r = Remote(host, connection=mock_connection)
     some_command = "echo hello my name is bob"
     r = r.with_bash()
@@ -289,7 +265,7 @@ def test_with_bash(mock_connection: Connection | Mock, host: str):
         out_stream=None,
         asynchronous=False,
     )
-    if RUN_COMMANDS_FOR_REAL:
+    if internet_enabled:
         assert result.command == f"bash -c '{some_command}'"
         assert result.stdout == "hello my name is bob\n"
         assert result.stderr == ""
@@ -361,10 +337,16 @@ def test_run(
 @can_run_for_real
 @pytest.mark.parametrize("hide", [True, False])
 @pytest.mark.parametrize("warn", [True, False])
-def test_get_output(mock_connection: Connection, host: str, hide: bool, warn: bool):
+def test_get_output(
+    mock_connection: Connection,
+    host: str,
+    hide: bool,
+    warn: bool,
+    internet_enabled: bool,
+):
     command = "echo OK"
     r = Remote(host, connection=mock_connection)
-    if RUN_COMMANDS_FOR_REAL:
+    if internet_enabled:
         output = r.get_output(command, display=None, hide=hide, warn=warn)
         assert output == "OK"
     else:
@@ -537,10 +519,10 @@ def test_puttext(mock_connection: Connection, host: str):
 
 
 @can_run_for_real
-def test_home(mock_connection: Connection, host: str):
+def test_home(mock_connection: Connection, host: str, internet_enabled: bool):
     r = Remote(host, connection=mock_connection)
     home_dir = r.home()
-    if RUN_COMMANDS_FOR_REAL:
+    if internet_enabled:
         assert home_dir.startswith("/home/mila/")
     else:
         mock_connection.run.assert_called_once_with(
