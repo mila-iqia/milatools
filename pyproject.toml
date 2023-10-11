@@ -34,6 +34,7 @@ mila = "milatools.cli.__main__:main"
 pytest = "^7.2.1"
 pytest-regressions = "^2.4.2"
 fabric = {extras = ["testing"], version = "^3.2.2"}
+pytest-mock = "^3.11.1"
 
 [tool.isort]
 multi_line_output = 3
