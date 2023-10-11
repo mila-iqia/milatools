@@ -15,13 +15,15 @@ from fabric.testing.base import Command
 from fabric.testing.fixtures import Connection, MockRemote  # client,
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
-from .conftest import internet_access
+
 from milatools.cli.remote import (
     QueueIO,
     Remote,
     SlurmRemote,
     get_first_node_name,
 )
+
+from .conftest import internet_access
 
 # TODO: Enable running the tests "for real" on the mila cluster using a flag?
 # - This would require us to use "proper" commands e.g. 'echo OK' can't output "bobobo".

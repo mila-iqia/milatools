@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing_extensions import Literal
 
 import pytest
+from typing_extensions import Literal
 
 InternetAccess = Literal["local_only", "remote_only", "either"]
 enable_internet_access_flag = "--enable-internet"

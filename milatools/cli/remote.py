@@ -6,14 +6,7 @@ import tempfile
 import time
 from pathlib import Path
 from queue import Empty, Queue
-from typing import (
-    Callable,
-    Iterable,
-    Sequence,
-    TextIO,
-    TypedDict,
-    overload,
-)
+from typing import Callable, Iterable, Sequence, TextIO, TypedDict, overload
 
 import fabric
 import fabric.transfer
@@ -21,7 +14,7 @@ import invoke
 import paramiko
 import questionary as qn
 from fabric import Connection
-from typing_extensions import Self, deprecated, Literal
+from typing_extensions import Literal, Self, deprecated
 
 from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 
