@@ -1,22 +1,7 @@
 from __future__ import annotations
-from typing import Literal
+from typing_extensions import Literal
 
 import pytest
-
-
-# only_runs_for_real = pytest.mark.skipif(
-#     not RUN_COMMANDS_FOR_REAL,
-#     reason="Test needs to have real internet access to the cluster.",
-# )
-# disable_internet_access = pytest.mark.disable_socket
-# dont_run_for_real = pytest.mark.skipif(
-#     RUN_COMMANDS_FOR_REAL,
-#     reason="Test shouldn't run with real internet access to the cluster.",
-# )
-# can_run_for_real = (
-#     pytest.mark.enable_socket if RUN_COMMANDS_FOR_REAL else pytest.mark.disable_socket
-# )
-# pytestmark = pytest.mark.disable_socket
 
 InternetAccess = Literal["local_only", "remote_only", "either"]
 enable_internet_access_flag = "--enable-internet"
