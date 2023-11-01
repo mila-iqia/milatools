@@ -160,8 +160,8 @@ class Remote:
                 hide=hide,
                 warn=warn,
                 asynchronous=asynchronous,
-                **kwargs,
                 out_stream=out_stream,
+                **kwargs,
             )
         except socket.gaierror:
             exit(
