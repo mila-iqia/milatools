@@ -1,6 +1,19 @@
+Running the `mila init` command with this initial content:
+
+```
+Host mila
+  HostName login.server.mila.quebec
+  User bob
+
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName foooobar.com
 
+```
+
+and these user inputs: ['y']
+leads to the following ssh config file:
+
+```
 Host mila
   HostName login.server.mila.quebec
   User bob
@@ -8,7 +21,17 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 
+Host *.server.mila.quebec !*login.server.mila.quebec
+  HostName %h
+  User bob
+  ProxyJump mila
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 
 Host mila-cpu
   User bob
@@ -22,3 +45,4 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
+```

@@ -1,8 +1,15 @@
-# a comment
-Host foo
-  HostName foobar.com
+Running the `mila init` command with this initial content:
 
-# another comment
+```
+# A comment in the file.
+
+```
+
+and these user inputs: ['bob\r', 'y']
+leads the following ssh config file:
+
+```
+# A comment in the file.
 
 Host mila
   HostName login.server.mila.quebec
@@ -11,7 +18,9 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
-
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 
 Host mila-cpu
   User bob
@@ -26,8 +35,11 @@ Host mila-cpu
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
 
-
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   User bob
   ProxyJump mila
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
+```
