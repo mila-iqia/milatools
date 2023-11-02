@@ -408,6 +408,7 @@ def init():
         for entry in os.listdir(sshdir)
     ):
         if yn("You have no public keys. Generate one?"):
+            # TODO: need to get the location of the key as an output of this command!
             here.run("ssh-keygen")
         else:
             exit("No public keys.")
@@ -415,10 +416,12 @@ def init():
     # Check that it is possible to connect using the key
 
     if not here.check_passwordless("mila"):
-        if yn(
-            "Your public key does not appear be registered on the cluster. Register it?"
-        ):
-            here.run("ssh-copy-id", "mila")
+        if yn("Your public key does not appear be registered on the cluster. Register it?"):
+            # NOTE: If we're on a Windows machine, we do something different here:
+            if sys.platform == "win32":
+                here.run('cat ~/.ssh/id_rsa.pub | ssh mila "cat >> ~/.ssh/authorized_keys"')
+            else:
+                here.run("ssh-copy-id", "mila")
             if not here.check_passwordless("mila"):
                 exit("ssh-copy-id appears to have failed")
         else:
