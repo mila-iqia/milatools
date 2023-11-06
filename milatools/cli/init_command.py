@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 from logging import getLogger as get_logger
 from pathlib import Path
+import sys
 
 import questionary as qn
 
@@ -39,21 +40,29 @@ def setup_ssh_config(
     # sure that the directory actually exists.
     control_path_dir.expanduser().mkdir(exist_ok=True, parents=True)
 
+    if sys.platform == "win32":
+        ssh_multiplexing_config = {}
+    else:
+        ssh_multiplexing_config = {
+            # Tries to reuse an existing connection, but if it fails, it will create a new one.
+            "ControlMaster": "auto",
+            # This makes a file per connection, like normandf@login.server.mila.quebec:2222
+            "ControlPath": str(control_path_dir / r"%r@%h:%p"),
+            # persist for 10 minutes after the last connection ends.
+            "ControlPersist": 600,
+        }
+
     _add_ssh_entry(
         ssh_config,
-        "mila",
+        host="mila",
+        Host=None,
         HostName="login.server.mila.quebec",
         User=username,
         PreferredAuthentications="publickey,keyboard-interactive",
         Port=2222,
         ServerAliveInterval=120,
         ServerAliveCountMax=5,
-        # Tries to reuse an existing connection, but if it fails, it will create a new one.
-        ControlMaster="auto",
-        # This makes a file per connection, like normandf@login.server.mila.quebec:2222
-        ControlPath=str(control_path_dir / r"%r@%h:%p"),
-        # persist for 10 minutes after the last connection ends.
-        ControlPersist=600,
+        **ssh_multiplexing_config,
     )
 
     _add_ssh_entry(
@@ -97,12 +106,7 @@ def setup_ssh_config(
             HostName="%h",
             User=username,
             ProxyJump="mila",
-            # Tries to reuse an existing connection, but if it fails, it will create a new one.
-            ControlMaster="auto",
-            # This makes a file per connection, like normandf@login.server.mila.quebec:2222
-            ControlPath=str(control_path_dir / r"%r@%h:%p"),
-            # persist for 10 minutes after the last connection ends.
-            ControlPersist=600,
+            **ssh_multiplexing_config,
         )
 
     new_config = ssh_config.cfg.config()
@@ -206,6 +210,7 @@ def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,
     Host: str | None = None,
+    *,
     _space_before: bool = True,
     _space_after: bool = False,
     **entry,
