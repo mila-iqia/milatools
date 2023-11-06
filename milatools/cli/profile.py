@@ -4,12 +4,12 @@ import json
 import re
 import typing
 from pathlib import Path
-from typing import Any, Callable, Generic, Sequence, TypeVar
+from typing import Generic, Sequence, TypeVar
 
 import invoke
 import questionary as qn
 from questionary.prompts.common import FormattedText
-from typing_extensions import Concatenate, ParamSpec
+from questionary import Style
 
 from .utils import askpath, shjoin, yn
 
@@ -322,10 +322,12 @@ def ensure_program(remote: Remote, program: str, installers: dict[str, str]):
     return True
 
 
-P = ParamSpec("P")
 _T = TypeVar("_T")
 
 
+# NOTE: This here is a small typing improvement over the `qn.Choice` class: this marks
+# it as a generic class. Functions that take in a `Choice[_T]` can then mark their
+# return type based on _T, as is done below.
 class Choice(qn.Choice, Generic[_T]):
     value: _T
 
@@ -346,16 +348,34 @@ class Choice(qn.Choice, Generic[_T]):
         )
 
 
+@typing.overload
+def _select_unsafe_ask(
+    message: str,
+    choices: Sequence[str | Choice[str]],
+    style: Style | None = None,
+) -> str:
+    ...
+
+
+@typing.overload
+def _select_unsafe_ask(
+    message: str,
+    choices: Sequence[Choice[_T] | dict[str, _T]],
+    style: Style | None = None,
+) -> _T:
+    ...
+
+
 def _select_unsafe_ask(
     message: str,
     choices: Sequence[str | Choice[_T] | dict[str, _T]],
-    _fn: Callable[
-        Concatenate[str, Sequence[str | qn.Choice | dict[str, Any]], P],
-        qn.Question,
-    ] = qn.select,
-    *args: P.args,
-    **kwargs: P.kwargs,
+    style: Style | None = None,
 ) -> _T | str:
-    question = _fn(message, choices, *args, **kwargs)
+    """Small helper function that does `qn.select` followed by `qn.unsafe_ask`.
+
+    This has the benefit that the output type of this function is known based on the
+    type of inputs passed.
+    """
+    question = qn.select(message, choices, style=style)
     value = question.unsafe_ask()
     return value
