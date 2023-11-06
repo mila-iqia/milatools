@@ -13,7 +13,7 @@ import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
-from sshconf import ConfigLine, SshConfigFile, read_ssh_config
+from sshconf import read_ssh_config
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
@@ -139,65 +139,18 @@ def shjoin(split_command):
 class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path):
         self.cfg = read_ssh_config(path)
-        # self.add = self.cfg.add
+        self.add = self.cfg.add
         self.remove = self.cfg.remove
         self.rename = self.cfg.rename
-        # self.save = self.cfg.save
+        self.save = self.cfg.save
         self.host = self.cfg.host
         self.hosts = self.cfg.hosts
-        self.set = self.cfg.set
 
-    def add(
-        self,
-        host: str,
-        _space_before: bool = True,
-        _space_after: bool = False,
-        **kwargs,
-    ):
-        """
-        Add another host to the SSH configuration.
-
-        Parameters
-        ----------
-        host: The Host entry to add.
-        **kwargs: The parameters for the host (without "Host" parameter itself)
-        """
-        config_file: SshConfigFile = self.cfg.configs_[0][1]
-        config_file_lines: list[ConfigLine] = config_file.lines_
-
-        lines_before = config_file_lines.copy()
-        # This modifies `self.cfg.configs_[0][1].lines_` (which is saved above).
-        # See the source code of `SshConfigFile.add` for more details.
-        self.cfg.add(host=host, **kwargs)
-
-        def _is_empty_line(line: ConfigLine) -> bool:
-            return vars(line) == vars(ConfigLine(line=""))
-
-        if not _space_before:
-            # Remove the empty line before this entry.
-            empty_line = config_file_lines.pop(len(lines_before))
-            assert _is_empty_line(empty_line)
-
-        if not _space_after:
-            # Remove the empty line after this added entry.
-            empty_line = config_file_lines.pop()
-            assert _is_empty_line(empty_line)
-
-    def save(self) -> None:
-        filename_to_configfile: list[tuple[str, SshConfigFile]] = self.cfg.configs_
-        assert len(filename_to_configfile) == 1
-        filename, configfile = filename_to_configfile[0]
-        config_file_lines: list[ConfigLine] = configfile.lines_
-        lines: list[str] = [x.line for x in config_file_lines]
-        lines = [line.rstrip() for line in lines]
-        with open(filename, "w") as fh:
-            fh.write("\n".join(lines))
-
-    def hoststring(self, host: str) -> str:
+    def hoststring(self, host):
         lines = []
-        for _filename, cfg in self.cfg.configs_:
+        for filename, cfg in self.cfg.configs_:
             lines += [line.line for line in cfg.lines_ if line.host == host]
         return "\n".join(lines)
 

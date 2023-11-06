@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import difflib
-from logging import getLogger as get_logger
 from pathlib import Path
 
 import questionary as qn
 
 from .utils import SSHConfig, T, yn
-
-logger = get_logger(__name__)
 
 
 def setup_ssh_config(
@@ -34,11 +31,6 @@ def setup_ssh_config(
     username: str = _get_username(ssh_config)
     orig_config = ssh_config.cfg.config()
 
-    control_path_dir = Path("~/.cache/ssh")
-    # note: a bit nicer to keep the "~" in the path in the ssh config file, but we need to make
-    # sure that the directory actually exists.
-    control_path_dir.expanduser().mkdir(exist_ok=True, parents=True)
-
     _add_ssh_entry(
         ssh_config,
         "mila",
@@ -48,12 +40,6 @@ def setup_ssh_config(
         Port=2222,
         ServerAliveInterval=120,
         ServerAliveCountMax=5,
-        # Tries to reuse an existing connection, but if it fails, it will create a new one.
-        ControlMaster="auto",
-        # This makes a file per connection, like normandf@login.server.mila.quebec:2222
-        ControlPath=str(control_path_dir / r"%r@%h:%p"),
-        # persist for 10 minutes after the last connection ends.
-        ControlPersist=600,
     )
 
     _add_ssh_entry(
@@ -68,8 +54,7 @@ def setup_ssh_config(
         RequestTTY="force",
         ConnectTimeout=600,
         ServerAliveInterval=120,
-        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap cannot share
-        # it
+        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap cannot share it
         ProxyCommand=(
             'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"'
         ),
@@ -97,12 +82,6 @@ def setup_ssh_config(
             HostName="%h",
             User=username,
             ProxyJump="mila",
-            # Tries to reuse an existing connection, but if it fails, it will create a new one.
-            ControlMaster="auto",
-            # This makes a file per connection, like normandf@login.server.mila.quebec:2222
-            ControlPath=str(control_path_dir / r"%r@%h:%p"),
-            # persist for 10 minutes after the last connection ends.
-            ControlPersist=600,
         )
 
     new_config = ssh_config.cfg.config()
@@ -183,8 +162,7 @@ def _get_username(ssh_config: SSHConfig) -> str:
 
     while not username:
         username = qn.text(
-            "What's your username on the mila cluster?\n",
-            validate=_is_valid_username,
+            "What's your username on the mila cluster?\n", validate=_is_valid_username
         ).unsafe_ask()
     return username.strip()
 
@@ -206,10 +184,8 @@ def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,
     Host: str | None = None,
-    _space_before: bool = True,
-    _space_after: bool = False,
     **entry,
-) -> None:
+) -> bool:
     """Interactively add an entry to the ssh config file.
 
     Exits if the user doesn't want to add an entry or doesn't confirm the change.
@@ -220,15 +196,7 @@ def _add_ssh_entry(
     assert not (host and Host)
     host = Host or host
     if host in ssh_config.hosts():
-        existing_entry = ssh_config.host(host)
-        existing_entry.update(entry)
-        ssh_config.cfg.set(host, **existing_entry)
-        logger.debug(f"Updated {host} entry in ssh config.")
-    else:
-        ssh_config.add(
-            host,
-            _space_before=_space_before,
-            _space_after=_space_after,
-            **entry,
-        )
-        logger.debug(f"Adding new {host} entry in ssh config.")
+        # Don't change an existing entry for now.
+        return False
+    ssh_config.add(host, **entry)
+    return True
