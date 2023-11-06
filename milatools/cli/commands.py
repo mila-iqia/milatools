@@ -421,9 +421,12 @@ def init():
         ):
             # NOTE: If we're on a Windows machine, we do something different here:
             if sys.platform == "win32":
-                here.run(
-                    'cat ~/.ssh/id_rsa.pub | ssh mila "cat >> ~/.ssh/authorized_keys"'
+                command = (
+                    "powershell.exe type $env:USERPROFILE\\.ssh\\id_rsa.pub | ssh mila "
+                    '"cat >> ~/.ssh/authorized_keys"'
                 )
+                print(T.bold_green("(local) $ " + command))
+                subprocess.getoutput(command)
             else:
                 here.run("ssh-copy-id", "mila")
             if not here.check_passwordless("mila"):
