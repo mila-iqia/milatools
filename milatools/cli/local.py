@@ -54,8 +54,8 @@ class Local:
             return _run_fn(cmd, *args, **kwargs)
         except FileNotFoundError as e:
             if e.filename == cmd[0]:
-                raise CommandNotFoundError(e.filename)
-            raise e
+                raise CommandNotFoundError(e.filename) from e
+            raise
 
     def popen(
         self,
