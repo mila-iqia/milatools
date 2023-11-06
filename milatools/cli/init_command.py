@@ -55,7 +55,6 @@ def setup_ssh_config(
     _add_ssh_entry(
         ssh_config,
         host="mila",
-        Host=None,
         HostName="login.server.mila.quebec",
         User=username,
         PreferredAuthentications="publickey,keyboard-interactive",
@@ -210,9 +209,6 @@ def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,
     Host: str | None = None,
-    *,
-    _space_before: bool = True,
-    _space_after: bool = False,
     **entry,
 ) -> None:
     """Interactively add an entry to the ssh config file.
