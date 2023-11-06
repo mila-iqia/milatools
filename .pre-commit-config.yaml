@@ -67,14 +67,6 @@ repos:
   #     - id: prettier
   #       types: [yaml]
 
-  # jupyter notebook cell output clearing
-  - repo: https://github.com/kynan/nbstripout
-    rev: 0.6.1
-    hooks:
-      - id: nbstripout
-        require_serial: true
-
-
   # md formatting
   - repo: https://github.com/executablebooks/mdformat
     rev: 0.7.16
