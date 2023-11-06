@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import difflib
+import sys
 from logging import getLogger as get_logger
 from pathlib import Path
-import sys
 
 import questionary as qn
 
