@@ -62,6 +62,7 @@ def test_check_passwordless(
         shlex.split("ssh -oPreferredAuthentications=publickey mila 'echo OK'"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        capture_output=False,
         universal_newlines=True,
     )
 
