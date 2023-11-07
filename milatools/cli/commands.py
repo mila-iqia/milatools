@@ -593,6 +593,7 @@ def code(
     )
 
     if vscode_settings_json_path.exists():
+        print(T.bold(f"Found VSCode settings file at {vscode_settings_json_path}"))
         set_remote_ssh_vscode_settings(
             vscode_settings_json_path=vscode_settings_json_path,
             timeout_seconds=60,
