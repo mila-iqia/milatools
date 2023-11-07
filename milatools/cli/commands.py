@@ -551,7 +551,7 @@ def code(
 
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
-    
+
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open code without
     # issues.
@@ -581,13 +581,13 @@ def code(
     command_path = shutil.which(command)
     if not command_path:
         raise CommandNotFoundError(command)
-    
+
     try:
         while True:
-            if running_inside_WSL:  
+            if running_inside_WSL:
                 here.run(
                     "powershell.exe",
-                    command_path,
+                    "code",
                     "-nw",
                     "--remote",
                     f"ssh-remote+{qualified(node_name)}",
