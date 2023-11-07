@@ -27,6 +27,8 @@ import questionary as qn
 from invoke import UnexpectedExit
 from typing_extensions import TypedDict
 
+from milatools.cli.code_command import set_remote_ssh_vscode_settings
+
 from ..version import version as mversion
 from .init_command import setup_ssh_config
 from .local import Local
@@ -581,6 +583,21 @@ def code(
     command_path = shutil.which(command)
     if not command_path:
         raise CommandNotFoundError(command)
+    qualified_node_name = qualified(node_name)
+
+    # TODO: Find the path to this file on other platforms.
+    vscode_settings_json_path = Path.home() / (
+        "AppData\\Roaming\\Code\\User\\settings.json"
+        if (sys.platform == "win32" or running_inside_WSL)
+        else "~/.config/Code/User/settings.json"
+    )
+
+    if vscode_settings_json_path.exists():
+        set_remote_ssh_vscode_settings(
+            vscode_settings_json_path=vscode_settings_json_path,
+            timeout_seconds=60,
+            fully_qualified_node_name=qualified_node_name,
+        )
 
     try:
         while True:
@@ -590,7 +607,7 @@ def code(
                     "code",
                     "-nw",
                     "--remote",
-                    f"ssh-remote+{qualified(node_name)}",
+                    f"ssh-remote+{qualified_node_name}",
                     path,
                 )
             else:
@@ -598,7 +615,7 @@ def code(
                     command_path,
                     "-nw",
                     "--remote",
-                    f"ssh-remote+{qualified(node_name)}",
+                    f"ssh-remote+{qualified_node_name}",
                     path,
                 )
             print(
