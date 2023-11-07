@@ -425,8 +425,7 @@ def init():
                     "powershell.exe type $env:USERPROFILE\\.ssh\\id_rsa.pub | ssh mila "
                     '"cat >> ~/.ssh/authorized_keys"'
                 )
-                print(T.bold_green("(local) $ " + command))
-                subprocess.getoutput(command)
+                here.run(command)
             else:
                 here.run("ssh-copy-id", "mila")
             if not here.check_passwordless("mila"):
