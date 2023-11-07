@@ -1034,32 +1034,49 @@ def _get_disk_quota_usage(
     Returns whether the quota is exceeded, in terms of storage space or number of files.
 
     Here is what the output of `disk-quota` looks like on the Mila cluster:
-    ```console
+    The mila cluster uses a lustre filesystem for $HOME. Here is the command we use:
+    ```bash
+    #!/bin/sh
+    # (disk-quota)
+    echo "==== HOME ===="
+    lfs quota -h -u "${1:-$USER}" /home/mila
 
-    Quota information for storage pool Default (ID: 1):
+    echo ""
+    echo "==== SCRATCH ===="
+    beegfs-ctl --cfgFile=/etc/beegfs/scratch.d/beegfs-client.conf --getquota --uid "${1:-$USER}"
+    ```
 
-          user/group     ||           size          ||    chunk files
-         name     |  id  ||    used    |    hard    ||  used   |  hard
-    --------------|------||------------|------------||---------|---------
-          normandf|1471600598||   97.20 GiB|  100.00 GiB||   806898|  1000000
+    ```bash
+    $ lfs quota -h -u "${1:-$USER}" /home/mila
+    Disk quotas for usr normandf (uid 1471600598):
+        Filesystem    used   quota   limit   grace   files   quota   limit   grace
+        /home/mila  96.91G      0k    100G       -  944570       0 1048576       -
+    uid 1471600598 is using default block quota setting
+    uid 1471600598 is using default file quota setting
     ```
     """
-    disk_quota_output = remote.get_output("disk-quota", hide=not print_command_output)
-    last_line_parts = disk_quota_output.splitlines()[-1]
+    home_disk_quota_output = remote.get_output(
+        "lfs quota -u $USER /home/mila", hide=not print_command_output
+    )
+    lines = home_disk_quota_output.splitlines()
     (
-        _username,
-        _id,
-        _,
-        used_gb,
-        max_gb,
-        _,
-        used_files,
-        max_files,
-    ) = last_line_parts.split("|")
-    used_gb = float(used_gb.replace("GiB", "").strip())
-    max_gb = float(max_gb.replace("GiB", "").strip())
-    used_files = int(used_files.strip())
-    max_files = int(max_files.strip())
+        filesystem,
+        used_kbytes,
+        _quota1,
+        limit_kbytes,
+        _grace1,
+        files,
+        _quota2,
+        limit_files,
+        _grace2,
+    ) = (
+        lines[2].strip().split()
+    )
+
+    used_gb = float(int(used_kbytes.strip()) / (1024) ** 2)
+    max_gb = float(int(limit_kbytes.strip()) / (1024) ** 2)
+    used_files = int(files.strip())
+    max_files = int(limit_files.strip())
     return (used_gb, max_gb), (used_files, max_files)
 
 
@@ -1072,12 +1089,12 @@ def check_disk_quota(remote: Remote) -> None:
     logger.debug("Checking disk quota on $HOME...")
     (used_gb, max_gb), (used_files, max_files) = _get_disk_quota_usage(remote)
     logger.debug(
-        f"Disk usage: {used_gb} / {max_gb} GiB and {used_files} / {max_files} files"
+        f"Disk usage: {used_gb:.1f} / {max_gb} GiB and {used_files} / {max_files} files"
     )
     size_ratio = used_gb / max_gb
     files_ratio = used_files / max_files
     reason = (
-        f"{used_gb} / {max_gb} GiB"
+        f"{used_gb:.1f} / {max_gb} GiB"
         if size_ratio > files_ratio
         else f"{used_files} / {max_files} files"
     )
