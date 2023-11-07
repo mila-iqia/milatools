@@ -50,8 +50,7 @@ if typing.TYPE_CHECKING:
 
 
 def main():
-    on_mila = get_fully_qualified_name().endswith(".server.mila.quebec")
-    if on_mila:
+    if sys.platform != "win32" and get_fully_qualified_name().endswith(".server.mila.quebec"):
         exit(
             "ERROR: 'mila ...' should be run on your local machine and not on the Mila cluster"
         )
