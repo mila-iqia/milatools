@@ -542,7 +542,12 @@ def code(
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-    check_disk_quota(remote)
+    try:
+        check_disk_quota(remote)
+    except MilatoolsUserError:
+        raise
+    except Exception as exc:
+        logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
     cnode = _find_allocation(
         remote, job_name="mila-code", job=job, node=node, alloc=alloc
@@ -1032,34 +1037,39 @@ def _get_disk_quota_usage(
     """Checks the disk quota on the $HOME filesystem on the mila cluster.
 
     Returns whether the quota is exceeded, in terms of storage space or number of files.
-
-    Here is what the output of `disk-quota` looks like on the Mila cluster:
-    ```console
-
-    Quota information for storage pool Default (ID: 1):
-
-          user/group     ||           size          ||    chunk files
-         name     |  id  ||    used    |    hard    ||  used   |  hard
-    --------------|------||------------|------------||---------|---------
-          normandf|1471600598||   97.20 GiB|  100.00 GiB||   806898|  1000000
-    ```
     """
-    disk_quota_output = remote.get_output("disk-quota", hide=not print_command_output)
-    last_line_parts = disk_quota_output.splitlines()[-1]
+
+    # NOTE: This is what the output of the command looks like on the Mila cluster:
+    #
+    # $ lfs quota -u $USER /home/mila
+    # Disk quotas for usr normandf (uid 1471600598):
+    #     Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace
+    #     /home/mila 101440844       0 104857600       -  936140       0 1048576       -
+    # uid 1471600598 is using default block quota setting
+    # uid 1471600598 is using default file quota setting
+    #
+    home_disk_quota_output = remote.get_output(
+        "lfs quota -u $USER /home/mila", hide=not print_command_output
+    )
+    lines = home_disk_quota_output.splitlines()
     (
-        _username,
-        _id,
-        _,
-        used_gb,
-        max_gb,
-        _,
-        used_files,
-        max_files,
-    ) = last_line_parts.split("|")
-    used_gb = float(used_gb.replace("GiB", "").strip())
-    max_gb = float(max_gb.replace("GiB", "").strip())
-    used_files = int(used_files.strip())
-    max_files = int(max_files.strip())
+        _filesystem,
+        used_kbytes,
+        _quota1,
+        limit_kbytes,
+        _grace1,
+        files,
+        _quota2,
+        limit_files,
+        _grace2,
+    ) = (
+        lines[2].strip().split()
+    )
+
+    used_gb = float(int(used_kbytes.strip()) / (1024) ** 2)
+    max_gb = float(int(limit_kbytes.strip()) / (1024) ** 2)
+    used_files = int(files.strip())
+    max_files = int(limit_files.strip())
     return (used_gb, max_gb), (used_files, max_files)
 
 
@@ -1072,12 +1082,12 @@ def check_disk_quota(remote: Remote) -> None:
     logger.debug("Checking disk quota on $HOME...")
     (used_gb, max_gb), (used_files, max_files) = _get_disk_quota_usage(remote)
     logger.debug(
-        f"Disk usage: {used_gb} / {max_gb} GiB and {used_files} / {max_files} files"
+        f"Disk usage: {used_gb:.1f} / {max_gb} GiB and {used_files} / {max_files} files"
     )
     size_ratio = used_gb / max_gb
     files_ratio = used_files / max_files
     reason = (
-        f"{used_gb} / {max_gb} GiB"
+        f"{used_gb:.1f} / {max_gb} GiB"
         if size_ratio > files_ratio
         else f"{used_files} / {max_files} files"
     )
