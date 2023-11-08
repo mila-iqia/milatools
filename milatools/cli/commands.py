@@ -555,7 +555,9 @@ def code(
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open code without
     # issues.
-    running_inside_WSL = bool(shutil.which("powershell.exe"))
+    running_inside_WSL = sys.platform == "linux" and bool(
+        shutil.which("powershell.exe")
+    )
 
     try:
         check_disk_quota(remote)
