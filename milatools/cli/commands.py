@@ -542,7 +542,12 @@ def code(
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-    check_disk_quota(remote)
+    try:
+        check_disk_quota(remote)
+    except MilatoolsUserError:
+        raise
+    except Exception as exc:
+        logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
     cnode = _find_allocation(
         remote, job_name="mila-code", job=job, node=node, alloc=alloc
