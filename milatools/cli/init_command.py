@@ -1,20 +1,27 @@
 from __future__ import annotations
 
 import difflib
+import os
+import shutil
+import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
+from typing import Any
+import warnings
 
 import questionary as qn
 
-from .utils import SSHConfig, T, yn
+from .utils import SSHConfig, T, running_inside_WSL, yn
+
+WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 
 logger = get_logger(__name__)
 
 
 def setup_ssh_config(
     ssh_config_path: str | Path = "~/.ssh/config",
-):
+) -> SSHConfig:
     """Interactively sets up some useful entries in the ~/.ssh/config file on the local machine.
 
     Exits if the User cancels any of the prompts or doesn't confirm the changes when asked.
@@ -28,6 +35,9 @@ def setup_ssh_config(
       directly to compute nodes.
 
     TODO: Also ask if we should add entries for the ComputeCanada/DRAC clusters.
+
+    Returns:
+        The resulting SSHConfig if the changes are approved.
     """
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
@@ -116,6 +126,45 @@ def setup_ssh_config(
     else:
         ssh_config.save()
         print(f"Wrote {ssh_config_path}")
+    return ssh_config
+
+
+def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
+    """Setup the Windows SSH configuration and public key from within WSL.
+
+    This copies over the entries from the linux ssh configuration file, except for the
+    values that aren't supported on Windows (e.g. "ControlMaster").
+
+    This also copies the public key file from the linux SSH directory over to the
+    Windows SSH directory if it isn't already present.
+
+    This makes it so the user doesn't need to install Python/Anaconda on the Windows
+    side in order to use `mila code` from within WSL.
+    """
+    assert running_inside_WSL()
+    windows_home = get_windows_home_path_in_wsl()
+    windows_ssh_config_path = windows_home / ".ssh/config"
+    if not windows_ssh_config_path.exists():
+        # SSHConfig needs an existing file.
+        windows_ssh_config_path.touch(mode=0b110_000_000)
+
+    _copy_valid_ssh_entries_to_windows_ssh_config_file(
+        linux_ssh_config, windows_ssh_config_path
+    )
+
+    # copy the public_key_to_windows_ssh_folder
+    # TODO: This might be different if the user selects a non-default location during
+    # `ssh-keygen`.
+    linux_pubkey_file = Path.home() / ".ssh/id_rsa.pub"
+    windows_pubkey_file = windows_home / ".ssh/id_rsa.pub"
+    if linux_pubkey_file.exists() and not windows_pubkey_file.exists():
+        shutil.copy2(src=linux_pubkey_file, dst=windows_pubkey_file)
+
+
+def get_windows_home_path_in_wsl() -> Path:
+    assert running_inside_WSL()
+    windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
+    return Path(f"/mnt/c/Users/{windows_username}")
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
@@ -150,7 +199,12 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
 
 
 def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
-    print(T.bold("The following modifications will be made to your ~/.ssh/config:\n"))
+    print(
+        T.bold(
+            f"The following modifications will be made to your SSH config file at "
+            f"{ssh_config.path}:\n"
+        )
+    )
     diff_lines = list(
         difflib.unified_diff(
             (previous + "\n").splitlines(True),
@@ -227,7 +281,7 @@ def _add_ssh_entry(
         existing_entry = ssh_config.host(host)
         existing_entry.update(entry)
         ssh_config.cfg.set(host, **existing_entry)
-        logger.debug(f"Updated {host} entry in ssh config.")
+        logger.debug(f"Updated {host} entry in ssh config at path {ssh_config.path}.")
     else:
         ssh_config.add(
             host,
@@ -235,4 +289,38 @@ def _add_ssh_entry(
             _space_after=_space_after,
             **entry,
         )
-        logger.debug(f"Adding new {host} entry in ssh config.")
+        logger.debug(
+            f"Adding new {host} entry in ssh config at path {ssh_config.path}."
+        )
+
+
+def _copy_valid_ssh_entries_to_windows_ssh_config_file(
+    linux_ssh_config: SSHConfig, windows_ssh_config_path: Path
+):
+    windows_ssh_config = SSHConfig(windows_ssh_config_path)
+    initial_windows_config_contents = windows_ssh_config.cfg.config()
+
+    unsupported_keys_lowercase = set(k.lower() for k in WINDOWS_UNSUPPORTED_KEYS)
+
+    for host in linux_ssh_config.hosts():
+        linux_ssh_entry: dict[str, Any] = linux_ssh_config.host(host)
+        _add_ssh_entry(
+            windows_ssh_config,
+            host,
+            **{
+                key: value
+                for key, value in linux_ssh_entry.items()
+                if key.lower() not in unsupported_keys_lowercase
+            },
+        )
+
+    new_config_contents = windows_ssh_config.cfg.config()
+    if new_config_contents == initial_windows_config_contents:
+        print(f"Did not change ssh config at path {windows_ssh_config.path}")
+        return
+    if not _confirm_changes(
+        windows_ssh_config, previous=initial_windows_config_contents
+    ):
+        exit()
+    # We made changes and they were accepted.
+    windows_ssh_config.save()

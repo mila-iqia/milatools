@@ -30,14 +30,16 @@ from invoke import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
-from .init_command import setup_ssh_config
+from .init_command import (
+    setup_ssh_config,
+    setup_windows_ssh_config_from_wsl,
+)
 from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
-    SSHConfig,
     SSHConnectionError,
     T,
     get_fully_qualified_name,
@@ -45,6 +47,7 @@ from .utils import (
     randname,
     with_control_file,
     yn,
+    running_inside_WSL,
 )
 
 logger = get_logger(__name__)
@@ -390,7 +393,7 @@ def init():
 
     print("Checking ssh config")
 
-    setup_ssh_config()
+    ssh_config = setup_ssh_config()
     # TODO: Move the rest of this command to functions in the init_command module,
     # so they can more easily be tested.
 
@@ -478,7 +481,8 @@ def init():
     # id_rsa.pub and the config to the Windows paths (taking care to remove the
     # ControlMaster-related entries) so that the user doesn't need to install Python on
     # the Windows side.
-    warn_if_using_WSL_and_mila_init_not_done_on_Windows()
+    if running_inside_WSL():
+        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
     ###################
     # Welcome message #
@@ -590,12 +594,10 @@ def code(
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open VSCode without
     # issues.
-    running_inside_WSL = _running_inside_WSL()
-    warn_if_using_WSL_and_mila_init_not_done_on_Windows()
-
+    inside_WSL = running_inside_WSL()
     try:
         while True:
-            if running_inside_WSL:
+            if inside_WSL:
                 here.run(
                     "powershell.exe",
                     "code",
@@ -630,38 +632,6 @@ def code(
         print(T.bold(f"  mila code {path} --node {node_name}"))
         print("To kill this allocation:")
         print(T.bold(f"  ssh mila scancel {data['jobid']}"))
-
-
-@functools.lru_cache()
-def _running_inside_WSL() -> bool:
-    return sys.platform == "linux" and bool(shutil.which("powershell.exe"))
-
-
-def _mila_init_also_done_on_windows() -> bool:
-    assert _running_inside_WSL()
-    windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
-    windows_ssh_config_file_path = f"/mnt/c/Users/{windows_username}/.ssh/config"
-    if not os.path.exists(windows_ssh_config_file_path):
-        return False
-    ssh_config = SSHConfig(windows_ssh_config_file_path)
-    configured_hosts = ssh_config.hosts()
-    if any(host not in configured_hosts for host in ["mila", "mila-cpu"]):
-        return False
-    return True
-
-
-def warn_if_using_WSL_and_mila_init_not_done_on_Windows():
-    if _running_inside_WSL() and not _mila_init_also_done_on_windows():
-        warnings.warn(
-            T.orange(
-                "It seems like you are using the Windows Subsystem for Linux, and "
-                "haven't yet set-up your SSH config file on the Windows side.\n"
-                "Make sure to also `pip install milatools` and run `mila init` "
-                "from a powershell window (assuming you also already installed Python "
-                "on Windows) so that you can use `mila code` from within WSL without "
-                "errors."
-            )
-        )
 
 
 def connect(identifier: str, port: int | None):
