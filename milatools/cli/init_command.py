@@ -5,10 +5,10 @@ import os
 import shutil
 import subprocess
 import sys
+import warnings
 from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Any
-import warnings
 
 import questionary as qn
 

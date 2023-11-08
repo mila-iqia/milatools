@@ -30,10 +30,7 @@ from invoke import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
-from .init_command import (
-    setup_ssh_config,
-    setup_windows_ssh_config_from_wsl,
-)
+from .init_command import setup_ssh_config, setup_windows_ssh_config_from_wsl
 from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
@@ -45,9 +42,9 @@ from .utils import (
     get_fully_qualified_name,
     qualified,
     randname,
+    running_inside_WSL,
     with_control_file,
     yn,
-    running_inside_WSL,
 )
 
 logger = get_logger(__name__)

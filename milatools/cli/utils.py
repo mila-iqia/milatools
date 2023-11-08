@@ -8,9 +8,9 @@ import shlex
 import shutil
 import socket
 import subprocess
+import sys
 from contextlib import contextmanager
 from pathlib import Path
-import sys
 
 import blessed
 import paramiko
