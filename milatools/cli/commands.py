@@ -1037,35 +1037,23 @@ def _get_disk_quota_usage(
     """Checks the disk quota on the $HOME filesystem on the mila cluster.
 
     Returns whether the quota is exceeded, in terms of storage space or number of files.
-
-    Here is what the output of `disk-quota` looks like on the Mila cluster:
-    The mila cluster uses a lustre filesystem for $HOME. Here is the command we use:
-    ```bash
-    #!/bin/sh
-    # (disk-quota)
-    echo "==== HOME ===="
-    lfs quota -h -u "${1:-$USER}" /home/mila
-
-    echo ""
-    echo "==== SCRATCH ===="
-    beegfs-ctl --cfgFile=/etc/beegfs/scratch.d/beegfs-client.conf --getquota --uid "${1:-$USER}"
-    ```
-
-    ```bash
-    $ lfs quota -h -u "${1:-$USER}" /home/mila
-    Disk quotas for usr normandf (uid 1471600598):
-        Filesystem    used   quota   limit   grace   files   quota   limit   grace
-        /home/mila  96.91G      0k    100G       -  944570       0 1048576       -
-    uid 1471600598 is using default block quota setting
-    uid 1471600598 is using default file quota setting
-    ```
     """
+
+    # NOTE: This is what the output of the command looks like on the Mila cluster:
+    #
+    # $ lfs quota -u $USER /home/mila
+    # Disk quotas for usr normandf (uid 1471600598):
+    #     Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace
+    #     /home/mila 101440844       0 104857600       -  936140       0 1048576       -
+    # uid 1471600598 is using default block quota setting
+    # uid 1471600598 is using default file quota setting
+    #
     home_disk_quota_output = remote.get_output(
         "lfs quota -u $USER /home/mila", hide=not print_command_output
     )
     lines = home_disk_quota_output.splitlines()
     (
-        filesystem,
+        _filesystem,
         used_kbytes,
         _quota1,
         limit_kbytes,
