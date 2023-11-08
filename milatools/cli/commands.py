@@ -24,13 +24,14 @@ from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
-from invoke import UnexpectedExit
+from invoke.exceptions import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
 from .init_command import (
     create_ssh_keypair,
     setup_ssh_config,
+    setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
 from .local import Local
@@ -405,6 +406,7 @@ def init():
 
     setup_passwordless_ssh_access()
     setup_keys_on_login_node()
+    setup_vscode_settings()
     print_welcome_message()
 
 

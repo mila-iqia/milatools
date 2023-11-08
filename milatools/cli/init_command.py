@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import difflib
+import json
 import shutil
 import subprocess
 import sys
@@ -13,11 +15,14 @@ import questionary as qn
 
 from .local import Local
 from .utils import SSHConfig, T, running_inside_WSL, yn
-
-WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
+from .vscode_utils import (
+    get_expected_vscode_settings_json_path,
+    vscode_installed,
+)
 
 logger = get_logger(__name__)
 
+WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 HOSTS = ["mila", "mila-cpu", "*.server.mila.quebec !*login.server.mila.quebec"]
 """List of host entries that get added to the SSH configuration by `mila init`."""
 
@@ -210,6 +215,62 @@ def get_windows_home_path_in_wsl() -> Path:
 
 def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
     local.run("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''")
+
+
+def setup_vscode_settings():
+    # TODO: Could also change some other useful settings as needed.
+
+    # For example, we could skip a prompt if we had the qualified node name:
+    # remote_platform = settings_json.get("remote.SSH.remotePlatform", {})
+    # remote_platform.setdefault(fully_qualified_node_name, "linux")
+    # settings_json["remote.SSH.remotePlatform"] = remote_platform
+    if not vscode_installed():
+        # Display a message inviting the user to install VsCode:
+        warnings.warn(
+            T.orange(
+                "Visual Studio Code doesn't seem to be installed on your machine "
+                "(either that, or the `code` command is not available on the "
+                "command-line.)\n"
+                "We would recommend installing Visual Studio Code if you want to "
+                "easily edit code on the cluster with the `mila code` command. "
+            )
+        )
+        return
+
+    try:
+        _update_vscode_settings_json({"remote.SSH.connectTimeout": 60})
+    except Exception as err:
+        logger.warning(
+            f"Unable to setup VsCode settings for remote development: {err}\n"
+            f"Skipping and leaving the settings unchanged.",
+            exc_info=err,
+        )
+
+
+def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
+    vscode_settings_json_path = get_expected_vscode_settings_json_path()
+
+    settings_json: dict[str, Any] = {}
+    if vscode_settings_json_path.exists():
+        logger.info(f"Reading VsCode settings from {vscode_settings_json_path}")
+        with open(vscode_settings_json_path) as f:
+            settings_json = json.load(f)
+    else:
+        logger.info(
+            f"Creating a new VsCode settings file at {vscode_settings_json_path}"
+        )
+        vscode_settings_json_path.parent.mkdir(parents=True, exist_ok=True)
+        vscode_settings_json_path.touch()
+
+    settings_before = copy.deepcopy(settings_json)
+    settings_json.update(new_values)
+
+    if settings_json == settings_before:
+        # No change, don't write the file.
+        return
+
+    with open(vscode_settings_json_path, "w") as f:
+        json.dump(settings_json, f, indent=4)
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
