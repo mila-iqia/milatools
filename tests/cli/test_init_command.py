@@ -12,7 +12,6 @@ import pytest
 import questionary
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
-from milatools.cli import init_command
 
 from milatools.cli import init_command
 from milatools.cli.init_command import (
