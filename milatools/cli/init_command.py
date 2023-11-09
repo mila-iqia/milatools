@@ -18,6 +18,9 @@ WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 
 logger = get_logger(__name__)
 
+HOSTS = ["mila", "mila-cpu", "*.server.mila.quebec !*login.server.mila.quebec"]
+"""List of host entries that get added to the SSH configurtion by `mila init`."""
+
 
 def setup_ssh_config(
     ssh_config_path: str | Path = "~/.ssh/config",
@@ -156,6 +159,7 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     linux_pubkey_file = Path.home() / ".ssh/id_rsa.pub"
     windows_pubkey_file = windows_home / ".ssh/id_rsa.pub"
     if linux_pubkey_file.exists() and not windows_pubkey_file.exists():
+        print(f"Copying public key at {linux_pubkey_file} to Windows ssh folder.")
         shutil.copy2(src=linux_pubkey_file, dst=windows_pubkey_file)
 
 
@@ -300,7 +304,17 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
 
     unsupported_keys_lowercase = set(k.lower() for k in WINDOWS_UNSUPPORTED_KEYS)
 
-    for host in linux_ssh_config.hosts():
+    # NOTE: need to preserve the ordering of entries:
+    for host in HOSTS + [
+        host for host in linux_ssh_config.hosts() if host not in HOSTS
+    ]:
+        if host not in linux_ssh_config.hosts():
+            warnings.warn(
+                RuntimeWarning(
+                    f"Weird, we expected to have a {host!r} entry in the SSH config..."
+                )
+            )
+            continue
         linux_ssh_entry: dict[str, Any] = linux_ssh_config.host(host)
         _add_ssh_entry(
             windows_ssh_config,
