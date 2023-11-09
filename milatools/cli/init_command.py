@@ -264,8 +264,8 @@ def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
     )
 
     if settings_json == settings_before or not ask_to_confirm_changes(
-        before=json.dumps(settings_before, indent="\t"),
-        after=json.dumps(settings_json, indent="\t"),
+        before=json.dumps(settings_before, indent=4),
+        after=json.dumps(settings_json, indent=4),
         path=vscode_settings_json_path,
     ):
         print(f"Didn't change the VsCode settings at {vscode_settings_json_path}")
@@ -277,7 +277,7 @@ def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
         )
         vscode_settings_json_path.parent.mkdir(parents=True, exist_ok=True)
     with open(vscode_settings_json_path, "w") as f:
-        json.dump(settings_json, f, indent="\t")
+        json.dump(settings_json, f, indent=4)
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:

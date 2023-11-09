@@ -2,7 +2,7 @@ Calling `setup_vscode_settings()` with this initial content:
 
 ```json
 {
-	"foo": "bar"
+    "foo": "bar"
 }
 ```
 
@@ -11,7 +11,7 @@ leads the following VsCode settings file:
 
 ```json
 {
-	"foo": "bar",
-	"remote.SSH.connectTimeout": 60
+    "foo": "bar",
+    "remote.SSH.connectTimeout": 60
 }
 ```

@@ -639,7 +639,7 @@ def test_setup_vscode_settings(
     vscode_settings_json_path = tmp_path / "settings.json"
     if initial_settings is not None:
         with open(vscode_settings_json_path, "w") as f:
-            json.dump(initial_settings, f, indent="\t")
+            json.dump(initial_settings, f, indent=4)
 
     monkeypatch.setattr(
         init_command,
@@ -693,7 +693,7 @@ def test_setup_vscode_settings(
                         "this initial content:",
                         "",
                         "```json",
-                        json.dumps(initial_settings, indent="\t"),
+                        json.dumps(initial_settings, indent=4),
                         "```",
                     ]
                 )
