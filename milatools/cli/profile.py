@@ -8,8 +8,8 @@ from typing import Generic, Sequence, TypeVar
 
 import invoke
 import questionary as qn
-from questionary.prompts.common import FormattedText
 from questionary import Style
+from questionary.prompts.common import FormattedText
 
 from .utils import askpath, shjoin, yn
 
