@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import contextlib
+import subprocess
 import textwrap
 from functools import partial
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 import questionary
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
+from milatools.cli import local
 from milatools.cli.init_command import (
     _get_username,
     _setup_ssh_config_file,
+    create_ssh_keypair,
     setup_ssh_config,
 )
+from milatools.cli.local import Local
 from milatools.cli.utils import SSHConfig
 
 
@@ -499,3 +504,24 @@ class TestSetupSshFile:
         assert file.parent.stat().st_mode & 0o777 == 0o700
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
+
+
+def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    here = Local()
+    mock_run = Mock(
+        wraps=subprocess.run,
+    )
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    fake_ssh_folder = tmp_path / "fake_ssh"
+    fake_ssh_folder.mkdir(mode=0o700)
+    ssh_private_key_path = fake_ssh_folder / "bob"
+    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, local=here)
+    mock_run.assert_called_once_with(
+        ("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''"),
+        universal_newlines=True,
+    )
+    assert ssh_private_key_path.exists()
+    assert ssh_private_key_path.stat().st_mode & 0o777 == 0o600
+    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
+    assert ssh_public_key_path.exists()
+    assert ssh_public_key_path.stat().st_mode & 0o777 == 0o644

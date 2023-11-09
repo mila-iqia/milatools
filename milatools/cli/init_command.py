@@ -6,6 +6,7 @@ from pathlib import Path
 
 import questionary as qn
 
+from .local import Local
 from .utils import SSHConfig, T, yn
 
 logger = get_logger(__name__)
@@ -113,6 +114,10 @@ def setup_ssh_config(
     else:
         ssh_config.save()
         print(f"Wrote {ssh_config_path}")
+
+
+def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
+    local.run("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''")
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
