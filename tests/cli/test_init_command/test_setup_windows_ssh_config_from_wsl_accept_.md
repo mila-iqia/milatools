@@ -35,7 +35,7 @@ Host *.server.mila.quebec !*login.server.mila.quebec
 ```
 
 
-and these user inputs: ['y']
+and these user inputs: ('y', 'y')
 leads the following ssh config file on the Windows side:
 
 ```

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import difflib
-import os
 import shutil
 import subprocess
 import sys
@@ -151,14 +150,28 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     windows_ssh_config_path = windows_home / ".ssh/config"
     windows_ssh_config_path = _setup_ssh_config_file(windows_ssh_config_path)
 
+    windows_ssh_config = SSHConfig(windows_ssh_config_path)
+
+    initial_windows_config_contents = windows_ssh_config.cfg.config()
     _copy_valid_ssh_entries_to_windows_ssh_config_file(
-        linux_ssh_config, windows_ssh_config_path
+        linux_ssh_config, windows_ssh_config
     )
+    new_windows_config_contents = windows_ssh_config.cfg.config()
 
-    # copy the public_key_to_windows_ssh_folder
-    # TODO: This might be different if the user selects a non-default location during
-    # `ssh-keygen`.
+    if (
+        new_windows_config_contents != initial_windows_config_contents
+        and _confirm_changes(windows_ssh_config, initial_windows_config_contents)
+    ):
+        # We made changes and they were accepted.
+        windows_ssh_config.save()
+    else:
+        print(f"Did not change ssh config at path {windows_ssh_config.path}")
+        return  # also skip copying the SSH keys.
 
+    # Copy the SSH key to the windows folder so that passwordless SSH also works on
+    # Windows.
+    # TODO: This will need to change if we support using a non-default location at some
+    # point.
     linux_private_key_file = Path.home() / ".ssh/id_rsa"
     windows_private_key_file = windows_home / ".ssh/id_rsa"
 
@@ -315,11 +328,8 @@ def _add_ssh_entry(
 
 
 def _copy_valid_ssh_entries_to_windows_ssh_config_file(
-    linux_ssh_config: SSHConfig, windows_ssh_config_path: Path
+    linux_ssh_config: SSHConfig, windows_ssh_config: SSHConfig
 ):
-    windows_ssh_config = SSHConfig(windows_ssh_config_path)
-    initial_windows_config_contents = windows_ssh_config.cfg.config()
-
     unsupported_keys_lowercase = set(k.lower() for k in WINDOWS_UNSUPPORTED_KEYS)
 
     # NOTE: need to preserve the ordering of entries:
@@ -343,14 +353,3 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
                 if key.lower() not in unsupported_keys_lowercase
             },
         )
-
-    new_config_contents = windows_ssh_config.cfg.config()
-    if new_config_contents == initial_windows_config_contents:
-        print(f"Did not change ssh config at path {windows_ssh_config.path}")
-        return
-    if not _confirm_changes(
-        windows_ssh_config, previous=initial_windows_config_contents
-    ):
-        exit()
-    # We made changes and they were accepted.
-    windows_ssh_config.save()

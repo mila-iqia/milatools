@@ -513,7 +513,7 @@ def linux_ssh_config(
     # Enter username, accept fixing that entry, then confirm.
     ssh_config_path = tmp_path / "ssh_config"
 
-    for prompt in ["y", "bob\r", "y", "y", "y", "y", "y"]:
+    for prompt in ["y", "bob\r", "y"]:
         input_pipe.send_text(prompt)
 
     monkeypatch.setattr("sys.platform", "linux")
@@ -524,14 +524,14 @@ def linux_ssh_config(
     return SSHConfig(ssh_config_path)
 
 
-@pytest.mark.parametrize("user_inputs", [["y"], ["n"]], ids=["accept", "reject"])
+@pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
 def test_setup_windows_ssh_config_from_wsl(
     tmp_path: Path,
     linux_ssh_config: SSHConfig,
     input_pipe: PipeInput,
     file_regression: FileRegressionFixture,
     monkeypatch: pytest.MonkeyPatch,
-    user_inputs: list[str],
+    accept_changes: bool,
 ):
     initial_contents = linux_ssh_config.cfg.config()
     windows_home = tmp_path / "fake_windows_home"
@@ -548,6 +548,12 @@ def test_setup_windows_ssh_config_from_wsl(
         get_windows_home_path_in_wsl.__name__,
         Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
     )
+    user_inputs: list[str] = []
+    if not windows_ssh_config_path.exists():
+        # We accept creating the Windows SSH config file for now.
+        user_inputs.append("y")
+    user_inputs.append("y" if accept_changes else "n")
+
     for prompt in user_inputs:
         input_pipe.send_text(prompt)
 
@@ -556,6 +562,8 @@ def test_setup_windows_ssh_config_from_wsl(
     assert windows_ssh_config_path.exists()
     assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
     assert windows_ssh_config_path.parent.stat().st_mode & 0o777 == 0o700
+    if not accept_changes:
+        assert windows_ssh_config_path.read_text() == ""
 
     expected_text = "\n".join(
         [
@@ -574,7 +582,7 @@ def test_setup_windows_ssh_config_from_wsl(
                 else "no initial ssh config file"
             ),
             "",
-            f"and these user inputs: {user_inputs}",
+            f"and these user inputs: {tuple(user_inputs)}",
             "leads the following ssh config file on the Windows side:",
             "",
             "```",
@@ -620,7 +628,8 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     linux_public_key_path = linux_private_key_path.with_suffix(".pub")
     linux_public_key_path.write_text(public_key_text)
 
-    input_pipe.send_text("y")
+    input_pipe.send_text("y")  # accept creating the Windows config file
+    input_pipe.send_text("y")  # accept the changes
 
     setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
 
