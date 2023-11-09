@@ -9,7 +9,6 @@ from unittest.mock import Mock
 import pytest
 import questionary
 from prompt_toolkit.input import PipeInput, create_pipe_input
-from pytest_mock import MockerFixture
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import init_command
@@ -527,11 +526,11 @@ def linux_ssh_config(
 
 @pytest.mark.parametrize("user_inputs", [["y"], ["n"]], ids=["accept", "reject"])
 def test_setup_windows_ssh_config_from_wsl(
-    mocker: MockerFixture,
     tmp_path: Path,
     linux_ssh_config: SSHConfig,
     input_pipe: PipeInput,
     file_regression: FileRegressionFixture,
+    monkeypatch: pytest.MonkeyPatch,
     user_inputs: list[str],
 ):
     initial_contents = linux_ssh_config.cfg.config()
@@ -539,13 +538,16 @@ def test_setup_windows_ssh_config_from_wsl(
     windows_home.mkdir(exist_ok=False)
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
-    init_command.running_inside_WSL = mocker.Mock(
-        spec=running_inside_WSL, return_value=True
+    monkeypatch.setattr(
+        init_command,
+        running_inside_WSL.__name__,
+        Mock(spec=running_inside_WSL, return_value=True),
     )
-    init_command.get_windows_home_path_in_wsl = mocker.Mock(
-        spec=get_windows_home_path_in_wsl, return_value=windows_home
+    monkeypatch.setattr(
+        init_command,
+        get_windows_home_path_in_wsl.__name__,
+        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
     )
-
     for prompt in user_inputs:
         input_pipe.send_text(prompt)
 
@@ -585,7 +587,6 @@ def test_setup_windows_ssh_config_from_wsl(
 
 
 def test_setup_windows_ssh_config_from_wsl_copies_keys(
-    mocker: MockerFixture,
     tmp_path: Path,
     linux_ssh_config: SSHConfig,
     input_pipe: PipeInput,
@@ -597,11 +598,15 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     windows_home.mkdir(exist_ok=False)
     monkeypatch.setattr(Path, "home", Mock(spec=Path.home, return_value=linux_home))
 
-    init_command.running_inside_WSL = mocker.Mock(
-        spec=running_inside_WSL, return_value=True
+    monkeypatch.setattr(
+        init_command,
+        running_inside_WSL.__name__,
+        Mock(spec=running_inside_WSL, return_value=True),
     )
-    init_command.get_windows_home_path_in_wsl = mocker.Mock(
-        spec=get_windows_home_path_in_wsl, return_value=windows_home
+    monkeypatch.setattr(
+        init_command,
+        get_windows_home_path_in_wsl.__name__,
+        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
     )
 
     fake_linux_ssh_dir = linux_home / ".ssh"
