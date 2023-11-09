@@ -624,7 +624,9 @@ def test_setup_windows_ssh_config_from_wsl(
     file_regression.check(expected_text, extension=".md")
 
 
-@pytest.mark.parametrize("initial_settings", [None, {}, {"foo": "bar"}])
+@pytest.mark.parametrize(
+    "initial_settings", [None, {}, {"foo": "bar"}, {"remote.SSH.connectTimeout": 123}]
+)
 @pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
 def test_setup_vscode_settings(
     tmp_path: Path,
