@@ -145,6 +145,8 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     side in order to use `mila code` from within WSL.
     """
     assert running_inside_WSL()
+    # NOTE: This also assumes that a public/private key pair has already been generated
+    # at ~/.ssh/id_rsa.pub and ~/.ssh/id_rsa.
     windows_home = get_windows_home_path_in_wsl()
     windows_ssh_config_path = windows_home / ".ssh/config"
     windows_ssh_config_path = _setup_ssh_config_file(windows_ssh_config_path)
@@ -156,11 +158,27 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     # copy the public_key_to_windows_ssh_folder
     # TODO: This might be different if the user selects a non-default location during
     # `ssh-keygen`.
-    linux_pubkey_file = Path.home() / ".ssh/id_rsa.pub"
-    windows_pubkey_file = windows_home / ".ssh/id_rsa.pub"
-    if linux_pubkey_file.exists() and not windows_pubkey_file.exists():
-        print(f"Copying public key at {linux_pubkey_file} to Windows ssh folder.")
-        shutil.copy2(src=linux_pubkey_file, dst=windows_pubkey_file)
+
+    linux_private_key_file = Path.home() / ".ssh/id_rsa"
+    windows_private_key_file = windows_home / ".ssh/id_rsa"
+
+    for linux_key_file, windows_key_file in [
+        (linux_private_key_file, windows_private_key_file),
+        (
+            linux_private_key_file.with_suffix(".pub"),
+            windows_private_key_file.with_suffix(".pub"),
+        ),
+    ]:
+        _copy_if_needed(linux_key_file, windows_key_file)
+
+
+def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
+    if linux_key_file.exists() and not windows_key_file.exists():
+        print(
+            f"Copying {linux_key_file} over to the Windows ssh folder at "
+            f"{windows_key_file}."
+        )
+        shutil.copy2(src=linux_key_file, dst=windows_key_file)
 
 
 def get_windows_home_path_in_wsl() -> Path:
