@@ -639,7 +639,7 @@ def test_setup_vscode_settings(
     vscode_settings_json_path = tmp_path / "settings.json"
     if initial_settings is not None:
         with open(vscode_settings_json_path, "w") as f:
-            json.dump(initial_settings, f)
+            json.dump(initial_settings, f, indent="\t")
 
     monkeypatch.setattr(
         init_command,
@@ -660,6 +660,7 @@ def test_setup_vscode_settings(
         input_pipe.send_text(user_input)
 
     setup_vscode_settings()
+
     resulting_contents: str | None = None
     resulting_settings: dict | None = None
 

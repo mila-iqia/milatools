@@ -259,24 +259,25 @@ def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
             settings_json = json.load(f)
 
     settings_before = copy.deepcopy(settings_json)
-    settings_json.update(new_values)
+    settings_json.update(
+        {k: v for k, v in new_values.items() if k not in settings_json}
+    )
 
-    if settings_json != settings_before and ask_to_confirm_changes(
-        before=json.dumps(settings_before, indent=4),
-        after=json.dumps(settings_json, indent=4),
+    if settings_json == settings_before or not ask_to_confirm_changes(
+        before=json.dumps(settings_before, indent="\t"),
+        after=json.dumps(settings_json, indent="\t"),
         path=vscode_settings_json_path,
     ):
-        if not vscode_settings_json_path.exists():
-            logger.info(
-                f"Creating a new VsCode settings file at {vscode_settings_json_path}"
-            )
-            vscode_settings_json_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(vscode_settings_json_path, "w") as f:
-            json.dump(settings_json, f, indent=4)
-    else:
         print(f"Didn't change the VsCode settings at {vscode_settings_json_path}")
+        return
 
-    # No change, don't write the file.
+    if not vscode_settings_json_path.exists():
+        logger.info(
+            f"Creating a new VsCode settings file at {vscode_settings_json_path}"
+        )
+        vscode_settings_json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(vscode_settings_json_path, "w") as f:
+        json.dump(settings_json, f, indent="\t")
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
