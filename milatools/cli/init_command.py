@@ -218,6 +218,8 @@ def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
 
 
 def setup_vscode_settings():
+    print("Setting up VsCode settings for Remote development.")
+
     # TODO: Could also change some other useful settings as needed.
 
     # For example, we could skip a prompt if we had the qualified node name:
@@ -255,22 +257,26 @@ def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
         logger.info(f"Reading VsCode settings from {vscode_settings_json_path}")
         with open(vscode_settings_json_path) as f:
             settings_json = json.load(f)
-    else:
-        logger.info(
-            f"Creating a new VsCode settings file at {vscode_settings_json_path}"
-        )
-        vscode_settings_json_path.parent.mkdir(parents=True, exist_ok=True)
-        vscode_settings_json_path.touch()
 
     settings_before = copy.deepcopy(settings_json)
     settings_json.update(new_values)
 
-    if settings_json == settings_before:
-        # No change, don't write the file.
-        return
+    if settings_json != settings_before and ask_to_confirm_changes(
+        before=json.dumps(settings_before, indent=4),
+        after=json.dumps(settings_json, indent=4),
+        path=vscode_settings_json_path,
+    ):
+        if not vscode_settings_json_path.exists():
+            logger.info(
+                f"Creating a new VsCode settings file at {vscode_settings_json_path}"
+            )
+            vscode_settings_json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(vscode_settings_json_path, "w") as f:
+            json.dump(settings_json, f, indent=4)
+    else:
+        print(f"Didn't change the VsCode settings at {vscode_settings_json_path}")
 
-    with open(vscode_settings_json_path, "w") as f:
-        json.dump(settings_json, f, indent=4)
+    # No change, don't write the file.
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
@@ -305,17 +311,12 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     return config_file
 
 
-def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
-    print(
-        T.bold(
-            f"The following modifications will be made to your SSH config file at "
-            f"{ssh_config.path}:\n"
-        )
-    )
+def ask_to_confirm_changes(before: str, after: str, path: str | Path) -> bool:
+    print(T.bold(f"The following modifications will be made to {path}:\n"))
     diff_lines = list(
         difflib.unified_diff(
-            (previous + "\n").splitlines(True),
-            (ssh_config.cfg.config() + "\n").splitlines(True),
+            before.splitlines(True),
+            after.splitlines(True),
         )
     )
     for line in diff_lines[2:]:
@@ -326,6 +327,12 @@ def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
         else:
             print(line, end="")
     return yn("\nIs this OK?")
+
+
+def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
+    before = previous + "\n"
+    after = ssh_config.cfg.config() + "\n"
+    return ask_to_confirm_changes(before, after, ssh_config.path)
 
 
 def _get_username(ssh_config: SSHConfig) -> str:

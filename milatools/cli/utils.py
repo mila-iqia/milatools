@@ -143,7 +143,7 @@ class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 
     def __init__(self, path: str | Path):
-        self.path = path
+        self.path = Path(path)
         self.cfg = read_ssh_config(path)
         # self.add = self.cfg.add
         self.remove = self.cfg.remove
