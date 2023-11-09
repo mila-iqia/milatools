@@ -144,9 +144,7 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     assert running_inside_WSL()
     windows_home = get_windows_home_path_in_wsl()
     windows_ssh_config_path = windows_home / ".ssh/config"
-    if not windows_ssh_config_path.exists():
-        # SSHConfig needs an existing file.
-        windows_ssh_config_path.touch(mode=0b110_000_000)
+    windows_ssh_config_path = _setup_ssh_config_file(windows_ssh_config_path)
 
     _copy_valid_ssh_entries_to_windows_ssh_config_file(
         linux_ssh_config, windows_ssh_config_path
