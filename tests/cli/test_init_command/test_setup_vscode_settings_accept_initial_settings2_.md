@@ -2,7 +2,7 @@ Calling `setup_vscode_settings()` with this initial content:
 
 ```json
 {
-    "foo": "bar"
+	"foo": "bar"
 }
 ```
 

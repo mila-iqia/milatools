@@ -693,7 +693,7 @@ def test_setup_vscode_settings(
                         "this initial content:",
                         "",
                         "```json",
-                        json.dumps(initial_settings, indent=4),
+                        json.dumps(initial_settings, indent="\t"),
                         "```",
                     ]
                 )
