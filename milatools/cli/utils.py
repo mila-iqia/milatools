@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import contextvars
+import functools
 import itertools
 import random
 import shlex
+import shutil
 import socket
 import subprocess
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -140,6 +143,7 @@ class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 
     def __init__(self, path: str | Path):
+        self.path = path
         self.cfg = read_ssh_config(path)
         # self.add = self.cfg.add
         self.remove = self.cfg.remove
@@ -220,3 +224,8 @@ def get_fully_qualified_name() -> str:
     except Exception:
         # Fall back, e.g. on Windows.
         return socket.getfqdn()
+
+
+@functools.lru_cache()
+def running_inside_WSL() -> bool:
+    return sys.platform == "linux" and bool(shutil.which("powershell.exe"))
