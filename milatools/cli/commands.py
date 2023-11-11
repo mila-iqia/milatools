@@ -5,6 +5,7 @@ Cluster documentation: https://docs.mila.quebec/
 from __future__ import annotations
 
 import argparse
+import functools
 import operator
 import os
 import re
@@ -15,6 +16,7 @@ import sys
 import time
 import traceback
 import typing
+import warnings
 import webbrowser
 from argparse import ArgumentParser, _HelpAction
 from contextlib import ExitStack
@@ -28,7 +30,7 @@ from invoke import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
-from .init_command import setup_ssh_config
+from .init_command import setup_ssh_config, setup_windows_ssh_config_from_wsl
 from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
@@ -40,6 +42,7 @@ from .utils import (
     get_fully_qualified_name,
     qualified,
     randname,
+    running_inside_WSL,
     with_control_file,
     yn,
 )
@@ -50,8 +53,9 @@ if typing.TYPE_CHECKING:
 
 
 def main():
-    on_mila = get_fully_qualified_name().endswith(".server.mila.quebec")
-    if on_mila:
+    if sys.platform != "win32" and get_fully_qualified_name().endswith(
+        ".server.mila.quebec"
+    ):
         exit(
             "ERROR: 'mila ...' should be run on your local machine and not on the Mila cluster"
         )
@@ -386,7 +390,7 @@ def init():
 
     print("Checking ssh config")
 
-    setup_ssh_config()
+    ssh_config = setup_ssh_config()
     # TODO: Move the rest of this command to functions in the init_command module,
     # so they can more easily be tested.
 
@@ -408,6 +412,7 @@ def init():
         for entry in os.listdir(sshdir)
     ):
         if yn("You have no public keys. Generate one?"):
+            # TODO: need to get the location of the key as an output of this command!
             here.run("ssh-keygen")
         else:
             exit("No public keys.")
@@ -418,7 +423,15 @@ def init():
         if yn(
             "Your public key does not appear be registered on the cluster. Register it?"
         ):
-            here.run("ssh-copy-id", "mila")
+            # NOTE: If we're on a Windows machine, we do something different here:
+            if sys.platform == "win32":
+                command = (
+                    "powershell.exe type $env:USERPROFILE\\.ssh\\id_rsa.pub | ssh mila "
+                    '"cat >> ~/.ssh/authorized_keys"'
+                )
+                here.run(command)
+            else:
+                here.run("ssh-copy-id", "mila")
             if not here.check_passwordless("mila"):
                 exit("ssh-copy-id appears to have failed")
         else:
@@ -460,6 +473,13 @@ def init():
             remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
         else:
             exit("You will not be able to SSH to a compute node")
+
+    # TODO: IF we're running on WSL, we could probably actually just copy the
+    # id_rsa.pub and the config to the Windows paths (taking care to remove the
+    # ControlMaster-related entries) so that the user doesn't need to install Python on
+    # the Windows side.
+    if running_inside_WSL():
+        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
     ###################
     # Welcome message #
@@ -566,15 +586,31 @@ def code(
     command_path = shutil.which(command)
     if not command_path:
         raise CommandNotFoundError(command)
+    qualified_node_name = qualified(node_name)
+
+    # Try to detect if this is being run from within the Windows Subsystem for Linux.
+    # If so, then we run `code` through a powershell.exe command to open VSCode without
+    # issues.
+    inside_WSL = running_inside_WSL()
     try:
         while True:
-            here.run(
-                command_path,
-                "-nw",
-                "--remote",
-                f"ssh-remote+{qualified(node_name)}",
-                path,
-            )
+            if inside_WSL:
+                here.run(
+                    "powershell.exe",
+                    "code",
+                    "-nw",
+                    "--remote",
+                    f"ssh-remote+{qualified_node_name}",
+                    path,
+                )
+            else:
+                here.run(
+                    command_path,
+                    "-nw",
+                    "--remote",
+                    f"ssh-remote+{qualified_node_name}",
+                    path,
+                )
             print(
                 "The editor was closed. Reopen it with <Enter>"
                 " or terminate the process with <Ctrl+C>"
