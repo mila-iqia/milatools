@@ -11,6 +11,7 @@ from typing import Any
 
 import questionary as qn
 
+from .local import Local
 from .utils import SSHConfig, T, running_inside_WSL, yn
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
@@ -198,6 +199,10 @@ def get_windows_home_path_in_wsl() -> Path:
     assert running_inside_WSL()
     windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
     return Path(f"/mnt/c/Users/{windows_username}")
+
+
+def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
+    local.run("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''")
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:

@@ -30,7 +30,11 @@ from invoke import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
-from .init_command import setup_ssh_config, setup_windows_ssh_config_from_wsl
+from .init_command import (
+    create_ssh_keypair,
+    setup_ssh_config,
+    setup_windows_ssh_config_from_wsl,
+)
 from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
@@ -405,6 +409,7 @@ def init():
     here = Local()
 
     # Check that there is an id file
+    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
 
     sshdir = os.path.expanduser("~/.ssh")
     if not any(
@@ -412,8 +417,8 @@ def init():
         for entry in os.listdir(sshdir)
     ):
         if yn("You have no public keys. Generate one?"):
-            # TODO: need to get the location of the key as an output of this command!
-            here.run("ssh-keygen")
+            # Run ssh-keygen with the given location and no passphrase.
+            create_ssh_keypair(ssh_private_key_path, here)
         else:
             exit("No public keys.")
 
