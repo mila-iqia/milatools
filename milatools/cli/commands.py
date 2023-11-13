@@ -70,7 +70,8 @@ def main():
         # These are user errors and should not be reported
         print("ERROR:", exc, file=sys.stderr)
     except SSHConnectionError as err:
-        # These are errors coming from paramiko's failure to connect to the host
+        # These are errors coming from paramiko's failure to connect to the
+        # host
         print("ERROR:", f"{err}", file=sys.stderr)
     except Exception:
         print(T.red(traceback.format_exc()), file=sys.stderr)
@@ -633,6 +634,7 @@ def code(
         print("To reconnect to this node:")
         print(T.bold(f"  mila code {path} --node {node_name}"))
         print("To kill this allocation:")
+        assert "jobid" in data
         print(T.bold(f"  ssh mila scancel {data['jobid']}"))
 
 
@@ -914,8 +916,8 @@ def _standard_server(
     path: str | None,
     *,
     program: str,
-    installers,
-    command,
+    installers: dict[str, str],
+    command: str,
     profile: str | None,
     persist: bool,
     port: int | None,
@@ -1168,7 +1170,7 @@ def check_disk_quota(remote: Remote) -> None:
 
 
 def _find_allocation(
-    remote,
+    remote: Remote,
     node: str | None,
     job: str | None,
     alloc: Sequence[str],
