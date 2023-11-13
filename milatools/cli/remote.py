@@ -49,8 +49,8 @@ class QueueIO:
 
 
 def get_first_node_name(node_names_out: str) -> str:
-    """Returns the name of the first node that was granted, given the string
-    that salloc outputs to stdout.
+    """Returns the name of the first node that was granted, given the string that salloc
+    outputs to stdout.
 
     >>> get_first_node_name("cn-c001")
     'cn-c001'
@@ -117,7 +117,8 @@ class Remote:
             return self.connection.run(cmd, **kwargs)
         except socket.gaierror:
             exit(
-                f"Error: Could not connect to host '{self.hostname}', did you run 'mila init'?"
+                f"Error: Could not connect to host '{self.hostname}', "
+                f"did you run 'mila init'?"
             )
 
     def simple_run(self, cmd, **kwargs):

@@ -28,7 +28,9 @@ def test_get(cmd, capsys, file_regression):
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD, _FAKE_CMD, _FAIL_CODE_CMD])
 def test_run(cmd, capsys, file_regression):
-    func = lambda: (Local().run(*cmd, capture_output=True), None)
+    def func():
+        return Local().run(*cmd, capture_output=True), None
+
     if cmd in [_FAKE_CMD, _FAIL_CODE_CMD]:
 
         def _catch_exc():

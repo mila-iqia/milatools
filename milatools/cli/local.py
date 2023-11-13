@@ -5,7 +5,7 @@ from .utils import CommandNotFoundError, T, shjoin
 
 class Local:
     def display(self, args):
-        print(T.bold_green(f"(local) $ ", shjoin(args)))
+        print(T.bold_green("(local) $ ", shjoin(args)))
 
     def silent_get(self, *args, **kwargs):
         return subprocess.check_output(

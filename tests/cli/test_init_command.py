@@ -12,7 +12,7 @@ import questionary
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli import init_command, local
+from milatools.cli import init_command
 from milatools.cli.init_command import (
     _get_username,
     _setup_ssh_config_file,
@@ -31,9 +31,10 @@ def input_pipe(monkeypatch: pytest.MonkeyPatch):
 
     To use it, call `input_pipe.send_text("some text")`.
 
-    NOTE: Important: Send the \\r (with one backslash) character if the prompt is on a newline.
-    For confirmation prompts, just send one letter, otherwise the '\r' is passed to the next
-    prompt, which sees it as just pressing enter, which uses the default value.
+    NOTE: Important: Send the \\r (with one backslash) character if the prompt is on a
+    newline.
+    For confirmation prompts, just send one letter, otherwise the '\r' is passed to the
+    next prompt, which sees it as just pressing enter, which uses the default value.
     """
     with create_pipe_input() as input_pipe:
         monkeypatch.setattr(
@@ -47,11 +48,12 @@ def input_pipe(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_questionary_uses_input_pipe(input_pipe: PipeInput):
-    """Small test just to make sure that our way of passing the input pipe to Questionary in tests
-    makes sense.
+    """Small test just to make sure that our way of passing the input pipe to
+    Questionary in tests makes sense.
 
-    TODO: Ideally we'd want to make sure that the input prompts work exactly the same way in
-    our tests as they will for the users, but that's not something I'm confident I can guarantee.
+    TODO: Ideally we'd want to make sure that the input prompts work exactly the same
+    way in our tests as they will for the users, but that's not something I'm confident
+    I can guarantee.
     """
     input_pipe.send_text("bob\r")
     assert questionary.text("name?").unsafe_ask() == "bob"
@@ -129,9 +131,8 @@ def test_setup_ssh(
     file_regression: FileRegressionFixture,
     input_pipe: PipeInput,
 ):
-    """Checks what entries are added to the ssh config file when running the corresponding portion
-    of `mila init`.
-    """
+    """Checks what entries are added to the ssh config file when running the
+    corresponding portion of `mila init`."""
     ssh_config_path = tmp_path / ".ssh" / "config"
     ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
 
@@ -175,12 +176,13 @@ def test_setup_ssh(
                 else "no initial ssh config file"
             ),
             "",
-            f"and these user inputs: {user_inputs}",
+            f"and these user inputs: {tuple(user_inputs)}",
             "leads the following ssh config file:",
             "",
             "```",
             resulting_contents,
             "```",
+            "",
         ]
     )
 
@@ -443,7 +445,8 @@ def test_get_username(
     input_pipe: PipeInput,
     tmp_path: Path,
 ):
-    # TODO: We should probably also have a test that checks that keyboard interrupts work.
+    # TODO: We should probably also have a test that checks that keyboard interrupts
+    # work.
     # Seems like the text to send for that would be "\x03".
     ssh_config_path = tmp_path / "config"
     with open(ssh_config_path, "w") as f:
