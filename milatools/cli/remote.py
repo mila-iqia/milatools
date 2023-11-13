@@ -122,7 +122,7 @@ class Remote:
         self.transforms = transforms
 
     def with_transforms(self, *transforms: Callable[[str], str]) -> Self:
-        return Remote(
+        return type(self)(
             hostname=self.hostname,
             connection=self.connection,
             transforms=(*self.transforms, *transforms),
@@ -151,7 +151,7 @@ class Remote:
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
         **kwargs,
-    ) -> invoke.Result | invoke.Promise:
+    ) -> invoke.runners.Result | invoke.runners.Promise:
         try:
             # NOTE: See invoke.runners.Runner.run for possible **kwargs
             # invoke.runners.Runner.run
@@ -312,7 +312,6 @@ class Remote:
         # okay to use. If we wanted to be 100% legit with this, we should probably use
         # something like a `io.StringIO` here instead, and create an object that manages
         # reading from it, and pass that `io.StringIO` buffer to `self.run`.
-        # expects to get a file-like
         qio: TextIO = QueueIO()
 
         proc = self.run(

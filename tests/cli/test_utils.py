@@ -1,6 +1,5 @@
 import functools
 import random
-import socket
 from unittest.mock import patch
 
 import pytest
@@ -20,13 +19,13 @@ def test_yn():
         with patch("questionary.confirm", new=functools.partial(qn.confirm, input=inp)):
             inp.send_text("Y")
             result = yn("????")
-            assert result == True
+            assert result is True
 
     with create_pipe_input() as inp:
         with patch("questionary.confirm", new=functools.partial(qn.confirm, input=inp)):
             inp.send_text("n")
             result = yn("????")
-            assert result == False
+            assert result is False
 
 
 def test_hostname():

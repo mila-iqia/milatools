@@ -5,7 +5,6 @@ Cluster documentation: https://docs.mila.quebec/
 from __future__ import annotations
 
 import argparse
-import functools
 import operator
 import os
 import re
@@ -16,7 +15,6 @@ import sys
 import time
 import traceback
 import typing
-import warnings
 import webbrowser
 from argparse import ArgumentParser, _HelpAction
 from contextlib import ExitStack
@@ -26,7 +24,7 @@ from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
-from invoke import UnexpectedExit
+from invoke.exceptions import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
