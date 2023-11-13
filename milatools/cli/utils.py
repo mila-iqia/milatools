@@ -160,8 +160,7 @@ class SSHConfig:
         _space_after: bool = False,
         **kwargs,
     ):
-        """
-        Add another host to the SSH configuration.
+        """Add another host to the SSH configuration.
 
         Parameters
         ----------
@@ -217,7 +216,8 @@ def qualified(node_name):
 def get_fully_qualified_name() -> str:
     """Return the fully qualified name of the current machine.
 
-    Much faster than socket.getfqdn() on Mac. Falls back to that if the hostname command is not available.
+    Much faster than socket.getfqdn() on Mac. Falls back to that if the hostname command
+    is not available.
     """
     try:
         return subprocess.check_output(["hostname", "-f"]).decode("utf-8").strip()

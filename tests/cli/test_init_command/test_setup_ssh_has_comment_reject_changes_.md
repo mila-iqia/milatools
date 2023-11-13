@@ -5,7 +5,7 @@ Running the `mila init` command with this initial content:
 
 ```
 
-and these user inputs: ['bob\r', 'n']
+and these user inputs: ('bob\r', 'n')
 leads the following ssh config file:
 
 ```

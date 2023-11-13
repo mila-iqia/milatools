@@ -13,7 +13,7 @@ Host foo
 
 ```
 
-and these user inputs: ['bob\r', 'y']
+and these user inputs: ('bob\r', 'y')
 leads the following ssh config file:
 
 ```

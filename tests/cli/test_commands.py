@@ -1,6 +1,5 @@
 import contextlib
 import io
-import os
 import shlex
 
 import pytest
@@ -68,7 +67,8 @@ def test_invalid_command_output(
     file_regression: FileRegressionFixture,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test that we get a proper output when we use an invalid command (that exits immediately)."""
+    """Test that we get a proper output when we use an invalid command (that exits
+    immediately)."""
     monkeypatch.setattr("sys.argv", shlex.split(command))
     buf = io.StringIO()
     with contextlib.suppress(SystemExit), pytest.raises(
@@ -78,8 +78,9 @@ def test_invalid_command_output(
     file_regression.check(_convert_argparse_output_to_pre_py311_format(buf.getvalue()))
 
 
-# TODO: Perhaps we could use something like this so we can run all tests locally, but skip the ones
-# that need to actually connect to the cluster when running on GitHub Actions.
+# TODO: Perhaps we could use something like this so we can run all tests locally, but
+# skip the ones that need to actually connect to the cluster when running on GitHub
+# Actions.
 # def dont_run_on_github(*args):
 #     return pytest.param(
 #         *args,

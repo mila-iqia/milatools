@@ -193,7 +193,7 @@ def _env_basename(pth):
 
 def select_conda_environment(remote, loader="module load miniconda/3"):
     qn.print("Fetching the list of conda environments...")
-    envstr = remote.get_output(f"conda env list --json", hide=True)
+    envstr = remote.get_output("conda env list --json", hide=True)
     envlist = json.loads(envstr)["envs"]
 
     choices = [
@@ -246,7 +246,10 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
 
 def select_virtual_environment(remote, path):
     envstr = remote.get_output(
-        f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/* ~/scratch/virtualenvs/*",
+        (
+            f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/* "
+            "~/scratch/virtualenvs/*"
+        ),
         hide=True,
         warn=True,
     )
@@ -298,7 +301,10 @@ def ensure_program(remote, program, installers):
             qn.Choice(title="I will install it myself.", value="<MYSELF>"),
         ]
         install = qn.select(
-            f"{program} is not installed in that environment. Do you want to install it?",
+            (
+                f"{program} is not installed in that environment. "
+                "Do you want to install it?"
+            ),
             choices=choices,
         ).unsafe_ask()
         if install == "<MYSELF>":

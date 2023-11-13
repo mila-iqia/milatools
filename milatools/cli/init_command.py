@@ -19,23 +19,25 @@ WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 logger = get_logger(__name__)
 
 HOSTS = ["mila", "mila-cpu", "*.server.mila.quebec !*login.server.mila.quebec"]
-"""List of host entries that get added to the SSH configurtion by `mila init`."""
+"""List of host entries that get added to the SSH configuration by `mila init`."""
 
 
 def setup_ssh_config(
     ssh_config_path: str | Path = "~/.ssh/config",
 ) -> SSHConfig:
-    """Interactively sets up some useful entries in the ~/.ssh/config file on the local machine.
+    """Interactively sets up some useful entries in the ~/.ssh/config file on the local
+    machine.
 
-    Exits if the User cancels any of the prompts or doesn't confirm the changes when asked.
+    Exits if the User cancels any of the prompts or doesn't confirm the changes when
+    asked.
 
     Entries:
     - "mila": Used to connect to a login node.
     - "mila-cpu": Used to connect to a compute node.
 
     Other entries:
-    - "*.server.mila.quebec !*login.server.mila.quebec": Sets some useful attributes for connecting
-      directly to compute nodes.
+    - "*.server.mila.quebec !*login.server.mila.quebec": Sets some useful attributes for
+      connecting directly to compute nodes.
 
     TODO: Also ask if we should add entries for the ComputeCanada/DRAC clusters.
 
@@ -49,17 +51,19 @@ def setup_ssh_config(
     orig_config = ssh_config.cfg.config()
 
     control_path_dir = Path("~/.cache/ssh")
-    # note: a bit nicer to keep the "~" in the path in the ssh config file, but we need to make
-    # sure that the directory actually exists.
+    # note: a bit nicer to keep the "~" in the path in the ssh config file, but we need
+    # to make sure that the directory actually exists.
     control_path_dir.expanduser().mkdir(exist_ok=True, parents=True)
 
     if sys.platform == "win32":
         ssh_multiplexing_config = {}
     else:
         ssh_multiplexing_config = {
-            # Tries to reuse an existing connection, but if it fails, it will create a new one.
+            # Tries to reuse an existing connection, but if it fails, it will create a
+            # new one.
             "ControlMaster": "auto",
-            # This makes a file per connection, like normandf@login.server.mila.quebec:2222
+            # This makes a file per connection, like
+            # normandf@login.server.mila.quebec:2222
             "ControlPath": str(control_path_dir / r"%r@%h:%p"),
             # persist for 10 minutes after the last connection ends.
             "ControlPersist": 600,
@@ -89,12 +93,15 @@ def setup_ssh_config(
         RequestTTY="force",
         ConnectTimeout=600,
         ServerAliveInterval=120,
-        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap cannot share
-        # it
+        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
+        # cannot share it
         ProxyCommand=(
-            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"'
+            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
+            'mila-cpu --mem=8G"'
         ),
-        RemoteCommand="/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu",
+        RemoteCommand=(
+            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu",
+        ),
     )
 
     # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
@@ -104,8 +111,8 @@ def setup_ssh_config(
 
     if old_cnode_pattern in ssh_config.hosts():
         if yn(
-            "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and should "
-            "exclude login.server.mila.quebec. Fix this?"
+            "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and "
+            "should exclude login.server.mila.quebec. Fix this?"
         ):
             if cnode_pattern in ssh_config.hosts():
                 ssh_config.remove(old_cnode_pattern)
@@ -206,7 +213,8 @@ def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
 
 
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
-    # Save the original value for the prompt. (~/.ssh/config looks better on the command-line).
+    # Save the original value for the prompt. (~/.ssh/config looks better on the
+    # command-line).
     filename_for_prompt = config_file_path
 
     config_file = Path(config_file_path).expanduser()
@@ -261,7 +269,8 @@ def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
 
 def _get_username(ssh_config: SSHConfig) -> str:
     # Check for a mila entry in ssh config
-    # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila' entry.
+    # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila'
+    # entry.
     # NOTE: ssh_config.host(entry) returns an empty dictionary if there is no entry.
     username: str | None = None
     hosts_with_mila_in_name_and_a_user_entry = [
@@ -269,8 +278,8 @@ def _get_username(ssh_config: SSHConfig) -> str:
         for host in ssh_config.hosts()
         if "mila" in host.split() and "user" in ssh_config.host(host)
     ]
-    # Note: If there are none, or more than one, then we'll ask the user for their username, just
-    # to be sure.
+    # Note: If there are none, or more than one, then we'll ask the user for their
+    # username, just to be sure.
     if len(hosts_with_mila_in_name_and_a_user_entry) == 1:
         username = ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get(
             "user"
@@ -292,7 +301,8 @@ def _is_valid_username(text: str) -> bool | str:
     )
 
 
-# NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the SSH entries.
+# NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the
+# SSH entries.
 # from .ssh_config_entry import SshConfigEntry
 # from typing_extensions import Unpack
 
@@ -306,12 +316,7 @@ def _add_ssh_entry(
     _space_after: bool = False,
     **entry,
 ) -> None:
-    """Interactively add an entry to the ssh config file.
-
-    Exits if the user doesn't want to add an entry or doesn't confirm the change.
-
-    Returns whether the changes to `ssh_config` need to be saved later using `ssh_config.save()`.
-    """
+    """Adds or updates an entry in the ssh config object."""
     # NOTE: `Host` is also a parameter to make sure it isn't in `entry`.
     assert not (host and Host)
     host = Host or host

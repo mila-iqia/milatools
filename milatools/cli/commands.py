@@ -5,7 +5,6 @@ Cluster documentation: https://docs.mila.quebec/
 from __future__ import annotations
 
 import argparse
-import functools
 import operator
 import os
 import re
@@ -16,7 +15,6 @@ import sys
 import time
 import traceback
 import typing
-import warnings
 import webbrowser
 from argparse import ArgumentParser, _HelpAction
 from contextlib import ExitStack
@@ -61,7 +59,8 @@ def main():
         ".server.mila.quebec"
     ):
         exit(
-            "ERROR: 'mila ...' should be run on your local machine and not on the Mila cluster"
+            "ERROR: 'mila ...' should be run on your local machine and not on the Mila "
+            "cluster"
         )
 
     try:
@@ -86,7 +85,7 @@ def main():
         )
         print(
             T.bold_yellow(
-                f"An error occured during the execution of the command "
+                f"An error occurred during the execution of the command "
                 f"`{command}`. "
             )
             + T.yellow(
@@ -456,7 +455,11 @@ def init():
         print("# MISSING")
         if yn("You have no public keys on the login node. Generate them?"):
             # print("(Note: You can just press Enter 3x to accept the defaults)")
-            # _, keyfile = remote.extract("ssh-keygen", pattern="Your public key has been saved in ([^ ]+)", wait=True)
+            # _, keyfile = remote.extract(
+            #     "ssh-keygen",
+            #     pattern="Your public key has been saved in ([^ ]+)",
+            #     wait=True,
+            # )
             private_file = "~/.ssh/id_rsa"
             remote.run(f'ssh-keygen -q -t rsa -N "" -f {private_file}')
             pubkeys = [f"{private_file}.pub"]
@@ -471,8 +474,8 @@ def init():
     else:
         print("# MISSING")
         if yn(
-            "To connect to a compute node from a login node you need one id_*.pub to be in "
-            "authorized_keys. Do it?"
+            "To connect to a compute node from a login node you need one id_*.pub to "
+            "be in authorized_keys. Do it?"
         ):
             pubkey = pubkeys[0]
             remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
@@ -715,25 +718,25 @@ def serve_list(purge: bool):
 
 class StandardServerArgs(TypedDict):
     alloc: Sequence[str]
-    """Extra options to pass to slurm"""
+    """Extra options to pass to slurm."""
 
     job: str | None
-    """Job ID to connect to"""
+    """Job ID to connect to."""
 
     name: str | None
-    """Name of the persistent server"""
+    """Name of the persistent server."""
 
     node: str | None
-    """Node to connect to"""
+    """Node to connect to."""
 
     persist: bool
-    """Whether the server should persist or not"""
+    """Whether the server should persist or not."""
 
     port: int | None
-    """Port to open on the local machine"""
+    """Port to open on the local machine."""
 
     profile: str | None
-    """Name of the profile to use"""
+    """Name of the profile to use."""
 
 
 def lab(path: str | None, **kwargs: Unpack[StandardServerArgs]):
@@ -849,7 +852,7 @@ def _get_server_info(
 
 
 class SortingHelpFormatter(argparse.HelpFormatter):
-    """Taken and adapted from https://stackoverflow.com/a/12269143/6388696"""
+    """Taken and adapted from https://stackoverflow.com/a/12269143/6388696."""
 
     def add_arguments(self, actions):
         actions = sorted(actions, key=operator.attrgetter("option_strings"))
@@ -991,7 +994,8 @@ def _standard_server(
             patterns["port"] = port_pattern
         elif share:
             exit(
-                "Server cannot be shared because it is serving over a Unix domain socket"
+                "Server cannot be shared because it is serving over a Unix domain "
+                "socket"
             )
         else:
             remote.run("mkdir -p ~/.milatools/sockets", hide=True)
@@ -1134,21 +1138,21 @@ def check_disk_quota(remote: Remote) -> None:
     )
 
     freeing_up_space_instructions = (
-        "For example, temporary files (logs, checkpoints, etc.) can be moved to $SCRATCH, "
-        "while files that need to be stored for longer periods can be moved to $ARCHIVE "
-        "or to a shared project folder under /network/projects.\n"
-        "Visit https://docs.mila.quebec/Information.html#storage to learn more about how to "
-        "best make use of the different filesystems available on the cluster."
-        ""
+        "For example, temporary files (logs, checkpoints, etc.) can be moved to "
+        "$SCRATCH, while files that need to be stored for longer periods can be moved "
+        "to $ARCHIVE or to a shared project folder under /network/projects.\n"
+        "Visit https://docs.mila.quebec/Information.html#storage to learn more about "
+        "how to best make use of the different filesystems available on the cluster."
     )
 
     if used_gb >= max_gb or used_files >= max_files:
         raise MilatoolsUserError(
             T.red(
-                f"ERROR: Your disk quota on the {filesystem} filesystem is exceeded! ({reason}).\n"
-                f"To fix this, login to the cluster with `ssh {cluster}` and free up some space, "
-                f"either by deleting files, or by moving them to a suitable filesystem.\n"
-                + freeing_up_space_instructions
+                f"ERROR: Your disk quota on the {filesystem} filesystem is exceeded! "
+                f"({reason}).\n"
+                f"To fix this, login to the cluster with `ssh {cluster}` and free up "
+                f"some space, either by deleting files, or by moving them to a "
+                f"suitable filesystem.\n" + freeing_up_space_instructions
             )
         )
     if max(size_ratio, files_ratio) > 0.9:
@@ -1159,7 +1163,8 @@ def check_disk_quota(remote: Remote) -> None:
             "deleting files, or by moving them to a more suitable filesystem.\n"
             + freeing_up_space_instructions
         )
-        # TODO: Perhaps we could use the logger or the warnings package instead of just printing?
+        # TODO: Perhaps we could use the logger or the warnings package instead of just
+        # printing?
         # logger.warning(UserWarning(warning_message))
         # warnings.warn(UserWarning(T.yellow(warning_message)))
         print(UserWarning(T.yellow(warning_message)))
