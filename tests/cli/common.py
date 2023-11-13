@@ -1,4 +1,10 @@
+from __future__ import annotations
+
 from subprocess import CompletedProcess
+from typing import Callable
+
+import pytest
+from pytest_regressions.file_regression import FileRegressionFixture
 
 cmdtest = """===============
 Captured stdout
@@ -19,7 +25,14 @@ Result stderr
 """
 
 
-def output_tester(func, capsys, file_regression):
+def output_tester(
+    func: Callable[
+        [],
+        tuple[str | CompletedProcess[str] | None, str | CompletedProcess[str] | None],
+    ],
+    capsys: pytest.CaptureFixture,
+    file_regression: FileRegressionFixture,
+):
     out, err = None, None
     try:
         out, err = func()
