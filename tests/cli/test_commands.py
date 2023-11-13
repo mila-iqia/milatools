@@ -59,7 +59,7 @@ def test_check_passwordless(
     local.check_passwordless("mila")
 
     mock_subprocess_run.assert_called_once_with(
-        shlex.split("ssh -oPreferredAuthentications=publickey mila 'echo OK'"),
+        tuple(shlex.split("ssh -oPreferredAuthentications=publickey mila 'echo OK'")),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         capture_output=False,

@@ -12,7 +12,7 @@ import questionary
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli import init_command, local
+from milatools.cli import init_command
 from milatools.cli.init_command import (
     _get_username,
     _setup_ssh_config_file,
@@ -520,6 +520,9 @@ def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, local=here)
     mock_run.assert_called_once_with(
         ("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''"),
+        capture_output=False,
+        stderr=None,
+        stdout=None,
         universal_newlines=True,
     )
     assert ssh_private_key_path.exists()

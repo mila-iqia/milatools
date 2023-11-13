@@ -48,7 +48,7 @@ def test_run(
     file_regression: FileRegressionFixture,
 ):
     def func():
-        return Local().run(cmd, capture_output=True), None
+        return Local().run(*cmd, capture_output=True), None
 
     if cmd in [_FAKE_CMD, _FAIL_CODE_CMD]:
 

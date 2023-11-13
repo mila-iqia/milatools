@@ -1,27 +1,30 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 from subprocess import CompletedProcess
-from typing import IO, Any, Iterable, Sequence
+from typing import IO, Any
+
+from typing_extensions import deprecated
 
 from .utils import CommandNotFoundError, T, shjoin
 
 
 class Local:
-    def display(self, args: Iterable[str]) -> None:
+    def display(self, args: list[str] | tuple[str, ...]) -> None:
         print(T.bold_green("(local) $ ", shjoin(args)))
 
-    def silent_get(self, cmd: Sequence[str]) -> str:
+    def silent_get(self, cmd: list[str]) -> str:
         return subprocess.check_output(cmd, universal_newlines=True)
 
-    def get(self, cmd: Sequence[str]) -> str:
+    @deprecated("This isn't used and will probably be removed. Don't start using it.")
+    def get(self, cmd: list[str]) -> str:
         self.display(cmd)
         return subprocess.check_output(cmd, universal_newlines=True)
 
     def run(
         self,
-        cmd: Sequence[str],
-        *,
+        *cmd: str,
         stdout: int | IO[Any] | None = None,
         stderr: int | IO[Any] | None = None,
         capture_output: bool = False,
@@ -42,7 +45,7 @@ class Local:
 
     def popen(
         self,
-        cmd: Sequence[str],
+        cmd: list[str],
         *,
         stdout: int | IO[Any] | None = None,
         stderr: int | IO[Any] | None = None,
@@ -54,12 +57,7 @@ class Local:
 
     def check_passwordless(self, host: str) -> bool:
         results = self.run(
-            [
-                "ssh",
-                "-oPreferredAuthentications=publickey",
-                host,
-                "echo OK",
-            ],
+            *shlex.split(f"ssh -oPreferredAuthentications=publickey {host} 'echo OK'"),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
