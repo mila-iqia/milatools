@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import IO, Any
 
 from typing_extensions import deprecated
 
 from .utils import CommandNotFoundError, T, shjoin
-from logging import getLogger as get_logger
 
 logger = get_logger(__name__)
 
