@@ -20,8 +20,8 @@ from milatools.cli.init_command import (
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
     setup_ssh_config,
-    setup_windows_ssh_config_from_wsl,
     setup_vscode_settings,
+    setup_windows_ssh_config_from_wsl,
 )
 from milatools.cli.local import Local
 from milatools.cli.utils import SSHConfig, running_inside_WSL

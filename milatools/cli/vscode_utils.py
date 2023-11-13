@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -34,4 +35,4 @@ def get_expected_vscode_settings_json_path() -> Path:
 
 
 def vscode_installed() -> bool:
-    return bool(shutil.which("code"))
+    return bool(shutil.which(os.environ.get("MILATOOLS_CODE_COMMAND", "code")))
