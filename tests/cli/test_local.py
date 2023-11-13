@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from subprocess import PIPE
 
 import pytest
+from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local
 
@@ -12,22 +15,38 @@ _FAIL_CODE_CMD = ["FAKEcode", "--arg1", "val1", "--arg2=val2", "X"]
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD, _FAKE_CMD])
-def test_display(cmd, capsys, file_regression):
+def test_display(
+    cmd: list[str],
+    capsys: pytest.CaptureFixture,
+    file_regression: FileRegressionFixture,
+):
     output_tester(lambda: (Local().display(cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
-def test_silent_get(cmd, capsys, file_regression):
+def test_silent_get(
+    cmd: list[str],
+    capsys: pytest.CaptureFixture,
+    file_regression: FileRegressionFixture,
+):
     output_tester(lambda: (Local().silent_get(*cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
-def test_get(cmd, capsys, file_regression):
+def test_get(
+    cmd: list[str],
+    capsys: pytest.CaptureFixture,
+    file_regression: FileRegressionFixture,
+):
     output_tester(lambda: (Local().get(*cmd), None), capsys, file_regression)
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD, _FAKE_CMD, _FAIL_CODE_CMD])
-def test_run(cmd, capsys, file_regression):
+def test_run(
+    cmd: list[str],
+    capsys: pytest.CaptureFixture,
+    file_regression: FileRegressionFixture,
+):
     def func():
         return Local().run(*cmd, capture_output=True), None
 
@@ -48,7 +67,11 @@ def test_run(cmd, capsys, file_regression):
 
 
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
-def test_popen(cmd, capsys, file_regression):
+def test_popen(
+    cmd: list[str],
+    capsys: pytest.CaptureFixture,
+    file_regression: FileRegressionFixture,
+):
     output_tester(
         lambda: Local().popen(*cmd, stdout=PIPE, stderr=PIPE).communicate(),
         capsys,
