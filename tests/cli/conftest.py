@@ -5,20 +5,6 @@ from typing_extensions import Literal
 
 InternetAccess = Literal["local_only", "remote_only", "either"]
 enable_internet_access_flag = "--enable-internet"
-
-
-def pytest_addoption(parser: pytest.Parser):
-    parser.addoption(
-        enable_internet_access_flag,
-        action="store_true",
-        default=False,
-        help=(
-            "Allow certain specifically annotated tests to make real internet "
-            "connections."
-        ),
-    )
-
-
 _internet_access_mark_name = "can_use_internet"
 
 
@@ -34,17 +20,6 @@ def internet_access(requires: InternetAccess):
       to the internet is enabled or not.
     """
     return getattr(pytest.mark, _internet_access_mark_name)(requires)
-
-
-def pytest_configure(config: pytest.Config):
-    # register the "lvl" marker
-    config.addinivalue_line(
-        "markers",
-        (
-            f"{_internet_access_mark_name}(str): mark a test that runs either only "
-            f"locally (no internet), remotely (real internet access), or both."
-        ),
-    )
 
 
 @pytest.fixture
