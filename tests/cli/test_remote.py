@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import re
 import sys
+import typing
 import unittest
 import unittest.mock
+from typing import Callable
 from unittest.mock import Mock, create_autospec
 
 import invoke
@@ -22,6 +25,7 @@ from milatools.cli.remote import (
     get_first_node_name,
 )
 from milatools.cli.utils import shjoin
+from tests.cli.common import function_call_string
 
 from .conftest import internet_access
 
@@ -35,6 +39,7 @@ dont_run_for_real = internet_access("local_only")
 can_run_for_real = internet_access("either")
 
 P = ParamSpec("P")
+
 
 requires_s_flag = pytest.mark.skipif(
     "-s" not in sys.argv,
@@ -118,20 +123,119 @@ def mock_connection(
     if internet_enabled:
         # Return a real connection to the host!
         return Connection(host)
+
     MockConnection: Mock = create_autospec(
-        Connection, spec_set=True, _name="MockConnection"
+        Connection,
+        spec_set=True,
+        _name="MockConnection",
     )
     mock_connection: Mock = MockConnection(host)
-    # mock_connection.configure_mock(name="mock_connection")
-    MockTransport: Mock = create_autospec(
-        paramiko.Transport, spec_set=True, _name="MockTransport"
+    mock_connection.configure_mock(
+        __repr__=lambda _: f"Connection({repr(host)})",
     )
-    mock_transport: Mock = MockTransport.return_value
-    # mock_transport.configure_mock(name="mock_transport")
-    mock_connection.transport = mock_transport
-    mocker.patch("paramiko.Transport", MockTransport)
+    # NOTE: Doesn't seem to be necessary to mock paramiko.Transport at this point.
     return mock_connection
-    # return mock_connection
+
+
+@pytest.mark.disable_socket
+@pytest.mark.parametrize("command_to_run", ["echo OK"])
+@pytest.mark.parametrize("initial_transforms", [[]])
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        (
+            Remote.with_transforms,
+            (
+                lambda cmd: cmd.replace("OK", "NOT_OK"),
+                lambda cmd: f"echo 'command before' && {cmd}",
+            ),
+        ),
+        (
+            Remote.wrap,
+            ("echo 'echo wrap' && {}",),
+        ),
+        (
+            Remote.with_precommand,
+            ("echo 'echo precommand'",),
+        ),
+        (Remote.with_profile, ("profile",)),
+        (Remote.with_bash, ()),
+    ],
+)
+def test_remote_transform_methods(
+    host: str,
+    mock_connection: Connection | Mock,
+    command_to_run: str,
+    initial_transforms: list[Callable[[str], str]],
+    method: Callable,
+    args: tuple,
+    file_regression: FileRegressionFixture,
+    capsys: pytest.CaptureFixture,
+):
+    """Test the methods of `Remote` that modify the commands passed to `run` before it
+    gets passed to the connection and run on the server."""
+    connection = mock_connection
+    r = Remote(
+        host,
+        connection=connection,
+        transforms=initial_transforms,
+    )
+    # Call the method on the remote, which should return a new Remote.
+    modified_remote: Remote = method(r, *args)
+    assert modified_remote.hostname == r.hostname
+    assert modified_remote.connection is r.connection
+
+    display = None
+    hide = False
+    warn = False
+    asynchronous = False
+
+    with contextlib.redirect_stderr(sys.stdout):
+        modified_remote.run(
+            command_to_run,
+            display=display,
+            hide=hide,
+            warn=warn,
+            asynchronous=asynchronous,
+        )
+
+    out_err = capsys.readouterr()
+    stdout, stderr = out_err.out, out_err.err
+    assert not stderr
+
+    assert len(mock_connection.method_calls) == 1
+    mock_connection.run = typing.cast(Mock, mock_connection.run)
+    mock_connection.run.assert_called_once()
+
+    transformed_command = mock_connection.run.mock_calls[0][1][0]
+    # "#Connection({mock_connection.host!r}),
+    regression_file_text = f"""\
+After creating a Remote like so:
+
+```python
+remote = {function_call_string(Remote, host, connection=connection, transforms=())}
+```
+
+and then calling:
+
+```python
+transformed_remote = remote.{function_call_string(method, *args)}
+transformed_remote.run({command_to_run!r})
+```
+
+Printed the following on the terminal:
+
+```console
+{stdout}
+```
+
+The command that eventually would be run on the cluter is:
+
+```bash
+{transformed_command}
+```
+"""
+    file_regression.check(regression_file_text, extension=".md")
 
 
 @can_run_for_real
