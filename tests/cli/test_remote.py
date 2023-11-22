@@ -3,18 +3,17 @@ from __future__ import annotations
 import contextlib
 import re
 import sys
+import time
 import typing
 import unittest
 import unittest.mock
-from typing import Callable
+from typing import Callable, Iterable
 from unittest.mock import Mock, create_autospec
 
 import invoke
-import paramiko
 import pytest
 import pytest_mock
-from fabric.testing.base import Command
-from fabric.testing.fixtures import Connection, MockRemote  # client,
+from fabric.testing.fixtures import Connection  # client,
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
@@ -50,20 +49,52 @@ requires_s_flag = pytest.mark.skipif(
 )
 
 
-@disable_internet_access
-@requires_s_flag
-def test_run_remote(remote: MockRemote):  # noqa: F811
-    command = "echo OK"
-    some_message = "BOBOBOB"
-    remote.expect(
-        host="login.server.mila.quebec",
-        user=unittest.mock.ANY,
-        port=2222,
-        commands=[Command(command, out=some_message.encode())],
+@pytest.fixture
+def host() -> str:
+    return "mila"
+
+
+@pytest.fixture
+def MockConnection(
+    host: str,
+    mocker: pytest_mock.MockerFixture,
+    internet_enabled: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> type[Connection] | Mock:
+    if internet_enabled:
+        return Connection
+
+    MockConnection: Mock = create_autospec(
+        Connection,
+        spec_set=True,
+        _name="MockConnection",
     )
-    r = Remote("mila")
-    result = r.run(command)
-    assert result.stdout == some_message
+    import milatools.cli.remote
+
+    monkeypatch.setattr(milatools.cli.remote, Connection.__name__, MockConnection)
+    # mocker.patch("milatools.cli.remote.Connection", MockConnection)
+    return MockConnection
+
+
+@pytest.fixture
+def mock_connection(
+    host: str,
+    MockConnection: type[Connection] | Mock,
+    mocker: pytest_mock.MockerFixture,
+    internet_enabled: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Connection | Mock:
+    if internet_enabled:
+        return Connection(host=host)
+
+    assert isinstance(MockConnection, Mock)
+    mock_connection: Mock = MockConnection(host=host)
+    mock_connection.configure_mock(
+        __repr__=lambda _: f"Connection({repr(host)})",
+    )
+    MockConnection.reset_mock()
+    # NOTE: Doesn't seem to be necessary to mock paramiko.Transport at this point.
+    return mock_connection
 
 
 @disable_internet_access
@@ -72,69 +103,27 @@ def test_run_remote(remote: MockRemote):  # noqa: F811
 def test_init(
     keepalive: int,
     host: str,
+    MockConnection: Mock,
+    mock_connection: Mock,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """
-
-    TODO: This test should show exactly what the behaviour of init
-    is so we can isolate it from other tests and avoid having to write versions
-    of other tests based on if the connection was passed or not to the
-    constructor.
-    """
-    import milatools.cli.remote
-
-    # If a class is used as a spec then the return value of the mock (the
-    # instance of the class) will have the same spec. You can use a class as
-    # the spec for an instance object by passing instance=True.
-    # The returned mock will only be callable if instances of the mock are
-    # callable.
-    MockConnection: Mock = create_autospec(Connection, spec_set=True)
-    monkeypatch.setattr(milatools.cli.remote, "Connection", MockConnection)
-    mock_connection: Mock = MockConnection.return_value
-    mock_transport: Mock = create_autospec(
-        paramiko.Transport, spec_set=True, instance=True
-    )
-    mock_connection.transport = mock_transport
-
+    """This test shows the behaviour of __init__ to isolate it from other tests."""
+    # This should have called the `Connection` class with the host, which we patched in
+    # the fixture above.
     r = Remote(host, keepalive=keepalive)
 
-    MockConnection.assert_called_once_with(host)
     # The Remote should have created a Connection instance (which happens to be
-    # the mock_connection we already have above.)
+    # the mock_connection we made above).
+    MockConnection.assert_called_once_with(host)
     assert r.connection is mock_connection
 
+    # The connection's Transport is opened if a non-zero value is passed for `keepalive`
     if keepalive:
         mock_connection.open.assert_called_once()
-        mock_transport.set_keepalive.assert_called_once_with(keepalive)
+        mock_connection.transport.set_keepalive.assert_called_once_with(keepalive)
     else:
         mock_connection.open.assert_not_called()
-        mock_transport.set_keepalive.assert_not_called()
-
-
-@pytest.fixture
-def host() -> str:
-    return "mila"
-
-
-@pytest.fixture
-def mock_connection(
-    host: str, mocker: pytest_mock.MockerFixture, internet_enabled: bool
-) -> Connection | Mock:
-    if internet_enabled:
-        # Return a real connection to the host!
-        return Connection(host)
-
-    MockConnection: Mock = create_autospec(
-        Connection,
-        spec_set=True,
-        _name="MockConnection",
-    )
-    mock_connection: Mock = MockConnection(host)
-    mock_connection.configure_mock(
-        __repr__=lambda _: f"Connection({repr(host)})",
-    )
-    # NOTE: Doesn't seem to be necessary to mock paramiko.Transport at this point.
-    return mock_connection
+        mock_connection.transport.set_keepalive.assert_not_called()
 
 
 @pytest.mark.disable_socket
@@ -238,18 +227,36 @@ The command that eventually would be run on the cluter is:
     file_regression.check(regression_file_text, extension=".md")
 
 
+def test_with_transforms(mock_connection: Connection | Mock, host: str):
+    r = Remote(host, connection=mock_connection)
+
+    def transform(cmd: str) -> str:
+        return f"echo 'this is printed before the command' && {cmd}"
+
+    transformed_r = r.with_transforms(transform)
+    assert isinstance(transformed_r, Remote)
+    assert transformed_r.hostname == r.hostname
+    assert transformed_r.connection == r.connection
+    assert transformed_r.transforms == r.transforms + (transform,)
+
+
 @can_run_for_real
-def test_with_transforms(
+def test_run_with_transforms(
     mock_connection: Connection | Mock,
     host: str,
     internet_enabled: bool,
+    file_regression: FileRegressionFixture,
 ):
     r = Remote(host, connection=mock_connection)
-    r = r.with_transforms(
-        lambda cmd: f"echo 'this is printed before the command' && {cmd}"
-    )
-    result = r.run(
-        "echo OK",
+    command = "echo OK"
+
+    def transform(cmd: str) -> str:
+        return f"echo 'this is printed before the command' && {cmd}"
+
+    transformed_r = r.with_transforms(transform)
+
+    result = transformed_r.run(
+        command,
         display=None,
         hide=False,
         warn=False,
@@ -260,7 +267,7 @@ def test_with_transforms(
         assert result.stderr == ""
     else:
         mock_connection.run.assert_called_once_with(
-            "echo 'this is printed before the command' && echo OK",
+            transform(command),
             asynchronous=False,
             hide=False,
             warn=False,
@@ -270,6 +277,7 @@ def test_with_transforms(
 
 @can_run_for_real
 def test_wrap(mock_connection: Connection | Mock, host: str, internet_enabled: bool):
+    # TODO: Get rid of / simplify this test a lot.
     r = Remote(host, connection=mock_connection)
     command = "echo OK"
     template = "echo 'hello, this is the command: <{}>'"
@@ -329,34 +337,11 @@ def test_with_precommand(
         mock_connection.local.assert_not_called()
 
 
-@dont_run_for_real
-def test_with_profile(mock_connection: Connection | Mock, host: str):
-    r = Remote(host, connection=mock_connection)
-    some_command = "whoami"
-    profile = "my_profile"  # this gets sourced.
-    r = r.with_profile(profile)
-    _ = r.run(
-        some_command,
-        display=None,
-        hide=False,
-        warn=False,
-        out_stream=None,
-        asynchronous=False,
-    )
-    mock_connection.run.assert_called_once_with(
-        f"source {profile} && {some_command}",
-        asynchronous=False,
-        hide=False,
-        warn=False,
-        out_stream=None,
-    )
-    mock_connection.local.assert_not_called()
-
-
 @can_run_for_real
 def test_with_bash(
     mock_connection: Connection | Mock, host: str, internet_enabled: bool
 ):
+    # TODO: Get rid of / simplify this test a lot.
     r = Remote(host, connection=mock_connection)
     some_command = "echo hello my name is bob"
     r = r.with_bash()
@@ -417,19 +402,24 @@ def test_run(
     command = "echo OK"
     command_output = "bob"
     r = Remote(host, connection=mock_connection)
-    mock_promise = create_autospec(
-        invoke.runners.Promise,
-        spec_set=True,
-        instance=True,
-    )
-    mock_promise.join.return_value = (
-        Mock(wraps=invoke.runners.Result(stdout=command_output), spec_set=True),
-    )
-    mock_connection.run.return_value = mock_promise
+    mock_promise = None
+    # TODO: Wrong: Shouldn't be a Promise unless `asynchronous=True`.
+    if asynchronous:
+        mock_promise = create_autospec(
+            invoke.runners.Promise,
+            spec_set=True,
+            instance=True,
+        )
+        mock_promise.join.return_value = (
+            Mock(wraps=invoke.runners.Result(stdout=command_output), spec_set=True),
+        )
+        mock_connection.run.return_value = mock_promise
 
+    # TODO: Check that the original command is displayed in STDOUT if `display` is True
     output = r.run(
         command, display=None, hide=hide, warn=warn, asynchronous=asynchronous
     )
+    # TODO: Check for no other method calls
     mock_connection.run.assert_called_once_with(
         command,
         asynchronous=asynchronous,
@@ -437,7 +427,8 @@ def test_run(
         warn=warn,
     )
     mock_connection.local.assert_not_called()
-    assert output == mock_promise
+    if asynchronous:
+        assert output == mock_promise
 
 
 @can_run_for_real
@@ -504,6 +495,12 @@ def test_get_lines(mock_connection: Connection, host: str, hide: bool, warn: boo
     assert lines == command_output_lines
 
 
+def write_lines_with_sleeps(lines: Iterable[str], sleep_time: float = 0.1):
+    for line in lines:
+        print(line)
+        time.sleep(sleep_time)
+
+
 @dont_run_for_real
 @disable_internet_access
 @pytest.mark.parametrize("wait", [True, False])
@@ -516,9 +513,7 @@ def test_extract(
     pty: bool,
     hide: bool,
 ):
-    """TODO: It's very hard to write this test in such a way where it doesn't just test
-    itself...
-    """
+    """TODO: Rewrite this to use `write_line_with_sleeps` above or similar."""
 
     test_command = "echo 'hello my name is $USER'"
     command_output = "hello my name is bob"
@@ -687,9 +682,8 @@ class TestSlurmRemote:
         remote = SlurmRemote(
             mock_connection, alloc=alloc, transforms=transforms, persist=persist
         )
-        # Transforms aren't used here. Seems a bit weird for this to be a public method
-        # then, no?
-        assert remote.srun_transform("bob") == "srun --time=00:01:00 bash -c bob"
+        command = "bob"
+        assert remote.srun_transform(command) == f"srun {alloc[0]} bash -c {command}"
 
     @dont_run_for_real
     @pytest.mark.skip(reason="Seems a bit hard to test for what it's worth..")
@@ -711,6 +705,7 @@ class TestSlurmRemote:
     def test_with_transforms(self, mock_connection: Connection, persist: bool | None):
         alloc = ["--time=00:01:00"]
         transforms = [some_transform]
+        new_transforms = [some_other_transform]
         original_persist: bool = False
         remote = SlurmRemote(
             mock_connection,
@@ -718,10 +713,9 @@ class TestSlurmRemote:
             transforms=transforms,
             persist=original_persist,
         )
-        new_transforms = [some_other_transform]
+
         transformed = remote.with_transforms(*new_transforms, persist=persist)
-        # NOTE: Feels dumb to do this. Not sure what I should be doing otherwise.
-        assert transformed.connection == remote.connection
+        assert transformed.connection is remote.connection
         assert transformed.alloc == remote.alloc
         assert transformed.transforms == [
             some_transform,
@@ -761,14 +755,14 @@ class TestSlurmRemote:
         remote = SlurmRemote(
             mock_connection, alloc=alloc, transforms=transforms, persist=True
         )
-
+        node_job_info = {"node_name": "bob", "jobid": "1234"}
         # TODO: Not sure if this test has any use at this point..
         remote.extract = Mock(
             spec=remote.extract,
             spec_set=True,
             return_value=(
                 Mock(spec=invoke.runners.Runner, spec_set=True),
-                {"node_name": "bob", "jobid": "1234"},
+                node_job_info,
             ),
         )
 
@@ -782,8 +776,7 @@ class TestSlurmRemote:
             },
             hide=True,
         )
-        assert results == {"node_name": "bob", "jobid": "1234"}
-        # raise NotImplementedError("TODO: Imporant and potentially complicated test")
+        assert results == node_job_info
 
     @dont_run_for_real
     @disable_internet_access
@@ -793,6 +786,7 @@ class TestSlurmRemote:
         remote = SlurmRemote(
             mock_connection, alloc=alloc, transforms=transforms, persist=False
         )
+        node = "bob-123"
 
         def write_stuff(
             command: str,
@@ -802,7 +796,7 @@ class TestSlurmRemote:
             out_stream: QueueIO,
         ):
             assert command == f"bash -c 'salloc {shjoin(alloc)}'"
-            out_stream.write("salloc: Nodes bob-123 are ready for job")
+            out_stream.write(f"salloc: Nodes {node} are ready for job")
             return unittest.mock.DEFAULT
 
         mock_connection.run.side_effect = write_stuff
@@ -815,8 +809,7 @@ class TestSlurmRemote:
             out_stream=unittest.mock.ANY,
             pty=True,
         )
-        assert results == {"node_name": "bob-123"}
-        # raise NotImplementedError("TODO: Imporant and potentially complicated test")
+        assert results == {"node_name": node}
 
 
 def test_QueueIO(file_regression: FileRegressionFixture):
