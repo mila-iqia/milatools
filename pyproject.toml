@@ -44,7 +44,7 @@ combine_as_imports = true
 
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules"
+addopts = "--doctest-modules -s"
 markers = "--enable-internet: Allow some tests to run using real connections to the cluster."
 
 [build-system]
