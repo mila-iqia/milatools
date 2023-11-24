@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import inspect
+import sys
 import typing
 from subprocess import CompletedProcess
 from typing import Any, Callable
-import sys
+
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec

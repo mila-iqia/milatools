@@ -14,6 +14,7 @@ from typing_extensions import ParamSpec
 
 from milatools.cli.commands import main
 from milatools.cli.local import Local
+
 from .common import requires_no_s_flag
 
 
