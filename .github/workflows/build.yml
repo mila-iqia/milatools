@@ -34,3 +34,6 @@ jobs:
 
     - name: Test with pytest
       run: poetry run pytest
+
+    - name: Test with pytest (with -s flag)
+      run: poetry run pytest -s
