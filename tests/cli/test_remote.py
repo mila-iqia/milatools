@@ -251,7 +251,7 @@ The command that eventually would be run on the cluster is:
 {transformed_command}
 ```
 
-and `{result.stdout.strip()=}`.
+and `result.stdout.strip()={result.stdout.strip()}`.
 """
     file_regression.check(regression_file_text, extension=".md")
 
