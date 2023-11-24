@@ -251,7 +251,7 @@ The command that eventually would be run on the cluster is:
 {transformed_command}
 ```
 
-and `result.stdout.strip()={result.stdout.strip()}`.
+and `result.stdout.strip()={repr(result.stdout.strip())}`.
 """
     file_regression.check(regression_file_text, extension=".md")
 
@@ -305,7 +305,6 @@ def test_run(
     warn: bool,
     display: bool | None,
     capsys: pytest.CaptureFixture,
-    file_regression: FileRegressionFixture,
 ):
     output = remote.run(
         command, display=display, hide=hide, warn=warn, asynchronous=asynchronous
@@ -688,10 +687,7 @@ class TestSlurmRemote:
         # TODO: This test is not smart. It basically replicates the content of the
         # method. We need to rework the SlurmRemote class so it is easier to test.
         alloc = ["--time=00:01:00"]
-        transforms = [some_transform]
-        remote = SlurmRemote(
-            mock_connection, alloc=alloc, transforms=transforms, persist=True
-        )
+        remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=True)
         node_job_info = {"node_name": "bob", "jobid": "1234"}
         remote.extract = Mock(
             spec=remote.extract,
@@ -715,6 +711,8 @@ class TestSlurmRemote:
         assert results == node_job_info
 
     def test_ensure_allocation_without_persist(self, mock_connection: Connection):
+        # TODO: This test is not smart. It basically replicates the content of the
+        # method. We need to rework the SlurmRemote class so it is easier to test.
         alloc = ["--time=00:01:00"]
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
