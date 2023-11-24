@@ -674,8 +674,6 @@ class TestSlurmRemote:
             mock_connection, alloc=alloc, transforms=transforms, persist=persist
         )
         persisted = remote.persist()
-
-        # NOTE: Feels dumb to do this. Not sure what I should be doing otherwise.
         assert persisted.connection == remote.connection
         assert persisted.alloc == remote.alloc
         assert persisted.transforms == [
@@ -687,13 +685,14 @@ class TestSlurmRemote:
         persisted.run
 
     def test_ensure_allocation_persist(self, mock_connection: Connection):
+        # TODO: This test is not smart. It basically replicates the content of the
+        # method. We need to rework the SlurmRemote class so it is easier to test.
         alloc = ["--time=00:01:00"]
         transforms = [some_transform]
         remote = SlurmRemote(
             mock_connection, alloc=alloc, transforms=transforms, persist=True
         )
         node_job_info = {"node_name": "bob", "jobid": "1234"}
-        # TODO: Not sure if this test has any use at this point..
         remote.extract = Mock(
             spec=remote.extract,
             spec_set=True,
@@ -703,7 +702,7 @@ class TestSlurmRemote:
             ),
         )
 
-        results, runner = remote.ensure_allocation()
+        results, _runner = remote.ensure_allocation()
 
         remote.extract.assert_called_once_with(
             "echo @@@ $(hostname) @@@ && sleep 1000d",
@@ -717,10 +716,7 @@ class TestSlurmRemote:
 
     def test_ensure_allocation_without_persist(self, mock_connection: Connection):
         alloc = ["--time=00:01:00"]
-        transforms = [some_transform]
-        remote = SlurmRemote(
-            mock_connection, alloc=alloc, transforms=transforms, persist=False
-        )
+        remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
 
         def write_stuff(
@@ -735,7 +731,7 @@ class TestSlurmRemote:
             return unittest.mock.DEFAULT
 
         mock_connection.run.side_effect = write_stuff
-        results, runner = remote.ensure_allocation()
+        results, _runner = remote.ensure_allocation()
 
         mock_connection.run.assert_called_once_with(
             f"bash -c 'salloc {shjoin(alloc)}'",
