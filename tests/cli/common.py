@@ -4,7 +4,7 @@ import inspect
 import typing
 from subprocess import CompletedProcess
 from typing import Any, Callable
-
+import sys
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
@@ -14,6 +14,22 @@ if typing.TYPE_CHECKING:
 
 
 P = ParamSpec("P")
+
+
+requires_s_flag = pytest.mark.skipif(
+    "-s" not in sys.argv,
+    reason=(
+        "Seems to require reading from stdin? Works with the -s flag, but other "
+        "tests might not."
+    ),
+)
+
+
+requires_no_s_flag = pytest.mark.skipif(
+    "-s" in sys.argv,
+    reason="Passing pytest's -s flag makes this test fail.",
+)
+
 
 cmdtest = """===============
 Captured stdout

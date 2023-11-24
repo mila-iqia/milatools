@@ -26,18 +26,9 @@ from milatools.cli.remote import (
     get_first_node_name,
 )
 from milatools.cli.utils import T, shjoin
-from tests.cli.common import function_call_string
+from .common import function_call_string, requires_s_flag
 
 P = ParamSpec("P")
-
-
-requires_s_flag = pytest.mark.skipif(
-    False,
-    reason=(
-        "Seems to require reading from stdin? Works with the -s flag, but other "
-        "tests might not."
-    ),
-)
 
 passwordless_ssh_connection_to_localhost_is_setup = False
 
@@ -486,6 +477,7 @@ def test_put(remote: Remote, tmp_path: Path):
     assert dest.read_text() == source_content
 
 
+@requires_s_flag
 def test_puttext(remote: Remote, tmp_path: Path):
     _xfail_if_not_on_localhost(remote.hostname)
     dest_dir = tmp_path / "bar/baz"
@@ -501,6 +493,7 @@ def test_puttext(remote: Remote, tmp_path: Path):
     assert dest.read_text() == some_text
 
 
+@requires_s_flag
 def test_home(remote: Remote):
     home_dir = remote.home()
     remote.connection.run.assert_called_once_with("echo $HOME", hide=True)
@@ -558,6 +551,7 @@ class TestSlurmRemote:
         command = "bob"
         assert remote.srun_transform(command) == f"srun {alloc[0]} bash -c {command}"
 
+    @requires_s_flag
     def test_srun_transform_persist(
         self,
         mock_connection: Connection,

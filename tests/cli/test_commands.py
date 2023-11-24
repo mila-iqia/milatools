@@ -14,6 +14,7 @@ from typing_extensions import ParamSpec
 
 from milatools.cli.commands import main
 from milatools.cli.local import Local
+from .common import requires_no_s_flag
 
 
 def _convert_argparse_output_to_pre_py311_format(output: str) -> str:
@@ -65,6 +66,7 @@ def test_check_passwordless(
     )
 
 
+@requires_no_s_flag
 @pytest.mark.parametrize(
     "command",
     ["mila"]
@@ -99,11 +101,11 @@ def test_help(
     ), contextlib.redirect_stderr(buf):
         with pytest.raises(SystemExit):
             main()
-
     output: str = buf.getvalue()
     file_regression.check(_convert_argparse_output_to_pre_py311_format(output))
 
 
+@requires_no_s_flag
 @pytest.mark.parametrize(
     "command",
     [
