@@ -33,7 +33,7 @@ passwordless_ssh_connection_to_localhost_is_setup = False
 
 try:
     Connection("localhost").open()
-except paramiko.ssh_exception.AuthenticationException:
+except paramiko.ssh_exception.SSHException:
     pass
 else:
     passwordless_ssh_connection_to_localhost_is_setup = True
