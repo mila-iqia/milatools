@@ -24,13 +24,14 @@ from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
-from invoke import UnexpectedExit
+from invoke.exceptions import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
 from .init_command import (
     create_ssh_keypair,
     setup_ssh_config,
+    setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
 from .local import Local
@@ -394,15 +395,22 @@ def init():
     print("Checking ssh config")
 
     ssh_config = setup_ssh_config()
-    # TODO: Move the rest of this command to functions in the init_command module,
-    # so they can more easily be tested.
-
     print("# OK")
 
-    #############################
-    # Step 2: Passwordless auth #
-    #############################
+    # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
+    # ~/.ssh/config to the Windows ssh directory (taking care to remove the
+    # ControlMaster-related entries) so that the user doesn't need to install Python on
+    # the Windows side.
+    if running_inside_WSL():
+        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
+    setup_passwordless_ssh_access()
+    setup_keys_on_login_node()
+    setup_vscode_settings()
+    print_welcome_message()
+
+
+def setup_passwordless_ssh_access():
     print("Checking passwordless authentication")
 
     here = Local()
@@ -441,10 +449,8 @@ def init():
         else:
             exit("No passwordless login.")
 
-    #####################################
-    # Step 3: Set up keys on login node #
-    #####################################
 
+def setup_keys_on_login_node():
     print("Checking connection to compute nodes")
 
     remote = Remote("mila")
@@ -482,17 +488,8 @@ def init():
         else:
             exit("You will not be able to SSH to a compute node")
 
-    # TODO: IF we're running on WSL, we could probably actually just copy the
-    # id_rsa.pub and the config to the Windows paths (taking care to remove the
-    # ControlMaster-related entries) so that the user doesn't need to install Python on
-    # the Windows side.
-    if running_inside_WSL():
-        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
-    ###################
-    # Welcome message #
-    ###################
-
+def print_welcome_message():
     print(T.bold_cyan("=" * 60))
     print(T.bold_cyan("Congrats! You are now ready to start working on the cluster!"))
     print(T.bold_cyan("=" * 60))

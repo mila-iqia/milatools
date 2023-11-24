@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import difflib
+import json
 import shutil
 import subprocess
 import sys
@@ -13,11 +15,14 @@ import questionary as qn
 
 from .local import Local
 from .utils import SSHConfig, T, running_inside_WSL, yn
-
-WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
+from .vscode_utils import (
+    get_expected_vscode_settings_json_path,
+    vscode_installed,
+)
 
 logger = get_logger(__name__)
 
+WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 HOSTS = ["mila", "mila-cpu", "*.server.mila.quebec !*login.server.mila.quebec"]
 """List of host entries that get added to the SSH configuration by `mila init`."""
 
@@ -212,6 +217,69 @@ def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
     local.run("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''")
 
 
+def setup_vscode_settings():
+    print("Setting up VsCode settings for Remote development.")
+
+    # TODO: Could also change some other useful settings as needed.
+
+    # For example, we could skip a prompt if we had the qualified node name:
+    # remote_platform = settings_json.get("remote.SSH.remotePlatform", {})
+    # remote_platform.setdefault(fully_qualified_node_name, "linux")
+    # settings_json["remote.SSH.remotePlatform"] = remote_platform
+    if not vscode_installed():
+        # Display a message inviting the user to install VsCode:
+        warnings.warn(
+            T.orange(
+                "Visual Studio Code doesn't seem to be installed on your machine "
+                "(either that, or the `code` command is not available on the "
+                "command-line.)\n"
+                "We would recommend installing Visual Studio Code if you want to "
+                "easily edit code on the cluster with the `mila code` command. "
+            )
+        )
+        return
+
+    try:
+        _update_vscode_settings_json({"remote.SSH.connectTimeout": 60})
+    except Exception as err:
+        logger.warning(
+            f"Unable to setup VsCode settings for remote development: {err}\n"
+            f"Skipping and leaving the settings unchanged.",
+            exc_info=err,
+        )
+
+
+def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
+    vscode_settings_json_path = get_expected_vscode_settings_json_path()
+
+    settings_json: dict[str, Any] = {}
+    if vscode_settings_json_path.exists():
+        logger.info(f"Reading VsCode settings from {vscode_settings_json_path}")
+        with open(vscode_settings_json_path) as f:
+            settings_json = json.load(f)
+
+    settings_before = copy.deepcopy(settings_json)
+    settings_json.update(
+        {k: v for k, v in new_values.items() if k not in settings_json}
+    )
+
+    if settings_json == settings_before or not ask_to_confirm_changes(
+        before=json.dumps(settings_before, indent=4),
+        after=json.dumps(settings_json, indent=4),
+        path=vscode_settings_json_path,
+    ):
+        print(f"Didn't change the VsCode settings at {vscode_settings_json_path}")
+        return
+
+    if not vscode_settings_json_path.exists():
+        logger.info(
+            f"Creating a new VsCode settings file at {vscode_settings_json_path}"
+        )
+        vscode_settings_json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(vscode_settings_json_path, "w") as f:
+        json.dump(settings_json, f, indent=4)
+
+
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     # Save the original value for the prompt. (~/.ssh/config looks better on the
     # command-line).
@@ -244,17 +312,12 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     return config_file
 
 
-def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
-    print(
-        T.bold(
-            f"The following modifications will be made to your SSH config file at "
-            f"{ssh_config.path}:\n"
-        )
-    )
+def ask_to_confirm_changes(before: str, after: str, path: str | Path) -> bool:
+    print(T.bold(f"The following modifications will be made to {path}:\n"))
     diff_lines = list(
         difflib.unified_diff(
-            (previous + "\n").splitlines(True),
-            (ssh_config.cfg.config() + "\n").splitlines(True),
+            before.splitlines(True),
+            after.splitlines(True),
         )
     )
     for line in diff_lines[2:]:
@@ -265,6 +328,12 @@ def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
         else:
             print(line, end="")
     return yn("\nIs this OK?")
+
+
+def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
+    before = previous + "\n"
+    after = ssh_config.cfg.config() + "\n"
+    return ask_to_confirm_changes(before, after, ssh_config.path)
 
 
 def _get_username(ssh_config: SSHConfig) -> str:

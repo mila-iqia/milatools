@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import subprocess
 import textwrap
 from functools import partial
@@ -19,6 +20,7 @@ from milatools.cli.init_command import (
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
     setup_ssh_config,
+    setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
 from milatools.cli.local import Local
@@ -614,6 +616,95 @@ def test_setup_windows_ssh_config_from_wsl(
             "",
             "```",
             windows_ssh_config_path.read_text(),
+            "```",
+        ]
+    )
+
+    file_regression.check(expected_text, extension=".md")
+
+
+@pytest.mark.parametrize(
+    "initial_settings", [None, {}, {"foo": "bar"}, {"remote.SSH.connectTimeout": 123}]
+)
+@pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
+def test_setup_vscode_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    input_pipe: PipeInput,
+    initial_settings: dict | None,
+    file_regression: FileRegressionFixture,
+    accept_changes: bool,
+):
+    vscode_settings_json_path = tmp_path / "settings.json"
+    if initial_settings is not None:
+        with open(vscode_settings_json_path, "w") as f:
+            json.dump(initial_settings, f, indent=4)
+
+    monkeypatch.setattr(
+        init_command,
+        init_command.vscode_installed.__name__,
+        Mock(spec=init_command.vscode_installed, return_value=True),
+    )
+    monkeypatch.setattr(
+        init_command,
+        init_command.get_expected_vscode_settings_json_path.__name__,
+        Mock(
+            spec=init_command.get_expected_vscode_settings_json_path,
+            return_value=vscode_settings_json_path,
+        ),
+    )
+
+    user_inputs = ["y" if accept_changes else "n"]
+    for user_input in user_inputs:
+        input_pipe.send_text(user_input)
+
+    setup_vscode_settings()
+
+    resulting_contents: str | None = None
+    resulting_settings: dict | None = None
+
+    if not accept_changes and initial_settings is None:
+        # Shouldn't create the file if we don't accept the changes and there's no
+        # initial file.
+        assert not vscode_settings_json_path.exists()
+
+    if vscode_settings_json_path.exists():
+        resulting_contents = vscode_settings_json_path.read_text()
+        resulting_settings = json.loads(resulting_contents)
+        assert isinstance(resulting_settings, dict)
+
+    if not accept_changes:
+        if initial_settings is None:
+            assert not vscode_settings_json_path.exists()
+            return  # skip creating the regression file in that case.
+        assert resulting_settings == initial_settings
+        return
+
+    assert resulting_contents is not None
+    assert resulting_settings is not None
+
+    expected_text = "\n".join(
+        [
+            f"Calling `{setup_vscode_settings.__name__}()` with "
+            + (
+                "\n".join(
+                    [
+                        "this initial content:",
+                        "",
+                        "```json",
+                        json.dumps(initial_settings, indent=4),
+                        "```",
+                    ]
+                )
+                if initial_settings is not None
+                else "no initial VsCode settings file"
+            ),
+            "",
+            f"and these user inputs: {tuple(user_inputs)}",
+            "leads the following VsCode settings file:",
+            "",
+            "```json",
+            resulting_contents,
             "```",
         ]
     )
