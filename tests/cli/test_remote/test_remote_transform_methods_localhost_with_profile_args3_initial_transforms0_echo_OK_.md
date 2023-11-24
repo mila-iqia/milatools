@@ -8,7 +8,7 @@ and then calling:
 
 ```python
 transformed_remote = remote.with_profile('.bashrc')
-transformed_remote.run('echo OK')
+result = transformed_remote.run('echo OK')
 ```
 
 Printed the following on the terminal:
@@ -24,3 +24,5 @@ The command that eventually would be run on the cluster is:
 ```bash
 source .bashrc && echo OK
 ```
+
+and `result.stdout.strip()='OK'`.

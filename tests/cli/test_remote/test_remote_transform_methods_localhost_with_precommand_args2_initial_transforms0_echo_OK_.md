@@ -8,7 +8,7 @@ and then calling:
 
 ```python
 transformed_remote = remote.with_precommand("echo 'echo precommand'")
-transformed_remote.run('echo OK')
+result = transformed_remote.run('echo OK')
 ```
 
 Printed the following on the terminal:
@@ -25,3 +25,5 @@ The command that eventually would be run on the cluster is:
 ```bash
 echo 'echo precommand' && echo OK
 ```
+
+and `result.stdout.strip()='echo precommand\nOK'`.

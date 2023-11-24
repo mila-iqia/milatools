@@ -186,12 +186,12 @@ def test_init_with_connection(
     ],
 )
 def test_remote_transform_methods(
-    host: str,
-    mock_connection: Connection | Mock,
     command_to_run: str,
     initial_transforms: list[Callable[[str], str]],
     method: Callable,
     args: tuple,
+    host: str,
+    mock_connection: Connection | Mock,
     file_regression: FileRegressionFixture,
     capsys: pytest.CaptureFixture,
 ):
@@ -208,11 +208,11 @@ def test_remote_transform_methods(
     assert modified_remote.hostname == r.hostname
     assert modified_remote.connection is r.connection
 
-    with contextlib.redirect_stderr(sys.stdout):
-        modified_remote.run(command_to_run)
+    result = modified_remote.run(command_to_run)
 
     out_err = capsys.readouterr()
-    stdout, stderr = out_err.out, out_err.err
+    stdout = out_err.out
+    stderr = out_err.err
     assert not stderr
 
     # TODO: Would also need to remove other color codes if there were any.
@@ -237,7 +237,7 @@ and then calling:
 
 ```python
 transformed_remote = remote.{function_call_string(method, *args)}
-transformed_remote.run({command_to_run!r})
+result = transformed_remote.run({command_to_run!r})
 ```
 
 Printed the following on the terminal:
@@ -251,6 +251,8 @@ The command that eventually would be run on the cluster is:
 ```bash
 {transformed_command}
 ```
+
+and `{result.stdout.strip()=}`.
 """
     file_regression.check(regression_file_text, extension=".md")
 
@@ -556,7 +558,6 @@ class TestSlurmRemote:
         self,
         mock_connection: Connection,
         host: str,
-        tmp_path: Path,
         file_regression: FileRegressionFixture,
         monkeypatch: pytest.MonkeyPatch,
     ):
@@ -748,6 +749,7 @@ class TestSlurmRemote:
 
 
 def test_QueueIO(file_regression: FileRegressionFixture):
+    # TODO: This test doesn't do much.
     qio = QueueIO()
     strs = []
 
