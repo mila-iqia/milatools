@@ -748,12 +748,6 @@ class TestSlurmRemote:
 
 
 def test_QueueIO(file_regression: FileRegressionFixture):
-import pytest
-
-from milatools.cli.remote import QueueIO, get_first_node_name
-
-
-def test_QueueIO(file_regression):
     # TODO: This test doesn't do much.
     qio = QueueIO()
     strs = []
