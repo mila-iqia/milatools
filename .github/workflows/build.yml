@@ -3,18 +3,30 @@ name: Python package
 on: [push, pull_request]
 
 jobs:
-  build:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
+        with:
+          python-version: 3.10
+      - run: pip install pre-commit
+      - run: pre-commit --version
+      - run: pre-commit install
+      - run: pre-commit run --all-files
 
+
+  build:
+    needs: pre-commit
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
 
     steps:
-    - uses: actions/checkout@v2
-
+    - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -31,23 +43,54 @@ jobs:
     - name: Sort imports
       if: ${{ matrix.python-version == '3.10' }}
       run: poetry run isort -c --df .
-
+    
     - name: Setup passwordless SSH access to localhost for tests
       # Adapted from https://stackoverflow.com/a/60367309/6388696
       run: |
         ssh-keygen -t ed25519 -f ~/.ssh/testkey -N ''
         cat > ~/.ssh/config <<EOF
           Host localhost
-           User $USER
-           HostName 127.0.0.1
-           IdentityFile ~/.ssh/testkey
+            User $USER
+            HostName 127.0.0.1
+            IdentityFile ~/.ssh/testkey
         EOF
         echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/testkey.pub > ~/.ssh/authorized_keys
         chmod og-rw ~
         ssh -o 'StrictHostKeyChecking no' localhost id
 
+  test:
+    needs: [build]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      max-parallel: 4
+      matrix:
+        platform: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+    env:
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install --with=dev
+
     - name: Test with pytest
-      run: poetry run pytest
+      run: poetry run pytest --cov=milatools --cov-report=xml --cov-append
 
     - name: Test with pytest (with -s flag)
-      run: poetry run pytest -s
+      run: poetry run pytest --cov=milatools --cov-report=xml --cov-append -s
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        env_vars: PLATFORM,PYTHON
+        name: codecov-umbrella
+        fail_ci_if_error: false
