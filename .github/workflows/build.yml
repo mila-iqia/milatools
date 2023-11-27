@@ -32,6 +32,22 @@ jobs:
       if: ${{ matrix.python-version == '3.10' }}
       run: poetry run isort -c --df .
 
+    - name: Setup passwordless SSH access to localhost for tests
+      # Adapted from https://stackoverflow.com/a/60367309/6388696
+      run: |
+        ssh-keygen -t ed25519 -f ~/.ssh/whatever -N ''
+        cat > ~/.ssh/config <<EOF
+          Host localhost
+           User $USER
+           HostName 127.0.0.1
+           IdentityFile ~/.ssh/whatever
+        EOF
+        echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/whatever.pub > ~/.ssh/authorized_keys
+        echo "Before fixing permissions on authorized_keys, notice home directory is world read/write"
+        ls -la ~/.ssh
+        chmod og-rw ~
+        ssh -o 'StrictHostKeyChecking no' localhost id
+
     - name: Test with pytest
       run: poetry run pytest
 
