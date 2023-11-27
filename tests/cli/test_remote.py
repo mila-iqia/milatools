@@ -335,6 +335,7 @@ def test_run(
         asynchronous=asynchronous,
         hide=hide,
         warn=warn,
+        out_stream=None,
     )
     remote.connection.local.assert_not_called()
 
@@ -495,7 +496,10 @@ def test_puttext(remote: Remote, tmp_path: Path):
     _result = remote.puttext(some_text, str(dest))
     remote.connection.run.assert_called_once_with(
         f"mkdir -p {dest_dir}",
+        asynchronous=False,
+        out_stream=None,
         hide=True,
+        warn=False,
     )
     # The first argument of `put` will be the name of a temporary file.
     remote.connection.put.assert_called_once_with(unittest.mock.ANY, str(dest))
@@ -505,7 +509,9 @@ def test_puttext(remote: Remote, tmp_path: Path):
 @requires_s_flag
 def test_home(remote: Remote):
     home_dir = remote.home()
-    remote.connection.run.assert_called_once_with("echo $HOME", hide=True)
+    remote.connection.run.assert_called_once_with(
+        "echo $HOME", asynchronous=False, out_stream=None, warn=False, hide=True
+    )
     remote.connection.local.assert_not_called()
     if remote.hostname == "mila":
         assert home_dir.startswith("/home/mila/")
