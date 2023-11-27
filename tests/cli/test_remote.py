@@ -375,7 +375,13 @@ def test_get_output(
     assert output == command_output
 
     assert len(mock_connection.method_calls) == 1
-    mock_connection.run.assert_called_once_with(command, hide=hide, warn=warn)
+    mock_connection.run.assert_called_once_with(
+        command,
+        asynchronous=False,
+        hide=hide,
+        warn=warn,
+        out_stream=None,
+    )
     mock_result.stdout.strip.assert_called_once_with()
 
 
@@ -719,6 +725,7 @@ class TestSlurmRemote:
         alloc = ["--time=00:01:00"]
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
+        expected_command = f"bash -c 'salloc {shjoin(alloc)}'"
 
         def write_stuff(
             command: str,
@@ -726,8 +733,9 @@ class TestSlurmRemote:
             hide: bool,
             pty: bool,
             out_stream: QueueIO,
+            warn: bool,
         ):
-            assert command == f"bash -c 'salloc {shjoin(alloc)}'"
+            assert command == expected_command
             out_stream.write(f"salloc: Nodes {node} are ready for job")
             return unittest.mock.DEFAULT
 
@@ -735,8 +743,9 @@ class TestSlurmRemote:
         results, _runner = remote.ensure_allocation()
 
         mock_connection.run.assert_called_once_with(
-            f"bash -c 'salloc {shjoin(alloc)}'",
+            expected_command,
             hide=False,
+            warn=False,
             asynchronous=True,
             out_stream=unittest.mock.ANY,
             pty=True,
