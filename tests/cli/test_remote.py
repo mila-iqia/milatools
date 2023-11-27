@@ -601,7 +601,7 @@ class TestSlurmRemote:
                     "\n".join(
                         "\n\n".join(
                             [
-                                f"- {new_file}:",
+                                f"- {str(new_file).replace(str(Path.home()), '~')}:",
                                 "",
                                 "```",
                                 new_file.read_text(),

@@ -15,7 +15,7 @@ remote.srun_transform_persist('bob')
 ```
 
 created the following files:
-- /home/fabrice/.milatools/batch/batch-1234567890.sh:
+- ~/.milatools/batch/batch-1234567890.sh:
 
 
 
