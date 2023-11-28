@@ -130,6 +130,8 @@ def setup_ssh_config(
             HostName="%h",
             User=username,
             ProxyJump="mila",
+            ForwardAgent="yes",
+            ForwardX11="yes",
             **ssh_multiplexing_config,
         )
 
