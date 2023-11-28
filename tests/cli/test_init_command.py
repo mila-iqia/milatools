@@ -305,27 +305,6 @@ def test_ssh_config_host(tmp_path: Path):
     }
 
 
-def parametrize_flags(*test_param_names: str):
-    flags = ("mila", "mila_cpu", "mila_gpu", "mila_computenode", "drac")
-    test_params = list(itertools.product([False, True], repeat=len(flags)))
-    test_accepted_prompt_names: list[list[str]] = [
-        sum(
-            ([flags[i]] if b else [] for i, b in enumerate(bs)),
-            [],
-        )
-        for bs in test_params
-    ]
-    test_ids = [
-        "-".join(accepted_prompt_names)
-        for accepted_prompt_names in test_accepted_prompt_names
-    ]
-    return pytest.mark.parametrize(
-        test_param_names,
-        test_params,
-        ids=test_ids,
-    )
-
-
 @pytest.mark.parametrize(
     "already_has_drac", [True, False], ids=["has_drac_entries", "no_drac_entries"]
 )
@@ -667,7 +646,13 @@ def linux_ssh_config(
     # Enter username, accept fixing that entry, then confirm.
     ssh_config_path = tmp_path / "ssh_config"
 
-    for prompt in ["y", "bob\r", "y"]:
+    for prompt in [
+        "y",  # Create an ssh config file?
+        "bob\r",  # What's your username on the Mila cluster?
+        "y",  # Do you also have a DRAC account?
+        "bob\r",  # username on DRAC
+        "y",  # accept adding the entries in the ssh config
+    ]:
         input_pipe.send_text(prompt)
 
     if sys.platform.startswith("win"):
