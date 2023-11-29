@@ -18,7 +18,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: koesterlab/setup-slurm-action@v1
       - name: Test if the slurm cluster is setup correctly
-        run: sinfo
+        run: srun --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=00:01:00 hostname
+
 
       # Afterwards, you can submit to the slurm cluster via sbatch and srun, 
       # and interact via all other usual commands.
