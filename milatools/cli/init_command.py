@@ -105,7 +105,7 @@ def setup_ssh_config(
             'mila-cpu --mem=8G"'
         ),
         RemoteCommand=(
-            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu",
+            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu"
         ),
     )
 
