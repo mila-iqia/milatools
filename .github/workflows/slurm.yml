@@ -1,5 +1,5 @@
 name: Setup a Slurm Cluster for tests
-on: push
+on: [push, pull_request]
 
 jobs:
   testing:
