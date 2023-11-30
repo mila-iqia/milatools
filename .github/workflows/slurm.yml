@@ -21,11 +21,11 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.11']
     steps:
       - uses: actions/checkout@v3
       # - uses: koesterlab/setup-slurm-action@v1
-      - uses: ./custom_setup_slurm_action
+      - uses: ./.github/custom_setup_slurm_action
       - name: Test if the slurm cluster is setup correctly
         run: srun --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=00:01:00 hostname
 
