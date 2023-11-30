@@ -72,11 +72,11 @@ runs:
                     MaxTime: UNLIMITED
                     Nodes: "cn-c[001-010]"
                   - name: main
-                    Default: YES
+                    Default: NO
                     MaxTime: UNLIMITED
                     Nodes: "cn-c[001-010]"
                   - name: unkillable
-                    Default: YES
+                    Default: NO
                     MaxTime: UNLIMITED
                     Nodes: "cn-c[001-010]"
                 slurm_user:
