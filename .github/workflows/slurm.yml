@@ -34,9 +34,13 @@ jobs:
           ssh-keygen -t ed25519 -f ~/.ssh/testkey -N ''
           cat > ~/.ssh/config <<EOF
             Host localhost
-            User $USER
-            HostName 127.0.0.1
-            IdentityFile ~/.ssh/testkey
+              User $USER
+              HostName 127.0.0.1
+              IdentityFile ~/.ssh/testkey
+            Host fake_mila
+              User $USER
+              HostName 127.0.0.1
+              IdentityFile ~/.ssh/testkey
           EOF
           echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/testkey.pub > ~/.ssh/authorized_keys
           chmod og-rw ~
@@ -57,4 +61,4 @@ jobs:
       - name: Launch unit tests that launch slurm commands
         run: poetry run pytest tests/cli/test_slurm_remote.py -s
         env:
-          SERVER_NAME: localhost
+          SERVER_NAME: fake_mila
