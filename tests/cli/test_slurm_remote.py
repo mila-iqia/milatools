@@ -7,12 +7,13 @@ from fabric.connection import Connection
 
 from milatools.cli.remote import Remote, SlurmRemote
 
-SERVER_NAME = os.environ.get("SERVER_NAME", "mila")
+SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila")
 
 CONN_TO_SLURM_CLUSTER_AVAILABLE = False
 try:
-    connection = Connection(SERVER_NAME)
-    CONN_TO_SLURM_CLUSTER_AVAILABLE = connection.run("which srun").stdout != ""
+    connection = Connection(SLURM_CLUSTER)
+    # CONN_TO_SLURM_CLUSTER_AVAILABLE = connection.run("which srun").stdout != ""
+    CONN_TO_SLURM_CLUSTER_AVAILABLE = True
 except Exception:
     CONN_TO_SLURM_CLUSTER_AVAILABLE = False
 
@@ -24,7 +25,7 @@ requires_access_to_slurm_cluster = pytest.mark.skipif(
 
 @pytest.fixture
 def remote():
-    return Remote(hostname=SERVER_NAME)
+    return Remote(hostname=SLURM_CLUSTER)
 
 
 @pytest.fixture
