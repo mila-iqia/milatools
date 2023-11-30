@@ -2,7 +2,7 @@ name: Setup a Slurm Cluster for tests
 on: [push, pull_request]
 
 jobs:
-  testing:
+  slurm_testing:
     runs-on: ubuntu-latest
     # For the action to work, you have to supply a mysql
     # service as defined below.
