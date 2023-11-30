@@ -1,0 +1,74 @@
+- name: Slurm all in One
+  hosts: localhost
+  roles:
+    - role: 1.1.2
+      become: true
+  vars:
+    slurm_upgrade: true
+    slurm_roles: ["controller", "exec", "dbd"]
+    slurm_config_dir: /etc/slurm
+    slurm_config:
+      ClusterName: cluster
+      SlurmctldLogFile: /var/log/slurm/slurmctld.log
+      SlurmctldPidFile: /run/slurmctld.pid
+      SlurmdLogFile: /var/log/slurm/slurmd.log
+      SlurmdPidFile: /run/slurmd.pid
+      SlurmdSpoolDir: /tmp/slurmd # the default /var/lib/slurm/slurmd does not work because of noexec mounting in github actions
+      StateSaveLocation: /var/lib/slurm/slurmctld
+      AccountingStorageType: accounting_storage/slurmdbd
+      SelectType: select/cons_res
+    slurmdbd_config:
+      StorageType: accounting_storage/mysql
+      PidFile: /run/slurmdbd.pid
+      LogFile: /var/log/slurm/slurmdbd.log
+      StoragePass: root
+      StorageUser: root
+      StorageHost: 127.0.0.1 # see https://stackoverflow.com/questions/58222386/github-actions-using-mysql-service-throws-access-denied-for-user-rootlocalh
+      StoragePort: 8888
+      DbdHost: localhost
+    slurm_create_user: yes
+    #slurm_munge_key: "../../../munge.key"
+    slurm_nodes:
+      - name: localhost
+        State: UNKNOWN
+        Sockets: 1
+        CoresPerSocket: 2
+        RealMemory: 2000
+      # - name: cn-a[001-011]
+      #   NodeAddr: localhost
+      #   Gres: gpu:rtx8000:8
+      #   CPUs: 40
+      #   Boards: 1
+      #   SocketsPerBoard: 2
+      #   CoresPerSocket: 20
+      #   ThreadsPerCore: 1
+      #   RealMemory: 386618
+      #   TmpDisk: 3600000
+      #   State: UNKNOWN
+      #   Feature: x86_64,turing,48gb
+      # - name: "cn-c[001-010]"
+      #   CoresPerSocket: 18
+      #   Gres: "gpu:rtx8000:8"
+      #   Sockets: 2
+      #   ThreadsPerCore: 2
+    slurm_partitions:
+      - name: long
+        Default: YES
+        MaxTime: UNLIMITED
+        Nodes: "localhost"
+      # - name: main
+      #   Default: NO
+      #   MaxTime: UNLIMITED
+      #   Nodes: "cn-c[001-010]"
+      # - name: unkillable
+      #   Default: NO
+      #   MaxTime: UNLIMITED
+      #   Nodes: "cn-c[001-010]"
+    slurm_user:
+      comment: "Slurm Workload Manager"
+      gid: 1002
+      group: slurm
+      home: "/var/lib/slurm"
+      name: slurm
+      shell: "/bin/bash"
+      uid: 1002
