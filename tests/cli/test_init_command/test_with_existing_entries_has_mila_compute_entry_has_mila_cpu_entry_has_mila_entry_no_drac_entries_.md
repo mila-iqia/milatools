@@ -30,7 +30,6 @@ Host mila
 
 Host mila-cpu
   HostName login.server.mila.quebec
-  User bob
   Port 2222
   ForwardAgent yes
   StrictHostKeyChecking no
@@ -41,42 +40,55 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
+  User bob
 
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
-  User bob
   ProxyJump mila
-  ForwardAgent yes
-  ForwardX11 yes
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
+  User bob
 
 Host beluga cedar graham narval niagara
   HostName %h.computecanada.ca
-  User bob
-
-Host mist
-  HostName mist.scinet.utoronto.ca
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
   User bob
 
 Host !beluga  bc????? bg????? bl?????
   ProxyJump beluga
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
   User bob
 
 Host !cedar   cdr? cdr?? cdr??? cdr????
   ProxyJump cedar
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
   User bob
 
 Host !graham  gra??? gra????
   ProxyJump graham
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
   User bob
 
 Host !narval  nc????? ng?????
   ProxyJump narval
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
   User bob
 
 Host !niagara nia????
   ProxyJump niagara
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
   User bob
 ```

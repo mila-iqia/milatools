@@ -11,8 +11,6 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Any
 
-from logging import getLogger as get_logger
-
 import questionary as qn
 
 from .local import Local
@@ -27,6 +25,92 @@ logger = get_logger(__name__)
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 HOSTS = ["mila", "mila-cpu", "*.server.mila.quebec !*login.server.mila.quebec"]
 """List of host entries that get added to the SSH configuration by `mila init`."""
+
+
+if sys.platform == "win32":
+    ssh_multiplexing_config = {}
+else:
+    ssh_multiplexing_config = {
+        # Tries to reuse an existing connection, but if it fails, it will create a
+        # new one.
+        "ControlMaster": "auto",
+        # This makes a file per connection, like
+        # normandf@login.server.mila.quebec:2222
+        "ControlPath": r"~/.cache/ssh/%r@%h:%p",
+        # persist for 10 minutes after the last connection ends.
+        "ControlPersist": 600,
+    }
+
+
+MILA_ENTRIES: dict[str, dict[str, int | str]] = {
+    "mila": {
+        "HostName": "login.server.mila.quebec",
+        # "User": mila_username,
+        "PreferredAuthentications": "publickey,keyboard-interactive",
+        "Port": 2222,
+        "ServerAliveInterval": 120,
+        "ServerAliveCountMax": 5,
+        **ssh_multiplexing_config,
+    },
+    "mila-cpu": {
+        # "User": mila_username,
+        "Port": 2222,
+        "ForwardAgent": "yes",
+        "StrictHostKeyChecking": "no",
+        "LogLevel": "ERROR",
+        "UserKnownHostsFile": "/dev/null",
+        "RequestTTY": "force",
+        "ConnectTimeout": 600,
+        "ServerAliveInterval": 120,
+        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
+        # cannot share gpus
+        "ProxyCommand": (
+            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
+            'mila-cpu --mem=8G"'
+        ),
+        "RemoteCommand": (
+            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu"
+        ),
+    },
+    "*.server.mila.quebec !*login.server.mila.quebec": {
+        "HostName": "%h",
+        # "User": mila_username,
+        "ProxyJump": "mila",
+        **ssh_multiplexing_config,
+    },
+}
+DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
+    "beluga cedar graham narval niagara": {
+        "Hostname": "%h.computecanada.ca",
+        # User=drac_username,
+        **ssh_multiplexing_config,
+    },
+    "!beluga  bc????? bg????? bl?????": {
+        "ProxyJump": "beluga",
+        # User=drac_username,
+        **ssh_multiplexing_config,
+    },
+    "!cedar   cdr? cdr?? cdr??? cdr????": {
+        "ProxyJump": "cedar",
+        # User=drac_username,
+        **ssh_multiplexing_config,
+    },
+    "!graham  gra??? gra????": {
+        "ProxyJump": "graham",
+        # User=drac_username,
+        **ssh_multiplexing_config,
+    },
+    "!narval  nc????? ng?????": {
+        "ProxyJump": "narval",
+        # User=drac_username,
+        **ssh_multiplexing_config,
+    },
+    "!niagara nia????": {
+        "ProxyJump": "niagara",
+        # User=drac_username,
+        **ssh_multiplexing_config,
+    },
+}
 
 
 def setup_ssh_config(
@@ -46,8 +130,6 @@ def setup_ssh_config(
     - "*.server.mila.quebec !*login.server.mila.quebec": Sets some useful attributes for
       connecting directly to compute nodes.
 
-    TODO: Also ask if we should add entries for the ComputeCanada/DRAC clusters.
-
     Returns:
         The resulting SSHConfig if the changes are approved.
     """
@@ -58,90 +140,29 @@ def setup_ssh_config(
     drac_username: str | None = _get_drac_username(ssh_config)
     orig_config = ssh_config.cfg.config()
 
-    control_path_dir = Path("~/.cache/ssh")
-    # note: a bit nicer to keep the "~" in the path in the ssh config file, but we need
-    # to make sure that the directory actually exists.
-    control_path_dir.expanduser().mkdir(exist_ok=True, parents=True)
+    for hostname, entry in MILA_ENTRIES.copy().items():
+        entry.update(User=mila_username)
+        _add_ssh_entry(ssh_config, hostname, entry)
+        _make_controlpath_dir(entry)
+
     if drac_username:
         logger.debug(
             f"Adding entries for the ComputeCanada/DRAC clusters to {ssh_config_path}."
         )
-        add_drac_entries(ssh_config, drac_username)
-
-    if sys.platform == "win32":
-        ssh_multiplexing_config = {}
-    else:
-        ssh_multiplexing_config = {
-            # Tries to reuse an existing connection, but if it fails, it will create a
-            # new one.
-            "ControlMaster": "auto",
-            # This makes a file per connection, like
-            # normandf@login.server.mila.quebec:2222
-            "ControlPath": str(control_path_dir / r"%r@%h:%p"),
-            # persist for 10 minutes after the last connection ends.
-            "ControlPersist": 600,
-        }
-
-    _add_ssh_entry(
-        ssh_config,
-        host="mila",
-        HostName="login.server.mila.quebec",
-        User=mila_username,
-        PreferredAuthentications="publickey,keyboard-interactive",
-        Port=2222,
-        ServerAliveInterval=120,
-        ServerAliveCountMax=5,
-        **ssh_multiplexing_config,
-    )
-
-    _add_ssh_entry(
-        ssh_config,
-        "mila-cpu",
-        User=mila_username,
-        Port=2222,
-        ForwardAgent="yes",
-        StrictHostKeyChecking="no",
-        LogLevel="ERROR",
-        UserKnownHostsFile="/dev/null",
-        RequestTTY="force",
-        ConnectTimeout=600,
-        ServerAliveInterval=120,
-        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
-        # cannot share gpus
-        ProxyCommand=(
-            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
-            'mila-cpu --mem=8G"'
-        ),
-        RemoteCommand=(
-            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu"
-        ),
-    )
+        for hostname, entry in DRAC_ENTRIES.copy().items():
+            entry.update(User=drac_username)
+            _add_ssh_entry(ssh_config, hostname, entry)
+            _make_controlpath_dir(entry)
 
     # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
-
     old_cnode_pattern = "*.server.mila.quebec"
-    cnode_pattern = "*.server.mila.quebec !*login.server.mila.quebec"
 
     if old_cnode_pattern in ssh_config.hosts():
-        if yn(
-            "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and "
-            "should exclude login.server.mila.quebec. Fix this?"
-        ):
-            if cnode_pattern in ssh_config.hosts():
-                ssh_config.remove(old_cnode_pattern)
-            else:
-                ssh_config.rename(old_cnode_pattern, cnode_pattern)
-    else:
-        _add_ssh_entry(
-            ssh_config,
-            cnode_pattern,
-            HostName="%h",
-            User=mila_username,
-            ProxyJump="mila",
-            ForwardAgent="yes",
-            ForwardX11="yes",
-            **ssh_multiplexing_config,
+        logger.info(
+            f"The '{old_cnode_pattern}' entry in ~/.ssh/config is too general and "
+            "should exclude login.server.mila.quebec. Fixing this."
         )
+        ssh_config.remove(old_cnode_pattern)
 
     new_config = ssh_config.cfg.config()
     if orig_config == new_config:
@@ -248,25 +269,34 @@ def setup_vscode_settings():
             )
         )
         return
-
+    vscode_settings_json_path = get_expected_vscode_settings_json_path()
     try:
-        _update_vscode_settings_json({"remote.SSH.connectTimeout": 60})
+        _update_vscode_settings_json(
+            vscode_settings_json_path, new_values={"remote.SSH.connectTimeout": 60}
+        )
     except Exception as err:
         logger.warning(
-            f"Unable to setup VsCode settings for remote development: {err}\n"
-            f"Skipping and leaving the settings unchanged.",
+            T.orange(
+                f"Unable to setup VsCode settings file at {vscode_settings_json_path} "
+                f"for remote development.\n"
+                f"Skipping and leaving the settings unchanged."
+            ),
             exc_info=err,
         )
 
 
-def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
-    vscode_settings_json_path = get_expected_vscode_settings_json_path()
-
+def _update_vscode_settings_json(
+    vscode_settings_json_path: Path, new_values: dict[str, Any]
+) -> None:
     settings_json: dict[str, Any] = {}
     if vscode_settings_json_path.exists():
         logger.info(f"Reading VsCode settings from {vscode_settings_json_path}")
         with open(vscode_settings_json_path) as f:
-            settings_json = json.load(f)
+            settings_json = json.loads(
+                "\n".join(
+                    line for line in f.readlines() if not line.strip().startswith("#")
+                )
+            )
 
     settings_before = copy.deepcopy(settings_json)
     settings_json.update(
@@ -373,7 +403,8 @@ def _get_mila_username(ssh_config: SSHConfig) -> str:
 
 
 def _get_drac_username(ssh_config: SSHConfig) -> str | None:
-    """Retrieve or ask the user for their username on the ComputeCanada/DRAC clusters."""
+    """Retrieve or ask the user for their username on the ComputeCanada/DRAC
+    clusters."""
     # Check for one of the DRAC entries in ssh config
     username: str | None = None
     hosts_with_cluster_in_name_and_a_user_entry = [
@@ -395,8 +426,8 @@ def _get_drac_username(ssh_config: SSHConfig) -> str | None:
         ssh_config.host(host)["user"]
         for host in hosts_with_cluster_in_name_and_a_user_entry
     )
-    # Note: If there are none, or more than one, then we'll ask the user for their username, just
-    # to be sure.
+    # Note: If there are none, or more than one, then we'll ask the user for their
+    # username, just to be sure.
     if len(users_from_drac_config_entries) == 1:
         username = users_from_drac_config_entries.pop()
     elif yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
@@ -425,22 +456,27 @@ def _is_valid_username(text: str) -> bool | str:
 def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,
-    Host: str | None = None,
+    entry: dict[str, str | int],
     *,
     _space_before: bool = True,
     _space_after: bool = False,
-    **entry,
 ) -> None:
     """Adds or updates an entry in the ssh config object."""
     # NOTE: `Host` is also a parameter to make sure it isn't in `entry`.
-    assert not (host and Host)
-    host = Host or host
+    assert "Host" not in entry
+
+    sorted_by_keys = False
+
     if host in ssh_config.hosts():
         existing_entry = ssh_config.host(host)
         existing_entry.update(entry)
+        if sorted_by_keys:
+            existing_entry = dict(sorted(existing_entry.items()))
         ssh_config.cfg.set(host, **existing_entry)
         logger.debug(f"Updated {host} entry in ssh config at path {ssh_config.path}.")
     else:
+        if sorted_by_keys:
+            entry = dict(sorted(entry.items()))
         ssh_config.add(
             host,
             _space_before=_space_before,
@@ -472,7 +508,7 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
         _add_ssh_entry(
             windows_ssh_config,
             host,
-            **{
+            {
                 key: value
                 for key, value in linux_ssh_entry.items()
                 if key.lower() not in unsupported_keys_lowercase
@@ -480,52 +516,11 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
         )
 
 
-def add_drac_entries(ssh_config: SSHConfig, drac_username: str):
-    _add_ssh_entry(
-        ssh_config,
-        host="beluga cedar graham narval niagara",
-        Hostname="%h.computecanada.ca",
-        User=drac_username,  # note: would be made redundant by the Match entry below
-    )
-    _add_ssh_entry(
-        ssh_config,
-        host="mist",
-        Hostname="mist.scinet.utoronto.ca",
-        User=drac_username,
-    )
-    _add_ssh_entry(
-        ssh_config,
-        host="!beluga  bc????? bg????? bl?????",
-        ProxyJump="beluga",
-        User=drac_username,
-    )
-    _add_ssh_entry(
-        ssh_config,
-        host="!cedar   cdr? cdr?? cdr??? cdr????",
-        ProxyJump="cedar",
-        User=drac_username,
-    )
-    _add_ssh_entry(
-        ssh_config,
-        host="!graham  gra??? gra????",
-        ProxyJump="graham",
-        User=drac_username,
-    )
-    _add_ssh_entry(
-        ssh_config,
-        host="!narval  nc????? ng?????",
-        ProxyJump="narval",
-        User=drac_username,
-    )
-    _add_ssh_entry(
-        ssh_config,
-        host="!niagara nia????",
-        ProxyJump="niagara",
-        User=drac_username,
-    )
-    # NOTE: might be cleaner to add this Match entry, but unsure how to do it with SshConfigFile
-    _match_host_entry = """\
-    Match host *.computecanada.ca
-      User normandf
-      PreferredAuthentications publickey,keyboard-interactive
-    """
+def _make_controlpath_dir(entry: dict[str, str | int]) -> None:
+    if "ControlPath" not in entry:
+        return
+    control_path = entry["ControlPath"]
+    assert isinstance(control_path, str)
+    # Create the ControlPath directory if it doesn't exist:
+    control_path_dir = Path(control_path).expanduser().parent
+    control_path_dir.mkdir(exist_ok=True, parents=True)

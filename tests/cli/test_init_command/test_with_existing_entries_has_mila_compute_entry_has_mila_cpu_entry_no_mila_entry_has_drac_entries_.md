@@ -39,7 +39,6 @@ leads to the following ssh config file:
 ```
 Host mila-cpu
   HostName login.server.mila.quebec
-  User bob
   Port 2222
   ForwardAgent yes
   StrictHostKeyChecking no
@@ -50,42 +49,60 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
+  User bob
 
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
-  User bob
   ProxyJump mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
+  User bob
 
 
 # Compute Canada
 Host beluga cedar graham narval niagara
   Hostname %h.computecanada.ca
   User bob
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 Host mist
   Hostname mist.scinet.utoronto.ca
   User bob
 Host !beluga  bc????? bg????? bl?????
   ProxyJump beluga
   User bob
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 Host !cedar   cdr? cdr?? cdr??? cdr????
   ProxyJump cedar
   User bob
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 Host !graham  gra??? gra????
   ProxyJump graham
   User bob
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 Host !narval  nc????? ng?????
   ProxyJump narval
   User bob
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 Host !niagara nia????
   ProxyJump niagara
   User bob
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
 
 Host mila
   HostName login.server.mila.quebec
-  User bob
   PreferredAuthentications publickey,keyboard-interactive
   Port 2222
   ServerAliveInterval 120
@@ -93,4 +110,5 @@ Host mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
+  User bob
 ```
