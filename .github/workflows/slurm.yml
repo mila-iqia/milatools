@@ -14,12 +14,46 @@ jobs:
         ports:
           - "8888:3306"
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+      # TODO: Would like to use the SLURM cluster as a "service", so it's available
+      # through all the steps below..
+        # fake_mila:
+      #   image: koesterlab/setup-slurm-action@v1
+
+    strategy:
+      matrix:
+        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
     steps:
       - uses: actions/checkout@v3
       - uses: koesterlab/setup-slurm-action@v1
       - name: Test if the slurm cluster is setup correctly
         run: srun --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=00:01:00 hostname
 
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
 
-      # Afterwards, you can submit to the slurm cluster via sbatch and srun, 
-      # and interact via all other usual commands.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install --with=dev
+
+      - name: Setup passwordless SSH access to localhost for tests
+        # Adapted from https://stackoverflow.com/a/60367309/6388696
+        run: |
+          ssh-keygen -t ed25519 -f ~/.ssh/testkey -N ''
+          cat > ~/.ssh/config <<EOF
+            Host localhost
+            User $USER
+            HostName 127.0.0.1
+            IdentityFile ~/.ssh/testkey
+          EOF
+          echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/testkey.pub > ~/.ssh/authorized_keys
+          chmod og-rw ~
+          ssh -o 'StrictHostKeyChecking no' localhost id
+
+      - name: Launch unit tests that launch slurm commands
+        run: pytest tests/cli/test_slurm_remote.py -s
+        env:
+          SERVER_NAME: localhost
