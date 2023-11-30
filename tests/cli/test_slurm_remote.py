@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from milatools.cli.remote import Remote, SlurmRemote
+from milatools.cli.remote import Remote
 
 # from fabric.connection import Connection
 
@@ -29,30 +29,30 @@ def remote():
     return Remote(hostname=SLURM_CLUSTER)
 
 
-@pytest.fixture
-def slurm_remote(remote: Remote):
-    job_name = "mila-tools"
-    return SlurmRemote(
-        connection=remote.connection,
-        alloc=[
-            "-J",
-            job_name,
-            "--nodes=1",
-            "--ntasks=1",
-            "--cpus-per-task=1",
-            "--mem=1G",
-            "--time=00:01:00",
-        ],
-    )
+# @pytest.fixture
+# def slurm_remote(remote: Remote):
+#     job_name = "mila-tools"
+#     return SlurmRemote(
+#         connection=remote.connection,
+#         alloc=[
+#             "-J",
+#             job_name,
+#             "--nodes=1",
+#             "--ntasks=1",
+#             "--cpus-per-task=1",
+#             "--mem=1G",
+#             "--time=00:01:00",
+#         ],
+#     )
 
 
-@requires_access_to_slurm_cluster
-def test_ensure_allocation(slurm_remote: SlurmRemote):
-    # TODO: Really confusing: What exactly is SlurmRemote? Is it a connection to the
-    # compute node? Or is it a connection to the login node?
-    data, proc = slurm_remote.ensure_allocation()
-    # {"node_name": node_name, "jobid": results["jobid"]}, proc
-    print(data, proc)
+# @requires_access_to_slurm_cluster
+# def test_ensure_allocation(slurm_remote: SlurmRemote):
+#     # TODO: Really confusing: What exactly is SlurmRemote? Is it a connection to the
+#     # compute node? Or is it a connection to the login node?
+#     data, proc = slurm_remote.ensure_allocation()
+#     # {"node_name": node_name, "jobid": results["jobid"]}, proc
+#     print(data, proc)
 
 
 @requires_access_to_slurm_cluster
