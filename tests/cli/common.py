@@ -16,13 +16,13 @@ if typing.TYPE_CHECKING:
 
 P = ParamSpec("P")
 
-
+REQUIRES_S_FLAG_REASON = (
+    "Seems to require reading from stdin? Works with the -s flag, but other "
+    "tests might not."
+)
 requires_s_flag = pytest.mark.skipif(
     "-s" not in sys.argv,
-    reason=(
-        "Seems to require reading from stdin? Works with the -s flag, but other "
-        "tests might not."
-    ),
+    reason=REQUIRES_S_FLAG_REASON,
 )
 
 
