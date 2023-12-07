@@ -56,14 +56,14 @@
         Default: YES
         MaxTime: UNLIMITED
         Nodes: "localhost"
-      # - name: main
-      #   Default: NO
-      #   MaxTime: UNLIMITED
-      #   Nodes: "cn-c[001-010]"
-      # - name: unkillable
-      #   Default: NO
-      #   MaxTime: UNLIMITED
-      #   Nodes: "cn-c[001-010]"
+      - name: main
+        Default: NO
+        MaxTime: UNLIMITED
+        Nodes: "localhost"
+      - name: unkillable
+        Default: NO
+        MaxTime: UNLIMITED
+        Nodes: "localhost"
     slurm_user:
       comment: "Slurm Workload Manager"
       gid: 1002
