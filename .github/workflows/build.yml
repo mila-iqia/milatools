@@ -43,7 +43,7 @@ jobs:
     - name: Sort imports
       if: ${{ matrix.python-version == '3.10' }}
       run: poetry run isort -c --df .
-    
+
     - name: Setup passwordless SSH access to localhost for tests
       # Adapted from https://stackoverflow.com/a/60367309/6388696
       run: |
