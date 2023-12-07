@@ -1,11 +1,20 @@
+from __future__ import annotations
+
 import json
 import re
+import typing
 from pathlib import Path
+from typing import Generic, Sequence, TypeVar
 
 import invoke
 import questionary as qn
+from questionary import Style
+from questionary.prompts.common import FormattedText
 
 from .utils import askpath, shjoin, yn
+
+if typing.TYPE_CHECKING:
+    from milatools.cli.remote import Remote
 
 style = qn.Style(
     [
@@ -18,16 +27,16 @@ style = qn.Style(
 )
 
 
-def _ask_name(message, default=""):
+def _ask_name(message: str, default: str = "") -> str:
     while True:
-        name = qn.text(message, default=default).unsafe_ask()
+        name: str = qn.text(message, default=default).unsafe_ask()
         if re.match(r"[a-zA-Z0-9_]+", name):
             return name
         else:
             qn.print(f"Invalid name: {name}", style="bold red")
 
 
-def setup_profile(remote, path):
+def setup_profile(remote: Remote, path: str) -> str:
     profile = select_preferred(remote, path)
     preferred = profile is not None
     if not preferred:
@@ -38,7 +47,8 @@ def setup_profile(remote, path):
     profile_file = Path(path) / ".milatools-profile"
     if not preferred:
         save = yn(
-            f"Do you want to use this profile by default in {path}?", default=False
+            f"Do you want to use this profile by default in {path}?",
+            default=False,
         )
         if save:
             remote.puttext(profile, str(profile_file))
@@ -46,7 +56,7 @@ def setup_profile(remote, path):
     return profile
 
 
-def select_preferred(remote, path):
+def select_preferred(remote: Remote, path: str) -> str | None:
     preferred = f"{path}/.milatools-profile"
     qn.print(f"Checking for preferred profile in {preferred}")
 
@@ -59,7 +69,7 @@ def select_preferred(remote, path):
     return preferred
 
 
-def select_profile(remote):
+def select_profile(remote: Remote) -> str | None:
     profdir = "~/.milatools/profiles"
 
     qn.print(f"Fetching profiles in {profdir}")
@@ -72,23 +82,24 @@ def select_profile(remote):
         return None
 
     profile_choices = [
-        qn.Choice(
+        Choice(
             title=Path(p).stem,
             value=p,
         )
         for p in profiles
     ]
 
-    profile = qn.select(
+    profile = _select_unsafe_ask(
         "Select the profile to use:",
         choices=[
             *profile_choices,
-            qn.Choice(
-                title=[("class:special", "Create a new profile")], value="<CREATE>"
+            Choice(
+                title=[("class:special", "Create a new profile")],
+                value="<CREATE>",
             ),
         ],
         style=style,
-    ).unsafe_ask()
+    )
 
     if profile == "<CREATE>":
         return None
@@ -96,7 +107,7 @@ def select_profile(remote):
     return profile
 
 
-def create_profile(remote, path="~"):
+def create_profile(remote: Remote, path: str = "~"):
     modules = select_modules(remote)
 
     mload = f"module load {' '.join(modules)}"
@@ -113,6 +124,7 @@ def create_profile(remote, path="~"):
         lines.append(f"source {vpath}/bin/activate")
         default_profname = _env_basename(vpath)
 
+    assert default_profname is not None
     profname = _ask_name("Name of the profile:", default=default_profname)
     profcontents = "\n".join(lines)
     prof_file = f".milatools/profiles/{profname}.bash"
@@ -125,79 +137,75 @@ def create_profile(remote, path="~"):
     return prof_file
 
 
-def select_modules(remote):
+def select_modules(remote: Remote):
     choices = [
-        qn.Choice(
+        Choice(
             title="miniconda/3",
             value="miniconda/3 cuda/11.2/cudnn/8.1",
         ),
-        qn.Choice(
+        Choice(
             title="python/3.8",
             value="python/3.8 cuda/11.2/cudnn/8.1",
         ),
-        qn.Choice(
+        Choice(
             title="pytorch/1.8.1",
             value="python/3.7 python/3.7/cuda/11.1/cudnn/8.0/pytorch/1.8.1",
         ),
-        qn.Choice(
+        Choice(
             title=[("class:special", "Other (specify)")],
             value="<OTHER>",
         ),
     ]
-    modules = qn.select(
+    modules = _select_unsafe_ask(
         "Select the set of modules to load:",
         choices=choices,
-    ).unsafe_ask()
-    if modules == "<OTHER>":
-        qn.print("Fetching the list of modules...")
-        # "module --terse avail" prints on stderr? Really?!
-        modlist = remote.run("module --terse avail", hide=True).stderr.strip().split()
-        modchoices = {
-            x.split("(@")[0]: x.split("(@")[-1].rstrip(")")
-            for x in modlist
-            if not x.endswith(":")
-        }
-        qn.print(
-            "Write one module on each line, press enter on an empty line to finish",
-            style="bold",
-        )
-        modules = []
-        while True:
-            entry = (
-                qn.autocomplete(
-                    "",
-                    choices=modchoices.keys(),
-                    style=qn.Style([("answer", "fg:default bg:default")]),
-                )
-                .unsafe_ask()
-                .strip()
-            )
-            if not entry:
-                break
-            if entry not in modchoices:
-                qn.print(f"{entry} is not a valid module", style="bold red")
-                continue
-            modules.append(modchoices[entry])
-    else:
-        modules = modules.split()
+    )
 
-    return modules
+    if modules != "<OTHER>":
+        return modules.split()
+
+    qn.print("Fetching the list of modules...")
+    # "module --terse avail" prints on stderr? Really?!
+    modlist = remote.run("module --terse avail", hide=True).stderr.strip().split()
+    modchoices = {
+        x.split("(@")[0]: x.split("(@")[-1].rstrip(")")
+        for x in modlist
+        if not x.endswith(":")
+    }
+    qn.print(
+        "Write one module on each line, press enter on an empty line to finish",
+        style="bold",
+    )
+    module_list: list[str] = []
+    while True:
+        entry: str = qn.autocomplete(
+            "",
+            choices=list(modchoices.keys()),
+            style=qn.Style([("answer", "fg:default bg:default")]),
+        ).unsafe_ask()
+        entry = entry.strip()
+        if not entry:
+            break
+        if entry not in modchoices:
+            qn.print(f"{entry} is not a valid module", style="bold red")
+            continue
+        module_list.append(modchoices[entry])
+    return module_list
 
 
-def _env_basename(pth):
+def _env_basename(pth: str) -> str | None:
     base = pth.split("/")[-1]
     if base == "3":
         return None
     return base
 
 
-def select_conda_environment(remote, loader="module load miniconda/3"):
+def select_conda_environment(remote: Remote, loader: str = "module load miniconda/3"):
     qn.print("Fetching the list of conda environments...")
     envstr = remote.get_output("conda env list --json", hide=True)
-    envlist = json.loads(envstr)["envs"]
-
-    choices = [
-        qn.Choice(
+    envlist: list[str] = json.loads(envstr)["envs"]
+    choices: list[Choice[str]] = [
+        Choice(
             title=[
                 ("class:envname", f"{_env_basename(entry):15}"),
                 ("class:envpath", f" {entry}"),
@@ -210,29 +218,29 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
 
     choices.extend(
         [
-            qn.Choice(
+            Choice(
                 title=[("class:special", "Other (specify)")],
                 value="<OTHER>",
             ),
-            qn.Choice(
+            Choice(
                 title=[("class:special", "Create a new environment")],
                 value="<CREATE>",
             ),
         ]
     )
 
-    env = qn.select(
+    env = _select_unsafe_ask(
         "Select the environment to use:", choices=choices, style=style
-    ).unsafe_ask()
+    )
 
     if env == "<OTHER>":
-        env = askpath("Enter the path to the environment to use.", remote)
+        return askpath("Enter the path to the environment to use.", remote)
 
-    elif env == "<CREATE>":
-        pyver = qn.select(
+    if env == "<CREATE>":
+        pyver = _select_unsafe_ask(
             "Choose the Python version",
             choices=["3.10", "3.9", "3.8", "3.7"],
-        ).unsafe_ask()
+        )
         env = _ask_name("What should the environment name/path be?")
         if "/" not in env:
             # env = f"~/scratch/condaenvs/{env}"
@@ -244,7 +252,7 @@ def select_conda_environment(remote, loader="module load miniconda/3"):
     return env
 
 
-def select_virtual_environment(remote, path):
+def select_virtual_environment(remote: Remote, path):
     envstr = remote.get_output(
         (
             f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/* "
@@ -253,24 +261,23 @@ def select_virtual_environment(remote, path):
         hide=True,
         warn=True,
     )
-    choices = [x for x in envstr.split() if x]
+    choices: list[str | Choice[str]] = [x for x in envstr.split() if x]
     choices.extend(
         [
-            qn.Choice(
+            Choice(
                 title=[("class:special", "Other (specify)")],
                 value="<OTHER>",
             ),
-            qn.Choice(
+            Choice(
                 title=[("class:special", "Create a new environment")],
                 value="<CREATE>",
             ),
         ]
     )
 
-    env = qn.select(
+    env = _select_unsafe_ask(
         "Select the environment to use:", choices=choices, style=style
-    ).unsafe_ask()
-
+    )
     if env == "<OTHER>":
         env = askpath("Enter the path to the environment to use.", remote)
 
@@ -284,7 +291,7 @@ def select_virtual_environment(remote, path):
     return env
 
 
-def ensure_program(remote, program, installers):
+def ensure_program(remote: Remote, program: str, installers: dict[str, str]):
     to_test = [program, *installers.keys()]
     progs = [
         Path(p).name
@@ -296,20 +303,79 @@ def ensure_program(remote, program, installers):
     ]
 
     if program not in progs:
-        choices = [
+        choices: list[str | Choice[str]] = [
             *[cmd for prog, cmd in installers.items() if prog in progs],
-            qn.Choice(title="I will install it myself.", value="<MYSELF>"),
+            Choice(title="I will install it myself.", value="<MYSELF>"),
         ]
-        install = qn.select(
+        install = _select_unsafe_ask(
             (
                 f"{program} is not installed in that environment. "
-                "Do you want to install it?"
+                f"Do you want to install it?"
             ),
             choices=choices,
-        ).unsafe_ask()
+        )
         if install == "<MYSELF>":
             return False
         else:
             remote.run(f"srun {install}")
 
     return True
+
+
+_T = TypeVar("_T")
+
+
+# NOTE: This here is a small typing improvement over the `qn.Choice` class: this marks
+# it as a generic class. Functions that take in a `Choice[_T]` can then mark their
+# return type based on _T, as is done below.
+class Choice(qn.Choice, Generic[_T]):
+    value: _T
+
+    def __init__(
+        self,
+        title: FormattedText,
+        value: _T | None = None,
+        disabled: str | None = None,
+        checked: bool | None = False,
+        shortcut_key: str | bool | None = True,
+    ) -> None:
+        super().__init__(
+            title=title,
+            value=value,
+            disabled=disabled,
+            checked=checked,
+            shortcut_key=shortcut_key,
+        )
+
+
+@typing.overload
+def _select_unsafe_ask(
+    message: str,
+    choices: Sequence[str | Choice[str]],
+    style: Style | None = None,
+) -> str:
+    ...
+
+
+@typing.overload
+def _select_unsafe_ask(
+    message: str,
+    choices: Sequence[Choice[_T] | dict[str, _T]],
+    style: Style | None = None,
+) -> _T:
+    ...
+
+
+def _select_unsafe_ask(
+    message: str,
+    choices: Sequence[str | Choice[_T] | dict[str, _T]],
+    style: Style | None = None,
+) -> _T | str:
+    """Small helper function that does `qn.select` followed by `qn.unsafe_ask`.
+
+    This has the benefit that the output type of this function is known based on the
+    type of inputs passed.
+    """
+    question = qn.select(message, choices, style=style)
+    value = question.unsafe_ask()
+    return value

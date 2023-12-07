@@ -335,6 +335,7 @@ def test_run(
         asynchronous=asynchronous,
         hide=hide,
         warn=warn,
+        out_stream=None,
     )
     remote.connection.local.assert_not_called()
 
@@ -375,7 +376,13 @@ def test_get_output(
     assert output == command_output
 
     assert len(mock_connection.method_calls) == 1
-    mock_connection.run.assert_called_once_with(command, hide=hide, warn=warn)
+    mock_connection.run.assert_called_once_with(
+        command,
+        asynchronous=False,
+        hide=hide,
+        warn=warn,
+        out_stream=None,
+    )
     mock_result.stdout.strip.assert_called_once_with()
 
 
@@ -489,7 +496,10 @@ def test_puttext(remote: Remote, tmp_path: Path):
     _result = remote.puttext(some_text, str(dest))
     remote.connection.run.assert_called_once_with(
         f"mkdir -p {dest_dir}",
+        asynchronous=False,
+        out_stream=None,
         hide=True,
+        warn=False,
     )
     # The first argument of `put` will be the name of a temporary file.
     remote.connection.put.assert_called_once_with(unittest.mock.ANY, str(dest))
@@ -499,7 +509,9 @@ def test_puttext(remote: Remote, tmp_path: Path):
 @requires_s_flag
 def test_home(remote: Remote):
     home_dir = remote.home()
-    remote.connection.run.assert_called_once_with("echo $HOME", hide=True)
+    remote.connection.run.assert_called_once_with(
+        "echo $HOME", asynchronous=False, out_stream=None, warn=False, hide=True
+    )
     remote.connection.local.assert_not_called()
     if remote.hostname == "mila":
         assert home_dir.startswith("/home/mila/")
@@ -719,6 +731,7 @@ class TestSlurmRemote:
         alloc = ["--time=00:01:00"]
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
+        expected_command = f"bash -c 'salloc {shjoin(alloc)}'"
 
         def write_stuff(
             command: str,
@@ -726,8 +739,9 @@ class TestSlurmRemote:
             hide: bool,
             pty: bool,
             out_stream: QueueIO,
+            warn: bool,
         ):
-            assert command == f"bash -c 'salloc {shjoin(alloc)}'"
+            assert command == expected_command
             out_stream.write(f"salloc: Nodes {node} are ready for job")
             return unittest.mock.DEFAULT
 
@@ -735,8 +749,9 @@ class TestSlurmRemote:
         results, _runner = remote.ensure_allocation()
 
         mock_connection.run.assert_called_once_with(
-            f"bash -c 'salloc {shjoin(alloc)}'",
+            expected_command,
             hide=False,
+            warn=False,
             asynchronous=True,
             out_stream=unittest.mock.ANY,
             pty=True,
