@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 import sys
 import typing
 from subprocess import CompletedProcess
@@ -30,6 +31,28 @@ requires_no_s_flag = pytest.mark.skipif(
     "-s" in sys.argv,
     reason="Passing pytest's -s flag makes this test fail.",
 )
+on_windows = sys.platform == "win32"
+in_github_windows_ci = os.environ.get("PLATFORM") == "windows-latest"
+
+
+def xfails_on_windows(
+    raises: type[Exception] | tuple[type[Exception], ...] = (),
+    strict: bool = False,
+    reason: str = "TODO: Test doesn't work when running on Windows in the GitHub CI.",
+    in_CI_only: bool = False,
+):
+    if in_github_windows_ci:
+        assert sys.platform == "win32", sys.platform
+
+    condition = on_windows
+    if in_CI_only:
+        condition = condition and in_github_windows_ci
+    return pytest.mark.xfail(
+        condition,
+        reason=reason,
+        strict=strict,
+        raises=raises,
+    )
 
 
 cmdtest = """===============
