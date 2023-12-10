@@ -20,11 +20,11 @@ from argparse import ArgumentParser, _HelpAction
 from contextlib import ExitStack
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Literal
 
 from ..version import version as mversion
 from .init_command import (
