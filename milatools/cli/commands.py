@@ -24,7 +24,7 @@ from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
-from typing_extensions import TypedDict, Literal
+from typing_extensions import Literal, TypedDict
 
 from ..version import version as mversion
 from .init_command import (
@@ -41,6 +41,7 @@ from .remote import Remote, SlurmRemote
 from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
+    SSHConfig,
     SSHConnectionError,
     T,
     get_fully_qualified_name,
