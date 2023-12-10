@@ -208,12 +208,14 @@ class SSHConfig:
         return "\n".join(lines)
 
 
-def qualified(node_name):
+def qualified(node_name: str, cluster: str = "mila"):
     """Return the fully qualified name corresponding to this node name."""
-
-    if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
-        node_name = f"{node_name}.server.mila.quebec"
-    return node_name
+    if cluster == "mila":
+        if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
+            node_name = f"{node_name}.server.mila.quebec"
+        return node_name
+    else:
+        raise NotImplementedError(node_name, cluster)
 
 
 def get_fully_qualified_name() -> str:

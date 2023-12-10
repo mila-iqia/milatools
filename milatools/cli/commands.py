@@ -500,8 +500,10 @@ def code(
     command_path = shutil.which(command)
     if not command_path:
         raise CommandNotFoundError(command)
-    qualified_node_name = node_name
-    # qualified_node_name = qualified(node_name)
+
+    # NOTE: Since we have the config entries for the compute nodes, there is no need to
+    # use the fully qualified hostname here.
+    # node_name = qualified(node_name)
 
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open VSCode without
@@ -515,7 +517,7 @@ def code(
                     "code",
                     "-nw",
                     "--remote",
-                    f"ssh-remote+{qualified_node_name}",
+                    f"ssh-remote+{node_name}",
                     path,
                 )
             else:
@@ -523,7 +525,7 @@ def code(
                     command_path,
                     "-nw",
                     "--remote",
-                    f"ssh-remote+{qualified_node_name}",
+                    f"ssh-remote+{node_name}",
                     path,
                 )
             print(
@@ -960,7 +962,8 @@ def _standard_server(
 
     local_proc, local_port = _forward(
         local=Local(),
-        node=qualified(node_name),
+        # TODO: Why is it necessary to use the qualified name here?
+        node=qualified(node_name, cluster="mila"),
         to_forward=to_forward,
         options=options,
         port=port,
