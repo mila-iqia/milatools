@@ -407,7 +407,7 @@ def init():
 
     ssh_config = setup_ssh_config()
 
-    print("# OK")
+    # print("# OK")
 
     # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
     # ~/.ssh/config to the Windows ssh directory (taking care to remove the
@@ -463,14 +463,14 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
             exit("No passwordless login.")
 
     # Check the connection to the DRAC clusters.
-    # TODO: This doesn't yet work correctly.
-    for cluster in []:  # ["beluga", "narval", "cedar", "graham"]:
+    # TODO: Replcae this hard-coded list with some constant
+    for cluster in ["beluga", "narval", "cedar", "graham"]:
         if all(cluster not in hostname for hostname in ssh_config.hosts()):
             logger.debug(
                 f"Skipping {cluster} cluster because it is not in the ssh config"
             )
             continue
-        if here.check_passwordless_drac(cluster):
+        if here.check_passwordless(cluster, timeout=10):
             logger.debug(
                 f"Passwordless authentication to {cluster} cluster is already setup."
             )
@@ -480,7 +480,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
             "Register it?"
         ):
             here.run("ssh-copy-id", cluster)
-            if not here.check_passwordless_drac(cluster):
+            if not here.check_passwordless(cluster):
                 exit(f"'ssh-copy-id {cluster}' appears to have failed!")
         else:
             exit("No passwordless login.")

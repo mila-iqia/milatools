@@ -57,58 +57,38 @@ class Local:
             cmd, stdout=stdout, stderr=stderr, universal_newlines=True
         )
 
-    def check_passwordless(self, host: str) -> bool:
-        results = self.run(
-            *shlex.split(f"ssh -oPreferredAuthentications=publickey {host} 'echo OK'"),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        if results.returncode != 0:
-            if "Permission denied" in results.stderr:
-                return False
-            print(results.stdout)
-            print(results.stderr)
-            exit(f"Failed to connect to {host}, could not understand error")
-        # TODO: Perhaps we could actually check the output of the command here!
-        # elif "OK" in results.stdout:
-        else:
-            print("# OK")
-            return True
-
-    def check_passwordless_drac(self, host: str):
-        """NOTE: Temporarily doing a different check for the DRAC nodes, since they don't work
-        with just -oPreferredAuthentications=publickey
-        """
-        if self.check_passwordless(host):
-            return True
+    def check_passwordless(self, host: str, timeout: int | None = None):
         try:
             results = self.run(
                 "ssh",
-                "-oPreferredAuthentications=publickey,keyboard-interactive",
+                "-oPreferredAuthentications=publickey",
+                "-oStrictHostKeyChecking=no",
                 host,
                 "echo OK",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=5,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired as err:
             if err.stdout is None and err.stderr is None:
                 logger.debug(
-                    f"Timeout while connecting to {host}, must be waiting for a password."
+                    f"Timeout ({timeout}s) while connecting to {host}, must be waiting for a password."
                 )
                 return False
-            raise RuntimeError(
+            logger.debug(
                 f"Timeout while connecting to {host}, and got unexpected output:\n"
                 f"stdout: {err.stdout}\n"
                 f"stderr: {err.stderr}"
             )
+            return False
 
         if results.returncode != 0:
             if "Permission denied" in results.stderr:
                 return False
-            print(results.stdout)
-            print(results.stderr)
-            exit(f"Failed to connect to {host}, could not understand error")
+            else:
+                print(results.stdout)
+                print(results.stderr)
+                exit(f"Failed to connect to {host}, could not understand error")
         else:
             print("# OK")
-        return True
+            return True
