@@ -630,6 +630,7 @@ def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         capture_output=False,
         stderr=None,
         stdout=None,
+        timeout=None,
     )
     assert ssh_private_key_path.exists()
     assert ssh_private_key_path.stat().st_mode & 0o777 == 0o600
