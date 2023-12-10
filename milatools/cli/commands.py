@@ -20,7 +20,7 @@ from argparse import ArgumentParser, _HelpAction
 from contextlib import ExitStack
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
@@ -52,6 +52,9 @@ from .utils import (
 
 if typing.TYPE_CHECKING:
     from typing_extensions import Unpack
+
+CLUSTERS = ["mila", "narval", "beluga", "cedar", "graham"]
+Cluster = Literal["mila", "narval", "beluga", "cedar", "graham"]
 
 logger = get_logger(__name__)
 
@@ -180,6 +183,12 @@ def mila():
     )
     code_parser.add_argument(
         "PATH", help="Path to open on the remote machine", type=str
+    )
+    code_parser.add_argument(
+        "--cluster",
+        choices=CLUSTERS,
+        default="mila",
+        help="Which cluster to connect to.",
     )
     code_parser.add_argument(
         "--alloc",
@@ -448,6 +457,7 @@ def code(
     job: str | None,
     node: str | None,
     alloc: Sequence[str],
+    cluster: Cluster = "mila",
 ):
     """Open a remote VSCode session on a compute node.
 
@@ -461,7 +471,7 @@ def code(
         alloc: Extra options to pass to slurm
     """
     here = Local()
-    remote = Remote("mila")
+    remote = Remote(cluster)
 
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
