@@ -500,7 +500,8 @@ def code(
     command_path = shutil.which(command)
     if not command_path:
         raise CommandNotFoundError(command)
-    qualified_node_name = qualified(node_name)
+    qualified_node_name = node_name
+    # qualified_node_name = qualified(node_name)
 
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open VSCode without
@@ -1001,7 +1002,7 @@ def _get_disk_quota_usage(
     # uid 1471600598 is using default file quota setting
     #
     home_disk_quota_output = remote.get_output(
-        "lfs quota -u $USER /home/mila", hide=not print_command_output
+        "lfs quota -u $USER $HOME", hide=not print_command_output
     )
     lines = home_disk_quota_output.splitlines()
     (
