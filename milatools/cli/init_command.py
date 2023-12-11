@@ -23,8 +23,6 @@ from .vscode_utils import (
 logger = get_logger(__name__)
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
-HOSTS = ["mila", "mila-cpu", "*.server.mila.quebec !*login.server.mila.quebec"]
-"""List of host entries that get added to the SSH configuration by `mila init`."""
 
 
 if sys.platform == "win32":
@@ -494,13 +492,15 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
     unsupported_keys_lowercase = set(k.lower() for k in WINDOWS_UNSUPPORTED_KEYS)
 
     # NOTE: need to preserve the ordering of entries:
-    for host in HOSTS + [
-        host for host in linux_ssh_config.hosts() if host not in HOSTS
+    entries_to_move = list(MILA_ENTRIES.keys()) + list(DRAC_ENTRIES.keys())
+    for host in entries_to_move + [
+        host for host in linux_ssh_config.hosts() if host not in entries_to_move
     ]:
         if host not in linux_ssh_config.hosts():
             warnings.warn(
                 RuntimeWarning(
-                    f"Weird, we expected to have a {host!r} entry in the SSH config..."
+                    f"We expected to have a {host!r} entry in the SSH config. "
+                    f"Did you run `mila init`?"
                 )
             )
             continue
