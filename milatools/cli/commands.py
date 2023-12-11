@@ -15,6 +15,7 @@ import sys
 import time
 import traceback
 import typing
+import warnings
 import webbrowser
 from argparse import ArgumentParser, _HelpAction
 from contextlib import ExitStack
@@ -473,6 +474,18 @@ def code(
     """
     here = Local()
     remote = Remote(cluster)
+
+    if cluster != "mila":
+        if not any("--account" in flag for flag in alloc):
+            warnings.warn(
+                T.orange(
+                    "Warning: When using the DRAC clusters, you usually need to specify the "
+                    "account to use when submitting a job. You can specify this in the job "
+                    "ressources with `--alloc`, like so: `--alloc --account=<account_to_use>`, "
+                    "for example:\n"
+                    f"mila code {path} --cluster {cluster} --alloc --account=your-account-here"
+                )
+            )
 
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
