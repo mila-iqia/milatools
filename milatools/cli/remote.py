@@ -501,13 +501,11 @@ class SlurmRemote(Remote):
             }, login_node_runner
         else:
             remote = Remote(hostname="->", connection=self.connection).with_bash()
-            login_node_runner, results = remote.extract(
-                shjoin(["salloc", *self.alloc]),
-                patterns={
-                    "node_name": "salloc: Nodes ([^ ]+) are ready for job",
-                    # TODO: This would also work!
-                    # "jobid": "salloc: Granted job allocation ([0-9]+)",
-                },
+            # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or /projects
+            # before submitting a job.
+            proc, results = remote.extract(
+                "cd $SCRATCH && " + shjoin(["salloc", *self.alloc]),
+                patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
             )
             # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
             # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to
@@ -517,4 +515,4 @@ class SlurmRemote(Remote):
                 "node_name": node_name,
                 # TODO: This would also work!
                 # "jobid": results["jobid"],
-            }, login_node_runner
+            }, proc
