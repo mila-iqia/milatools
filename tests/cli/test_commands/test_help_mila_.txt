@@ -1,16 +1,20 @@
-usage: mila [-h] [--version] {docs,intranet,init,forward,code,serve} ...
+usage: mila [-h] [--version]
+            {docs,intranet,init,forward,code,beluga,cedar,narval,serve} ...
 
 Tools to connect to and interact with the Mila cluster. Cluster documentation:
 https://docs.mila.quebec/
 
 positional arguments:
-  {docs,intranet,init,forward,code,serve}
+  {docs,intranet,init,forward,code,beluga,cedar,narval,serve}
     docs                Open the Mila cluster documentation.
     intranet            Open the Mila intranet in a browser.
     init                Set up your configuration and credentials.
     forward             Forward a port on a compute node to your local
                         machine.
     code                Open a remote VSCode session on a compute node.
+    beluga              Run commands on BELUGA cluster
+    cedar               Run commands on CEDAR cluster
+    narval              Run commands on NARVAL cluster
     serve               Start services on compute nodes and forward them to
                         your local machine.
 

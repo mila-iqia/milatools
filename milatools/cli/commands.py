@@ -5,6 +5,7 @@ Cluster documentation: https://docs.mila.quebec/
 from __future__ import annotations
 
 import argparse
+import functools
 import operator
 import os
 import re
@@ -104,6 +105,93 @@ def main():
             file=sys.stderr,
         )
         exit(1)
+
+
+def add_code_drac_subparsers(subparsers):
+    def range_limited_num_type(arg, value_type, min, max):
+        """Type function for argparse - a type within some predefined bounds"""
+        try:
+            v = value_type(arg)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"Argument must be a {value_type.__name__}"
+            )
+        if v < min or v > max:
+            raise argparse.ArgumentTypeError(
+                f"Argument must be a {value_type.__name__} < {max} and > {min}"
+            )
+        return v
+
+    # TODO: find a way to automatically fetch those config values. Maybe by
+    # periodically scraping the jupyter page
+    clusters_config = {
+        "beluga": {
+            "gpu_models": ["v100:1"],
+            "cpus": {"min": 1, "max": 10},
+            "mem": {"min": 2375, "max": 47750},
+            "time": {"min": 1, "max": 12},
+        },
+        "cedar": {
+            "gpu_models": [
+                f"{m}:{n+1}"
+                for m in sorted(["a40", "p100", "p100l"])
+                for n in range(0, 4)
+            ],
+            "cpus": {"min": 1, "max": 8},
+            "mem": {"min": 1000, "max": 63000},
+            "time": {"min": 0.5, "max": 5},
+        },
+        "narval": {
+            "gpu_models": ["a100:1"],
+            "cpus": {"min": 1, "max": 16},
+            "mem": {"min": 2000, "max": 80000},
+            "time": {"min": 1, "max": 8},
+        },
+    }
+
+    for cluster_name, cluster_config in clusters_config.items():
+        _time = cluster_config["time"]
+        _cpus = cluster_config["cpus"]
+        _mem = cluster_config["mem"]
+
+        code_drac_parser = subparsers.add_parser(
+            cluster_name, help=f"Run commands on {cluster_name.upper()} cluster"
+        )
+        subparser = code_drac_parser.add_subparsers(
+            required=True, dest="<command>"
+        ).add_parser(
+            "code",
+            help=f"Open a remote VSCode session on {cluster_name.upper()} cluster compute node.",
+        )
+        subparser.add_argument("user", help="DRAC username", type=str)
+        subparser.add_argument("--account", help="DRAC account", type=str)
+        subparser.add_argument(
+            "--time",
+            help="Time to run (hours)",
+            metavar="{{{min:.1f}, .., {max:.1f}}}".format(**_time),
+            type=functools.partial(range_limited_num_type, value_type=float, **_time),
+            default=4,
+        )
+        subparser.add_argument(
+            "--cpus",
+            help="Number of cores",
+            metavar="{{{min}, .., {max}}}".format(**_cpus),
+            type=functools.partial(range_limited_num_type, value_type=int, **_cpus),
+            default=4,
+        )
+        subparser.add_argument(
+            "--mem",
+            help=f"Memory (MB)",
+            metavar="{{{min}, .., {max}}}".format(**_mem),
+            type=functools.partial(range_limited_num_type, value_type=int, **_mem),
+            default=16000,
+        )
+        subparser.add_argument(
+            "--gpu", help="GPU model", choices=cluster_config["gpu_models"], type=str
+        )
+        subparser.set_defaults(
+            function=functools.partial(code_drac, cluster=cluster_name)
+        )
 
 
 def mila():
@@ -216,6 +304,10 @@ def mila():
         help="Whether the server should persist or not",
     )
     code_parser.set_defaults(function=code)
+
+    # ----- mila code DRAC ------
+
+    add_code_drac_subparsers(subparsers)
 
     # ----- mila serve ------
 
@@ -636,6 +728,31 @@ def code(
         print("To kill this allocation:")
         assert "jobid" in data
         print(T.bold(f"  ssh mila scancel {data['jobid']}"))
+
+
+def code_drac(
+    cluster: str, user: str, account: str, time: float, cpus: int, mem: int, gpu: str
+):
+    """Open a remote VSCode session on a drac compute node."""
+    url = f"https://jupyterhub.{cluster}.computecanada.ca/hub/spawn"
+    query = {
+        "gpus": "gpu:0",
+        "next": f"/hub/user/{user}/code-server",
+        "oversubscribe": "True",
+    }
+    if account:
+        query["account"] = account
+    if time:
+        query["runtime"] = time
+    if cpus:
+        query["nprocs"] = cpus
+    if mem:
+        query["memory"] = mem
+    if gpu:
+        query["gpus"] = f"gpu:{gpu}"
+    url += f"?{urlencode(query)}"
+    print(f"Opening the vscode : {url}")
+    webbrowser.open(url)
 
 
 def connect(identifier: str, port: int | None):

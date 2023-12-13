@@ -1,0 +1,17 @@
+usage: mila narval code [-h] [--account ACCOUNT] [--time {1.0, .., 8.0}]
+                        [--cpus {1, .., 16}] [--mem {2000, .., 80000}]
+                        [--gpu {a100:1}]
+                        user
+
+positional arguments:
+  user                  DRAC username
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --account ACCOUNT     DRAC account
+  --time {1.0, .., 8.0}
+                        Time to run (hours)
+  --cpus {1, .., 16}    Number of cores
+  --mem {2000, .., 80000}
+                        Memory (MB)
+  --gpu {a100:1}        GPU model

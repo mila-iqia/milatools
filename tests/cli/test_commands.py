@@ -88,6 +88,14 @@ def test_check_passwordless(
             "mlflow",
             "aim",
         )
+    ]
+    + [
+        f"mila {cluster} code"
+        for cluster in (
+            "beluga",
+            "cedar",
+            "narval",
+        )
     ],
 )
 def test_help(

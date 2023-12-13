@@ -1,0 +1,18 @@
+usage: mila cedar code [-h] [--account ACCOUNT] [--time {0.5, .., 5.0}]
+                       [--cpus {1, .., 8}] [--mem {1000, .., 63000}]
+                       [--gpu {a40:1,a40:2,a40:3,a40:4,p100:1,p100:2,p100:3,p100:4,p100l:1,p100l:2,p100l:3,p100l:4}]
+                       user
+
+positional arguments:
+  user                  DRAC username
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --account ACCOUNT     DRAC account
+  --time {0.5, .., 5.0}
+                        Time to run (hours)
+  --cpus {1, .., 8}     Number of cores
+  --mem {1000, .., 63000}
+                        Memory (MB)
+  --gpu {a40:1,a40:2,a40:3,a40:4,p100:1,p100:2,p100:3,p100:4,p100l:1,p100l:2,p100l:3,p100l:4}
+                        GPU model
