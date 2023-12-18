@@ -40,8 +40,8 @@ from .remote import Remote, SlurmRemote
 from .utils import (
     CommandNotFoundError,
     MilatoolsUserError,
-    SSHConnectionError,
     SSHConfig,
+    SSHConnectionError,
     T,
     get_fully_qualified_name,
     qualified,
@@ -145,15 +145,6 @@ def mila():
         help="Set up your configuration and credentials.",
         formatter_class=SortingHelpFormatter,
     )
-    # init_parser.add_argument(
-    #     "--drac",
-    #     action="store_true",
-    #     default=False,
-    #     help=(
-    #         "Set up your configuration and credentials for the DRAC (a.k.a. ComputeCanada) "
-    #         "clusters."
-    #     ),
-    # )
 
     init_parser.set_defaults(function=init)
 

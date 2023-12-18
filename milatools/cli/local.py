@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shlex
 import subprocess
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
@@ -74,7 +73,8 @@ class Local:
         except subprocess.TimeoutExpired as err:
             if err.stdout is None and err.stderr is None:
                 logger.debug(
-                    f"Timeout ({timeout}s) while connecting to {host}, must be waiting for a password."
+                    f"Timeout ({timeout}s) while connecting to {host}, must be waiting "
+                    f"for a password."
                 )
                 return False
             logger.debug(
