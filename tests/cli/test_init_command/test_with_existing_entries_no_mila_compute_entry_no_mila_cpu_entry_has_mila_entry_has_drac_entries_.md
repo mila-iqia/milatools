@@ -60,33 +60,18 @@ Host mist
 Host !beluga  bc????? bg????? bl?????
   ProxyJump beluga
   User bob
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
 Host !cedar   cdr? cdr?? cdr??? cdr????
   ProxyJump cedar
   User bob
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
 Host !graham  gra??? gra????
   ProxyJump graham
   User bob
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
 Host !narval  nc????? ng?????
   ProxyJump narval
   User bob
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
 Host !niagara nia????
   ProxyJump niagara
   User bob
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
 
 Host mila-cpu
   Port 2222

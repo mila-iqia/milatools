@@ -60,36 +60,21 @@ Host beluga cedar graham narval niagara
 
 Host !beluga  bc????? bg????? bl?????
   ProxyJump beluga
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
   User bob
 
 Host !cedar   cdr? cdr?? cdr??? cdr????
   ProxyJump cedar
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
   User bob
 
 Host !graham  gra??? gra????
   ProxyJump graham
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
   User bob
 
 Host !narval  nc????? ng?????
   ProxyJump narval
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
   User bob
 
 Host !niagara nia????
   ProxyJump niagara
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
   User bob
 ```

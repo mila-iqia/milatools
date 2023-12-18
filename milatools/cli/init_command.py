@@ -87,27 +87,22 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     "!beluga  bc????? bg????? bl?????": {
         "ProxyJump": "beluga",
         # User=drac_username,
-        **ssh_multiplexing_config,
     },
     "!cedar   cdr? cdr?? cdr??? cdr????": {
         "ProxyJump": "cedar",
         # User=drac_username,
-        **ssh_multiplexing_config,
     },
     "!graham  gra??? gra????": {
         "ProxyJump": "graham",
         # User=drac_username,
-        **ssh_multiplexing_config,
     },
     "!narval  nc????? ng?????": {
         "ProxyJump": "narval",
         # User=drac_username,
-        **ssh_multiplexing_config,
     },
     "!niagara nia????": {
         "ProxyJump": "niagara",
         # User=drac_username,
-        **ssh_multiplexing_config,
     },
 }
 
