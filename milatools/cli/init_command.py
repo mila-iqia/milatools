@@ -244,7 +244,7 @@ def get_windows_home_path_in_wsl() -> Path:
 
 
 def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
-    local.run(*shlex.split(f"ssh-keygen -f {ssh_private_key_path} -t rsa -N=''"))
+    local.run(*shlex.split(f"ssh-keygen -f {ssh_private_key_path} -t rsa"), "-N=''")
 
 
 def setup_vscode_settings():
