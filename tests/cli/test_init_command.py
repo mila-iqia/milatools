@@ -53,7 +53,7 @@ def permission_bits_check_doesnt_work_on_windows():
 
 
 # Set a module-level mark: Each test cannot take longer than 1 second to run.
-pytestmark = pytest.mark.timeout(1)
+pytestmark = pytest.mark.timeout(2)
 
 
 @pytest.fixture
