@@ -479,11 +479,12 @@ def code(
         if not any("--account" in flag for flag in alloc):
             warnings.warn(
                 T.orange(
-                    "Warning: When using the DRAC clusters, you usually need to specify the "
-                    "account to use when submitting a job. You can specify this in the job "
-                    "ressources with `--alloc`, like so: `--alloc --account=<account_to_use>`, "
-                    "for example:\n"
-                    f"mila code {path} --cluster {cluster} --alloc --account=your-account-here"
+                    "Warning: When using the DRAC clusters, you usually need to "
+                    "specify the account to use when submitting a job. You can specify "
+                    "this in the job resources with `--alloc`, like so: "
+                    "`--alloc --account=<account_to_use>`, for example:\n"
+                    f"mila code {path} --cluster {cluster} --alloc "
+                    f"--account=your-account-here"
                 )
             )
 
@@ -502,6 +503,7 @@ def code(
     )
     if persist:
         cnode = cnode.persist()
+
     data, proc = cnode.ensure_allocation()
 
     node_name = data["node_name"]
@@ -509,7 +511,10 @@ def code(
     if not path.startswith("/"):
         # Get $HOME because we have to give the full path to code
         home = remote.home()
-        path = "/".join([home, path])
+        if path == ".":
+            path = home
+        else:
+            path = "/".join([home, path])
 
     command_path = shutil.which(command)
     if not command_path:
@@ -1118,6 +1123,7 @@ def _find_allocation(
         return SlurmRemote(
             connection=remote.connection,
             alloc=alloc,
+            hostname=remote.hostname,
         )
 
 
