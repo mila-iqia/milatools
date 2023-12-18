@@ -29,6 +29,8 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   User bob
   ProxyJump mila
+  ForwardAgent yes
+  ForwardX11 yes
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
@@ -65,4 +67,6 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   User bob
   ProxyJump mila
+  ForwardAgent yes
+  ForwardX11 yes
 ```
