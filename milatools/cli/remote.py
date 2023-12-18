@@ -451,9 +451,13 @@ class SlurmRemote(Remote):
             output_file=output_file,
             control_file=control_file_var.get(),
         )
+        # NOTE: We need to move to $SCRATCH before we run `sbatch`.
         self.puttext(batch, batch_file)
-        cmd = shjoin(["sbatch", *self.alloc, batch_file])
-        return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
+        self.simple_run(f"chmod +x {batch_file}")
+        cmd = shjoin(["sbatch", *self.alloc, f"~/{batch_file}"])
+        return (
+            f"cd ~/scratch && {cmd}; touch {output_file}; tail -n +1 -f {output_file}"
+        )
 
     def with_transforms(
         self, *transforms: Callable[[str], str], persist: bool | None = None
