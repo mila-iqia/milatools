@@ -36,6 +36,7 @@ pytest-regressions = "^2.4.2"
 fabric = {extras = ["testing"], version = "^3.2.2"}
 pytest-mock = "^3.11.1"
 pytest-socket = "^0.6.0"
+pytest-cov = "^4.1.0"
 
 [tool.isort]
 multi_line_output = 3

@@ -3,51 +3,70 @@ name: Python package
 on: [push, pull_request]
 
 jobs:
-  build:
-
+  pre-commit:
+    name: Run pre-commit checks
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
-
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - run: pip install pre-commit
+      - run: pre-commit --version
+      - run: pre-commit install
+      - run: pre-commit run --all-files
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-
-    - name: Install dependencies
+  test:
+    needs: [pre-commit]
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      max-parallel: 4
+      matrix:
+        platform: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+    env:
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install poetry
       run: |
         python -m pip install --upgrade pip
         pip install poetry
-        poetry install --with=dev
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: poetry
 
-    - name: Check formatting with black
-      if: ${{ matrix.python-version == '3.10' }}
-      run: poetry run black --check .
-
-    - name: Sort imports
-      if: ${{ matrix.python-version == '3.10' }}
-      run: poetry run isort -c --df .
+    - name: Install dependencies
+      run: poetry install --with=dev
 
     - name: Setup passwordless SSH access to localhost for tests
       # Adapted from https://stackoverflow.com/a/60367309/6388696
+      if: runner.os == 'Linux'
       run: |
         ssh-keygen -t ed25519 -f ~/.ssh/testkey -N ''
         cat > ~/.ssh/config <<EOF
           Host localhost
-           User $USER
-           HostName 127.0.0.1
-           IdentityFile ~/.ssh/testkey
+            User $USER
+            HostName 127.0.0.1
+            IdentityFile ~/.ssh/testkey
         EOF
         echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/testkey.pub > ~/.ssh/authorized_keys
         chmod og-rw ~
         ssh -o 'StrictHostKeyChecking no' localhost id
 
     - name: Test with pytest
-      run: poetry run pytest
+      run: poetry run pytest --cov=milatools --cov-report=xml --cov-append
 
     - name: Test with pytest (with -s flag)
-      run: poetry run pytest -s
+      run: poetry run pytest --cov=milatools --cov-report=xml --cov-append -s
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        env_vars: PLATFORM,PYTHON
+        name: codecov-umbrella
+        fail_ci_if_error: false
