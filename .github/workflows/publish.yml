@@ -31,7 +31,7 @@ jobs:
         cache: poetry
 
     - name: Install dependencies
-      run: poetry install --with=dev
+      run: poetry install
 
     - name: Publish package
       run: poetry publish --build
