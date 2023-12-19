@@ -128,7 +128,6 @@ def mila():
         version=f"milatools v{mversion}",
         help="Milatools version",
     )
-
     subparsers = parser.add_subparsers(required=True, dest="<command>")
 
     # ----- mila docs ------

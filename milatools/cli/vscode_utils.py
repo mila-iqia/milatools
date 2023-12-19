@@ -104,6 +104,8 @@ def copy_vscode_extensions_to_remote(
         if extension in remote_extension_files
     ]
     missing_extensions = set(local_extensions_names) - set(extensions_on_remote)
+    logger.debug(f"Missing extensions: {missing_extensions}")
+
     if not missing_extensions:
         print(
             T.bold_green(
@@ -146,9 +148,12 @@ def copy_vscode_extensions_to_remote(
                     pbar.set_postfix({"extension": extension})
 
         print(f"Sending archive of missing VsCode extensions over to {cluster}...")
-        cmd = f"scp {local_extensions_archive_path} {cluster}:.vscode-server/"
-        print(T.bold_green("(local) $ ", cmd))
-        subprocess.run(cmd, shell=True, check=True)
+        scp_command = (
+            f"scp {local_extensions_archive_path} "
+            f"{cluster}:.milatools/{local_extensions_archive_path.name}"
+        )
+        print(T.bold_green("(local) $ ", scp_command))
+        subprocess.run(scp_command, shell=True, check=True)
 
         print(f"Saving list of synced extensions to " f"{remote} on {cluster}.")
         remote.puttext(
@@ -162,7 +167,7 @@ def copy_vscode_extensions_to_remote(
     )
     remote.run(
         f"tar --extract --gzip --totals "
-        f"--file ~/.vscode-server/{local_extensions_archive_path.name} "
+        f"--file ~/.milatools/{local_extensions_archive_path.name} "
         f"--directory {remote_vscode_extensions_folder}"
     )
 
