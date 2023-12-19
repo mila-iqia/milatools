@@ -25,7 +25,10 @@ from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
+from invoke.exceptions import UnexpectedExit
 from typing_extensions import Literal, TypedDict
+
+from milatools.cli.vscode_utils import copy_vscode_extensions_to_remote
 
 from ..version import version as mversion
 from .init_command import (
@@ -40,6 +43,8 @@ from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (
+    CLUSTERS,
+    Cluster,
     CommandNotFoundError,
     MilatoolsUserError,
     SSHConfig,
@@ -398,6 +403,16 @@ def intranet(search: Sequence[str]) -> None:
     webbrowser.open(url)
 
 
+def internet_on_compute_nodes(cluster: Cluster) -> bool:
+    if cluster in ["mila", "cedar"]:
+        return True
+    if cluster in ["narval", "beluga", "graham"]:
+        return False
+    raise NotImplementedError(
+        f"Don't know if compute nodes have internet access on cluster {cluster}."
+    )
+
+
 def init():
     """Set up your configuration and credentials."""
 
@@ -491,13 +506,32 @@ def code(
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-    if remote.hostname != "graham":
+    if remote.hostname != "graham":  # graham doesn't use lustre for $HOME
         try:
             check_disk_quota(remote)
         except MilatoolsUserError:
             raise
         except Exception as exc:
             logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
+
+    vscode_extensions_folder = Path("~/.vscode/extensions").expanduser()
+    if not internet_on_compute_nodes(cluster) and vscode_extensions_folder.exists():
+        # Sync the VsCode extensions from the local machine over to the target cluster.
+        import multiprocessing
+
+        print(
+            f"Copying VSCode extensions from local machine to {cluster} in the "
+            f"background..."
+        )
+        copy_vscode_extensions_process = multiprocessing.Process(
+            target=copy_vscode_extensions_to_remote,
+            args=(cluster, vscode_extensions_folder),
+            daemon=True,
+        )
+        copy_vscode_extensions_process.start()
+        # copy_vscode_extensions_to_remote(
+        #     cluster, vscode_extensions_folder=vscode_extensions_folder, remote=remote
+        # )
 
     if node is None:
         cnode = _find_allocation(

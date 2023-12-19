@@ -19,6 +19,7 @@ import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
+from typing_extensions import Literal
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
@@ -42,6 +43,9 @@ style = qn.Style(
 vowels = list("aeiou")
 consonants = list("bdfgjklmnprstvz")
 syllables = ["".join(letters) for letters in itertools.product(consonants, vowels)]
+
+CLUSTERS = ["mila", "narval", "beluga", "cedar", "graham"]
+Cluster = Literal["mila", "narval", "beluga", "cedar", "graham"]
 
 
 def randname():
