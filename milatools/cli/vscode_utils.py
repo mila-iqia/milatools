@@ -85,7 +85,12 @@ def copy_vscode_extensions_to_remote(
 
     # TODO: Could also do this to only transfer extensions that haven't been transferred
     # before, but this would make the code more complicated than it already is.
-    # transfered_vscode_extensions_file = ".milatools/transfered_vscode_extensions.txt"
+    transferred_vscode_extensions_file = ".milatools/transferred_vscode_extensions.txt"
+    remote.run(f"touch {transferred_vscode_extensions_file}", display=False)
+    extensions_known_to_be_correctly_transfered = remote.get_output(
+        f"cat {transferred_vscode_extensions_file}",
+        display=False,
+    ).splitlines()
 
     # If an extension folder is present and is also listed in this text file, then
     # assume that it is complete and has been extracted correctly.
@@ -94,30 +99,46 @@ def copy_vscode_extensions_to_remote(
         for extension in extensions_known_to_be_correctly_extracted
         if extension in remote_extension_files
     ]
-
-    # TODO: This is a bit brittle: If we interrupt the transfer then each extension will
-    # be seen as "transferred" but it might be only partially extracted... Therefore for
-    # now we copy everything over.
     missing_extensions = set(local_extensions_names) - set(extensions_on_remote)
 
-    with tarfile.open(local_extensions_archive_path, mode="w:gz") as extensions_tarfile:
-        # Only ship the extensions that aren't already on the remote?
-        with tqdm.tqdm(
-            sorted(missing_extensions),
-            desc=(
-                f"Packing the {len(missing_extensions)} missing VsCode extensions into "
-                f"an archive..."
-            ),
-            unit="extension",
-        ) as pbar:
-            for extension in pbar:
-                extensions_tarfile.add(
-                    vscode_extensions_folder / extension,
-                    # Name in the archive will be {extension}
-                    arcname=extension,
-                    recursive=True,
-                )
-                pbar.set_postfix({"extension": extension})
+    if not missing_extensions:
+        print(
+            T.bold_green(
+                f"All local VsCode extensions are already synced to the {cluster} "
+                f"cluster."
+            )
+        )
+        return
+
+    # NOTE: Here we just check if we already completed the transfer. We don't try to
+    # only send what's missing, that would make things too complicated.
+    extensions_that_need_to_be_transfered = set(local_extensions_names) - set(
+        extensions_known_to_be_correctly_transfered
+    )
+    if extensions_that_need_to_be_transfered:
+        print(
+            T.bold_cyan(
+                f"Syncing {len(missing_extensions)} missing VsCode extensions..."
+            )
+        )
+
+        with tarfile.open(
+            local_extensions_archive_path, mode="w:gz"
+        ) as extensions_tarfile:
+            # Only ship the extensions that aren't already on the remote?
+            with tqdm.tqdm(
+                sorted(missing_extensions),
+                desc=("Packing local VsCode extensions into an archive..."),
+                unit="extension",
+            ) as pbar:
+                for extension in pbar:
+                    extensions_tarfile.add(
+                        vscode_extensions_folder / extension,
+                        # Name in the archive will be {extension}
+                        arcname=extension,
+                        recursive=True,
+                    )
+                    pbar.set_postfix({"extension": extension})
 
     print(f"Transferring archive of missing VsCode extensions over to {cluster}.")
     cmd = f"scp {local_extensions_archive_path} {cluster}:.vscode-server/"
