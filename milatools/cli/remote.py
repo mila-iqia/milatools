@@ -27,6 +27,8 @@ echo jobid = $SLURM_JOB_ID >> {control_file}
 {command}
 """
 
+Hide = Literal[True, False, "out", "stdout", "err", "stderr"]
+
 
 class NodeNameDict(TypedDict):
     node_name: str
@@ -278,7 +280,7 @@ class Remote:
         self,
         cmd: str,
         display: bool | None = None,
-        hide: bool = False,
+        hide: Hide = False,
         warn: bool = False,
     ) -> str:
         return self.run(

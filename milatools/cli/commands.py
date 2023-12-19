@@ -5,7 +5,6 @@ Cluster documentation: https://docs.mila.quebec/
 from __future__ import annotations
 
 import argparse
-import multiprocessing
 import operator
 import os
 import re
@@ -515,17 +514,19 @@ def code(
             f"background..."
         )
         # Async:
-        copy_vscode_extensions_process = multiprocessing.Process(
-            target=copy_vscode_extensions_to_remote,
-            args=(cluster, vscode_extensions_folder),
-            daemon=True,
-        )
-        copy_vscode_extensions_process.start()
+        # copy_vscode_extensions_process = multiprocessing.Process(
+        #     target=copy_vscode_extensions_to_remote,
+        #     args=(cluster, vscode_extensions_folder),
+        #     daemon=True,
+        # )
+        # copy_vscode_extensions_process.start()
 
         # Sync:
-        # copy_vscode_extensions_to_remote(
-        #     cluster, vscode_extensions_folder=vscode_extensions_folder, remote=remote
-        # )
+        copy_vscode_extensions_to_remote(
+            cluster,
+            local_vscode_extensions_folder=vscode_extensions_folder,
+            remote=remote,
+        )
 
     if node is None:
         cnode = _find_allocation(
