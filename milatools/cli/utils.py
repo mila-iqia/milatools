@@ -48,6 +48,16 @@ CLUSTERS = ["mila", "narval", "beluga", "cedar", "graham"]
 Cluster = Literal["mila", "narval", "beluga", "cedar", "graham"]
 
 
+def internet_on_compute_nodes(cluster: Cluster) -> bool:
+    if cluster in ["mila", "cedar"]:
+        return True
+    if cluster in ["narval", "beluga", "graham"]:
+        return False
+    raise NotImplementedError(
+        f"Don't know if compute nodes have internet access on cluster {cluster}."
+    )
+
+
 def randname():
     a = random.choice(syllables)
     b = random.choice(syllables)

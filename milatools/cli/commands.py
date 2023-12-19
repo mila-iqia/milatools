@@ -52,6 +52,7 @@ from .utils import (
     SSHConnectionError,
     T,
     get_fully_qualified_name,
+    internet_on_compute_nodes,
     qualified,
     randname,
     running_inside_WSL,
@@ -402,16 +403,6 @@ def intranet(search: Sequence[str]) -> None:
         url = "https://intranet.mila.quebec"
     print(f"Opening the intranet: {url}")
     webbrowser.open(url)
-
-
-def internet_on_compute_nodes(cluster: Cluster) -> bool:
-    if cluster in ["mila", "cedar"]:
-        return True
-    if cluster in ["narval", "beluga", "graham"]:
-        return False
-    raise NotImplementedError(
-        f"Don't know if compute nodes have internet access on cluster {cluster}."
-    )
 
 
 def init():
