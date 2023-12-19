@@ -14,7 +14,6 @@ jobs:
     strategy:
       matrix:
         python-version: [3.9]
-        poetry-version: [1.1.2]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
