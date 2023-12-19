@@ -60,18 +60,41 @@ def copy_vscode_extensions_to_remote(
 
     print(f"Creating archive of VSCode extensions at {extensions_archive_path} ")
 
-    local_extensions = list(
+    local_extensions_names = list(
         str(p.relative_to(vscode_extensions_folder))
         for p in vscode_extensions_folder.iterdir()
     )
-    remote.run(
-        "ls ~/.vscode-server/extensions", display=True, hide="stdout", warn=True
+    remote.run("mkdir -p ~/.vscode-server/extensions")
+    remote_extension_files = remote.run(
+        "ls ~/.vscode-server/extensions", display=False, hide="stdout", warn=True
     ).stdout.split()
+
+    # A file on the remote that contains the names of all the previously successfully
+    # extracted VsCode extensions.
+    extracted_vscode_extensions_file = ".milatools/extracted_vscode_extensions.txt"
+    remote.run("mkdir -p ~/.milatools", display=True)
+    remote.run(f"touch {extracted_vscode_extensions_file}", display=False)
+    extensions_known_to_be_correctly_extracted = remote.get_output(
+        f"cat {extracted_vscode_extensions_file}",
+        display=False,
+    ).splitlines()
+
+    # TODO: Could also do this to only transfer extensions that haven't been transferred
+    # before, but this would make the code more complicated than it already is.
+    # transfered_vscode_extensions_file = ".milatools/transfered_vscode_extensions.txt"
+
+    # If an extension folder is present and is also listed in this text file, then
+    # assume that it is complete and has been extracted correctly.
+    extensions_on_remote = [
+        extension
+        for extension in extensions_known_to_be_correctly_extracted
+        if extension in remote_extension_files
+    ]
 
     # TODO: This is a bit brittle: If we interrupt the transfer then each extension will
     # be seen as "transferred" but it might be only partially extracted... Therefore for
     # now we copy everything over.
-    missing_extensions = set(local_extensions)  # - set(extensions_on_remote)
+    missing_extensions = set(local_extensions_names) - set(extensions_on_remote)
 
     with tarfile.open(extensions_archive_path, mode="w:gz") as extensions_tarfile:
         # Only ship the extensions that aren't already on the remote?
@@ -102,6 +125,15 @@ def copy_vscode_extensions_to_remote(
         f"tar --extract --gzip --file ~/.vscode-server/{extensions_archive_path.name} "
         f"--directory ~/.vscode-server/extensions"
     )
+
+    print(
+        f"Saving list of extracted extensions to {extracted_vscode_extensions_file} on "
+        f"{cluster}."
+    )
+    remote.puttext(
+        "\n".join(local_extensions_names) + "\n", extracted_vscode_extensions_file
+    )
+
     # cmd = f"scp" f" {remote.hostname}:.vscode-server/"
     # print(T.bold_green("(local) $ ", cmd))
     # env = os.environ.copy()
