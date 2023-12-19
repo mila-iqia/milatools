@@ -475,7 +475,7 @@ def code(
     here = Local()
     remote = Remote(cluster)
 
-    if cluster != "mila":
+    if cluster != "mila" and job is None and node is None:
         if not any("--account" in flag for flag in alloc):
             warnings.warn(
                 T.orange(
@@ -491,22 +491,28 @@ def code(
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-    try:
-        check_disk_quota(remote)
-    except MilatoolsUserError:
-        raise
-    except Exception as exc:
-        logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
+    if remote.hostname != "graham":
+        try:
+            check_disk_quota(remote)
+        except MilatoolsUserError:
+            raise
+        except Exception as exc:
+            logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
-    cnode = _find_allocation(
-        remote, job_name="mila-code", job=job, node=node, alloc=alloc
-    )
-    if persist:
-        cnode = cnode.persist()
+    if node is None:
+        cnode = _find_allocation(
+            remote, job_name="mila-code", job=job, node=node, alloc=alloc
+        )
+        if persist:
+            cnode = cnode.persist()
 
-    data, proc = cnode.ensure_allocation()
+        data, proc = cnode.ensure_allocation()
 
-    node_name = data["node_name"]
+        node_name = data["node_name"]
+    else:
+        node_name = node
+        proc = None
+        data = None
 
     if not path.startswith("/"):
         # Get $HOME because we have to give the full path to code
@@ -564,6 +570,7 @@ def code(
         print("To reconnect to this node:")
         print(T.bold(f"  mila code {path} --node {node_name}"))
         print("To kill this allocation:")
+        assert data is not None
         assert "jobid" in data
         print(T.bold(f"  ssh mila scancel {data['jobid']}"))
 

@@ -506,7 +506,8 @@ class SlurmRemote(Remote):
             }, login_node_runner
         else:
             remote = Remote(hostname=self.hostname, connection=self.connection)
-            # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or /projects
+            # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or
+            # /projects
             # before submitting a job.
             proc, results = remote.extract(
                 "cd $SCRATCH && " + shjoin(["salloc", *self.alloc]),
