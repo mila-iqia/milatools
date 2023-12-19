@@ -123,8 +123,8 @@ def copy_vscode_extensions_to_remote(
     if extensions_that_need_to_be_transfered:
         print(
             T.bold_cyan(
-                f"Syncing {len(missing_extensions)} local VsCode extensions with "
-                f"cluster {cluster}..."
+                f"Syncing {len(missing_extensions)} local VsCode extensions with the "
+                f"{cluster} cluster..."
             )
         )
 
@@ -155,7 +155,10 @@ def copy_vscode_extensions_to_remote(
         print(T.bold_green("(local) $ ", scp_command))
         subprocess.run(scp_command, shell=True, check=True)
 
-        print(f"Saving list of synced extensions to " f"{remote} on {cluster}.")
+        print(
+            f"Saving list of synced extensions to {remote_transferred_extensions_file} "
+            f"on the {cluster} cluster."
+        )
         remote.puttext(
             "\n".join(local_extensions_names) + "\n",
             remote_transferred_extensions_file,
@@ -178,6 +181,12 @@ def copy_vscode_extensions_to_remote(
     remote.puttext(
         "\n".join(local_extensions_names) + "\n",
         remote_extracted_vscode_extensions_file,
+    )
+    print(
+        T.bold_green(
+            f"Done synchronizing VsCode extensions between the local machine and the "
+            f"{cluster} cluster."
+        )
     )
 
 
