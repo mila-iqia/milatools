@@ -25,8 +25,7 @@ from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
-from invoke.exceptions import UnexpectedExit
-from typing_extensions import Literal, TypedDict
+from typing_extensions import TypedDict
 
 from milatools.cli.vscode_utils import copy_vscode_extensions_to_remote
 
@@ -47,7 +46,6 @@ from .utils import (
     Cluster,
     CommandNotFoundError,
     MilatoolsUserError,
-    SSHConfig,
     SSHConnectionError,
     T,
     get_fully_qualified_name,
@@ -62,8 +60,6 @@ from .utils import (
 if typing.TYPE_CHECKING:
     from typing_extensions import Unpack
 
-CLUSTERS = ["mila", "narval", "beluga", "cedar", "graham"]
-Cluster = Literal["mila", "narval", "beluga", "cedar", "graham"]
 
 logger = get_logger(__name__)
 
