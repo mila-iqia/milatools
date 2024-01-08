@@ -48,10 +48,10 @@ consonants = list("bdfgjklmnprstvz")
 syllables = ["".join(letters) for letters in itertools.product(consonants, vowels)]
 
 ClusterWithInternetOnCNodes = Literal["mila", "cedar"]
-ClusterWithoutInternetOnCNodes = Literal["narval", "beluga", "graham"]
+ClusterWithoutInternetOnCNodes = Literal["narval", "beluga", "graham", "niagara"]
 
 Cluster = Union[ClusterWithInternetOnCNodes, ClusterWithoutInternetOnCNodes]
-bob = ("a", "b")
+
 # Introspect the type annotation above so we don't duplicate hard-coded values.
 # NOTE: An alternative approach could also be to avoid hard-coding anything at all, but
 # lose the benefits of rich typing. Perhaps we can opt for that at some point if we add
