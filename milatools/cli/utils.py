@@ -239,14 +239,26 @@ class SSHConfig:
         return "\n".join(lines)
 
 
-def qualified(node_name: str, cluster: str = "mila"):
+def get_fully_qualified_hostname_of_compute_node(
+    node_name: str, cluster: str = "mila"
+) -> str:
     """Return the fully qualified name corresponding to this node name."""
     if cluster == "mila":
-        if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
-            node_name = f"{node_name}.server.mila.quebec"
+        if node_name.endswith(".server.mila.quebec"):
+            return node_name
+        return f"{node_name}.server.mila.quebec"
+    if cluster in CLUSTERS:
+        # For the other explicitly supported clusters in the SSH config, the node name
+        # of the compute node can be used directly with ssh from the local machine, no
+        # need to use a fully qualified name.
         return node_name
-    else:
-        raise NotImplementedError(node_name, cluster)
+    warnings.warn(
+        UserWarning(
+            f"Using a custom cluster {cluster}. Assuming that we can ssh directly to "
+            f"its compute node {node_name!r}."
+        )
+    )
+    return node_name
 
 
 def get_fully_qualified_name() -> str:

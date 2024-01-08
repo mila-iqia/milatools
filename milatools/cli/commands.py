@@ -48,10 +48,10 @@ from .utils import (
     MilatoolsUserError,
     SSHConnectionError,
     T,
+    get_fully_qualified_hostname_of_compute_node,
     get_fully_qualified_name,
     make_process,
     no_internet_on_compute_nodes,
-    qualified,
     randname,
     running_inside_WSL,
     with_control_file,
@@ -525,7 +525,12 @@ def code(
 
     if node is None:
         cnode = _find_allocation(
-            remote, job_name="mila-code", job=job, node=node, alloc=alloc
+            remote,
+            job_name="mila-code",
+            job=job,
+            node=node,
+            alloc=alloc,
+            cluster=cluster,
         )
         if persist:
             cnode = cnode.persist()
@@ -944,6 +949,7 @@ def _standard_server(
             node=node,
             job=job,
             alloc=alloc,
+            cluster="mila",
         )
 
         patterns = {
@@ -1012,8 +1018,7 @@ def _standard_server(
 
     local_proc, local_port = _forward(
         local=Local(),
-        # TODO: Why is it necessary to use the qualified name here?
-        node=qualified(node_name, cluster="mila"),
+        node=get_fully_qualified_hostname_of_compute_node(node_name, cluster="mila"),
         to_forward=to_forward,
         options=options,
         port=port,
@@ -1136,13 +1141,14 @@ def _find_allocation(
     node: str | None,
     job: str | None,
     alloc: Sequence[str],
+    cluster: Cluster = "mila",
     job_name: str = "mila-tools",
 ):
     if (node is not None) + (job is not None) + bool(alloc) > 1:
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
     if node is not None:
-        node_name = qualified(node)
+        node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
         return Remote(node_name)
 
     elif job is not None:
