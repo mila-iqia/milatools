@@ -7,6 +7,7 @@ import sys
 import tarfile
 from logging import getLogger as get_logger
 from pathlib import Path
+from typing import Iterable
 
 import tqdm
 
@@ -135,25 +136,11 @@ def copy_vscode_extensions_to_remote(
                 f"{cluster} cluster..."
             )
         )
-        # TODO: Make sure that this also works on Windows.
-        with tarfile.open(
-            local_extensions_archive_path, mode="w:gz"
-        ) as extensions_tarfile:
-            # Only ship the extensions that aren't already on the remote?
-            with tqdm.tqdm(
-                sorted(missing_extensions),
-                desc="Packing missing VsCode extensions into an archive...",
-                unit="extension",
-            ) as pbar:
-                for extension in pbar:
-                    extensions_tarfile.add(
-                        local_vscode_extensions_dir / extension,
-                        # Name in the archive will be {extension} so it can be extracted
-                        # directly in the extensions folder.
-                        arcname=extension,
-                        recursive=True,
-                    )
-                    pbar.set_postfix({"extension": extension})
+        pack_vscode_extensions_into_archive(
+            local_extensions_archive_path,
+            extensions=missing_extensions,
+            local_vscode_extensions_dir=local_vscode_extensions_dir,
+        )
 
         print(f"Sending archive of missing VsCode extensions over to {cluster}...")
         scp_command = (
@@ -197,6 +184,38 @@ def copy_vscode_extensions_to_remote(
             f"{cluster} cluster."
         )
     )
+
+
+def pack_vscode_extensions_into_archive(
+    local_extensions_archive_path: Path,
+    extensions: Iterable[str],
+    local_vscode_extensions_dir: Path,
+):
+    # NOTE: We don't use `shutil.make_archive` because we want to only ship the
+    # extensions that aren't already on the remote.
+
+    with tarfile.open(local_extensions_archive_path, mode="w:gz") as extensions_tarfile:
+        # Note: we do NOT add the extensions.json file in the archive, otherwise we
+        # might accidentally overwrite that file on the remote!
+        # extensions_tarfile.add(
+        #     local_vscode_extensions_dir / "extensions.json",
+        #     arcname="extensions.json",
+        # )
+
+        with tqdm.tqdm(
+            sorted(extensions),
+            desc="Packing missing VsCode extensions into an archive...",
+            unit="extension",
+        ) as pbar:
+            for extension in pbar:
+                extensions_tarfile.add(
+                    local_vscode_extensions_dir / extension,
+                    # Name in the archive will be {extension} so it can be extracted
+                    # directly in the extensions folder.
+                    arcname=extension,
+                    recursive=True,
+                )
+                pbar.set_postfix({"extension": extension})
 
 
 def _read_text_file_lines(remote: Remote, file: str) -> list[str]:

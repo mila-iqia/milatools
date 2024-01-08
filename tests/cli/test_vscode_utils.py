@@ -14,6 +14,7 @@ from milatools.cli.vscode_utils import (
     EXTENSIONS_ARCHIVE_NAME,
     copy_vscode_extensions_to_remote,
     get_expected_vscode_settings_json_path,
+    pack_vscode_extensions_into_archive,
     vscode_installed,
 )
 
@@ -267,3 +268,51 @@ def test_copy_vscode_extensions_to_clean_remote(
 
     # Check that the archive was copied to the remote.
     assert_files_were_copied_correctly(local_extensions_dir, fake_remote_extensions_dir)
+
+
+def test_pack_extensions_into_archive(tmp_path_factory: pytest.TempPathFactory):
+    extensions_dir = tmp_path_factory.mktemp("extensions")
+    extensions: list[tuple[str, str]] = [
+        ("ms-python-python", "2023.22.1"),
+        ("other_extension", "2023.22.1"),
+    ]
+    missing_extensions = extensions[:-1]
+
+    make_fake_vscode_extensions_folder(
+        extensions_dir=extensions_dir,
+        extensions=extensions,
+    )
+    import shutil
+
+    archive_path = tmp_path_factory.mktemp(".milatools") / "extensions.tar.gz"
+
+    pack_vscode_extensions_into_archive(
+        archive_path,
+        extensions=[
+            f"{ext_id}-{ext_version}" for ext_id, ext_version in missing_extensions
+        ],
+        local_vscode_extensions_dir=extensions_dir,
+    )
+
+    tempdir = tmp_path_factory.mktemp("temp")
+    assert archive_path.exists()
+    shutil.unpack_archive(
+        archive_path,
+        extract_dir=tempdir,
+    )
+
+    # TODO: Do we need to consolidate the local and remote extensions.json files? So far
+    # it doesn't seem like it, seems like VsCode just figures out which extensions to
+    # use. A bit unsure about this though, it would be good to test this further.
+
+    # assert_files_were_copied_correctly(
+    #     extensions_dir / "extensions.json", tempdir / "extensions.json"
+    # )
+    for extension_id, version in extensions:
+        extension_rel_path = f"{extension_id}-{version}"
+        if (extension_id, version) in missing_extensions:
+            assert_files_were_copied_correctly(
+                extensions_dir / extension_rel_path, tempdir / extension_rel_path
+            )
+        else:
+            assert not (tempdir / extension_rel_path).exists()
