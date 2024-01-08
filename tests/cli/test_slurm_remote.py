@@ -23,6 +23,8 @@ SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER")
 JOB_NAME = "mila-tools"
 WCKEY = "milatools_test"
 
+pytestmark = pytest.mark.timeout(60)
+
 requires_access_to_slurm_cluster = pytest.mark.skipif(
     not SLURM_CLUSTER,
     reason="Requires ssh access to a SLURM cluster.",
