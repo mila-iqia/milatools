@@ -54,8 +54,6 @@ requires_s_flag = pytest.mark.skipif(
     "-s" not in sys.argv,
     reason=REQUIRES_S_FLAG_REASON,
 )
-
-
 requires_no_s_flag = pytest.mark.skipif(
     "-s" in sys.argv,
     reason="Passing pytest's -s flag makes this test fail.",
