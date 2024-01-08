@@ -148,8 +148,7 @@ class Remote:
     def _run(
         self,
         cmd: str,
-        *,
-        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
@@ -181,7 +180,7 @@ class Remote:
         cmd: str,
         *,
         display: bool | None = None,
-        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: Literal[False] = False,
         out_stream: TextIO | None = None,
@@ -196,7 +195,7 @@ class Remote:
         cmd: str,
         *,
         display: bool | None = None,
-        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: Literal[True] = True,
         out_stream: TextIO | None = None,
@@ -211,7 +210,7 @@ class Remote:
         cmd: str,
         *,
         display: bool | None = None,
-        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: bool = ...,
         out_stream: TextIO | None = None,
@@ -224,7 +223,7 @@ class Remote:
         self,
         cmd: str,
         display: bool | None = None,
-        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
@@ -294,13 +293,13 @@ class Remote:
     @deprecated(
         "This method will be removed because its name is misleading: This "
         "returns a list with all the words in the output instead of all the "
-        "lines. Use get_output(cmd).split() instead.",
+        "lines. Use get_output(cmd).splitlines() instead.",
         category=None,  # TODO: Remove this so a warning is raised at runtime.
     )
     def get_lines(
         self,
         cmd: str,
-        hide: bool = False,
+        hide: Hide = False,
         warn: bool = False,
     ) -> list[str]:
         return self.get_output(
@@ -315,7 +314,7 @@ class Remote:
         patterns: dict[str, str],
         wait: bool = False,
         pty: bool = True,
-        hide: bool = False,
+        hide: Hide = False,
         **kwargs,
     ) -> tuple[fabric.runners.Remote, dict[str, str]]:
         # TODO: We pass this `QueueIO` class to `connection.run`, which expects a
