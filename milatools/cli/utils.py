@@ -12,14 +12,14 @@ import sys
 import typing
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Union, overload
 
 import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
-from typing_extensions import Literal
+from typing_extensions import Literal, get_args
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
@@ -44,14 +44,35 @@ vowels = list("aeiou")
 consonants = list("bdfgjklmnprstvz")
 syllables = ["".join(letters) for letters in itertools.product(consonants, vowels)]
 
-CLUSTERS = ["mila", "narval", "beluga", "cedar", "graham"]
-Cluster = Literal["mila", "narval", "beluga", "cedar", "graham"]
+ClusterWithInternetOnCn = Literal["mila", "cedar"]
+ClusterWithoutInternetOnCn = Literal["narval", "beluga", "graham"]
+
+Cluster = Union[ClusterWithInternetOnCn, ClusterWithoutInternetOnCn]
+
+# Introspect the type annotation above so we don't duplicate hard-coded values.
+# NOTE: An alternative approach could also be to avoid hard-coding anything at all, but
+# lose the benefits of rich typing.
+# Perhaps we can opt for that at some point if we want to add support for more and more
+# clusters.
+CLUSTERS: list[Cluster] = list(
+    get_args(ClusterWithInternetOnCn) + get_args(ClusterWithoutInternetOnCn)
+)
+
+
+@overload
+def internet_on_compute_nodes(cluster: ClusterWithInternetOnCn) -> Literal[True]:
+    ...
+
+
+@overload
+def internet_on_compute_nodes(cluster: ClusterWithoutInternetOnCn) -> Literal[False]:
+    ...
 
 
 def internet_on_compute_nodes(cluster: Cluster) -> bool:
-    if cluster in ["mila", "cedar"]:
+    if cluster in get_args(ClusterWithInternetOnCn):
         return True
-    if cluster in ["narval", "beluga", "graham"]:
+    if cluster in get_args(ClusterWithoutInternetOnCn):
         return False
     raise NotImplementedError(
         f"Don't know if compute nodes have internet access on cluster {cluster}."
