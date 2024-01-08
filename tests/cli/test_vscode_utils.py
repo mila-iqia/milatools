@@ -93,13 +93,13 @@ def fake_vscode_extensions_dirs(
     fake_remote_vscode_extensions_dir = tmp_path_factory.mktemp("remote_extensions")
 
     if remote_vscode_extensions_state == "clean":
-        # There are no extensions on the remote yet.
+        # No extensions on the remote.
         # Don't create the remote vscode extensions directory (so here we actually need
         # to remove the dir).
         fake_remote_vscode_extensions_dir.rmdir()
 
     elif remote_vscode_extensions_state == "some_extensions":
-        # There are already some extensions in the remote vscode extensions folder.
+        # Some extensions are to be already present in the remote vscode extensions dir.
         remote_extensions = local_extensions[:-1]
         make_fake_vscode_extensions_folder(
             extensions_dir=fake_remote_vscode_extensions_dir,
@@ -107,11 +107,14 @@ def fake_vscode_extensions_dirs(
         )
 
     elif remote_vscode_extensions_state == "all_extensions":
+        # All extensions are to be already present the remote.
+        # note: removing the dir temporarily because we can't pass dirs_exist_ok below
+        # in python 3.7
+        fake_remote_vscode_extensions_dir.rmdir()
         shutil.copytree(
             local_vscode_extensions_dir,
             fake_remote_vscode_extensions_dir,
-            # NOTE: Necessary because the dest already exists.
-            dirs_exist_ok=True,
+            # dirs_exist_ok=True,
         )
 
     else:
