@@ -5,7 +5,6 @@ Cluster documentation: https://docs.mila.quebec/
 from __future__ import annotations
 
 import argparse
-import multiprocessing
 import operator
 import os
 import re
@@ -52,7 +51,8 @@ from .utils import (
     SSHConnectionError,
     T,
     get_fully_qualified_name,
-    internet_on_compute_nodes,
+    make_process,
+    no_internet_on_compute_nodes,
     qualified,
     randname,
     running_inside_WSL,
@@ -505,19 +505,18 @@ def code(
         except Exception as exc:
             logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
-    vscode_extensions_folder = Path("~/.vscode/extensions").expanduser()
-    if not internet_on_compute_nodes(cluster) and vscode_extensions_folder.exists():
+    vscode_extensions_folder = Path.home() / ".vscode/extensions"
+    if vscode_extensions_folder.exists() and no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
-
         print(
             f"Copying VSCode extensions from local machine to {cluster} in the "
             f"background..."
         )
         # Async:
-        copy_vscode_extensions_process = multiprocessing.Process(
-            target=copy_vscode_extensions_to_remote,
-            args=(cluster, vscode_extensions_folder),
-            daemon=True,
+        copy_vscode_extensions_process = make_process(
+            copy_vscode_extensions_to_remote,
+            cluster,
+            vscode_extensions_folder,
         )
         copy_vscode_extensions_process.start()
 

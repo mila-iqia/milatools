@@ -1,11 +1,18 @@
 import functools
+import multiprocessing
 import random
 from unittest.mock import patch
 
 import pytest
 from prompt_toolkit.input.defaults import create_pipe_input
 
-from milatools.cli.utils import get_fully_qualified_name, qn, randname, yn
+from milatools.cli.utils import (
+    get_fully_qualified_name,
+    make_process,
+    qn,
+    randname,
+    yn,
+)
 
 
 def test_randname(file_regression):
@@ -30,3 +37,10 @@ def test_yn():
 
 def test_hostname():
     assert get_fully_qualified_name()
+
+
+def test_make_process():
+    process = make_process(print, "hello", end="!")
+    assert isinstance(process, multiprocessing.Process)
+    assert process.daemon
+    assert not process.is_alive()

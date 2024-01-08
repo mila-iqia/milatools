@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextvars
 import functools
 import itertools
+import multiprocessing
 import random
 import shlex
 import shutil
@@ -10,21 +11,23 @@ import socket
 import subprocess
 import sys
 import typing
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Union, overload
+from typing import Any, Callable, Iterable, Union
 
 import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
-from typing_extensions import Literal, get_args
+from typing_extensions import Literal, ParamSpec, TypeGuard, get_args
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
+
 
 T = blessed.Terminal()
 
@@ -44,39 +47,32 @@ vowels = list("aeiou")
 consonants = list("bdfgjklmnprstvz")
 syllables = ["".join(letters) for letters in itertools.product(consonants, vowels)]
 
-ClusterWithInternetOnCn = Literal["mila", "cedar"]
-ClusterWithoutInternetOnCn = Literal["narval", "beluga", "graham"]
+ClusterWithInternetOnCNodes = Literal["mila", "cedar"]
+ClusterWithoutInternetOnCNodes = Literal["narval", "beluga", "graham"]
 
-Cluster = Union[ClusterWithInternetOnCn, ClusterWithoutInternetOnCn]
-
+Cluster = Union[ClusterWithInternetOnCNodes, ClusterWithoutInternetOnCNodes]
+bob = ("a", "b")
 # Introspect the type annotation above so we don't duplicate hard-coded values.
 # NOTE: An alternative approach could also be to avoid hard-coding anything at all, but
-# lose the benefits of rich typing.
-# Perhaps we can opt for that at some point if we want to add support for more and more
-# clusters.
+# lose the benefits of rich typing. Perhaps we can opt for that at some point if we add
+# support for more and more clusters, or want to make it possible for users to add
+# custom clusters.
 CLUSTERS: list[Cluster] = list(
-    get_args(ClusterWithInternetOnCn) + get_args(ClusterWithoutInternetOnCn)
+    get_args(ClusterWithInternetOnCNodes) + get_args(ClusterWithoutInternetOnCNodes)
 )
 
 
-@overload
-def internet_on_compute_nodes(cluster: ClusterWithInternetOnCn) -> Literal[True]:
-    ...
-
-
-@overload
-def internet_on_compute_nodes(cluster: ClusterWithoutInternetOnCn) -> Literal[False]:
-    ...
-
-
-def internet_on_compute_nodes(cluster: Cluster) -> bool:
-    if cluster in get_args(ClusterWithInternetOnCn):
-        return True
-    if cluster in get_args(ClusterWithoutInternetOnCn):
-        return False
-    raise NotImplementedError(
-        f"Don't know if compute nodes have internet access on cluster {cluster}."
-    )
+def no_internet_on_compute_nodes(
+    cluster: Cluster,
+) -> TypeGuard[ClusterWithoutInternetOnCNodes]:
+    if cluster not in CLUSTERS:
+        warnings.warn(
+            UserWarning(
+                f"Unknown cluster {cluster}. Assuming that compute nodes do not have "
+                f"internet access on this cluster for now."
+            )
+        )
+    return cluster not in get_args(ClusterWithInternetOnCNodes)
 
 
 def randname():
@@ -269,3 +265,14 @@ def get_fully_qualified_name() -> str:
 @functools.lru_cache()
 def running_inside_WSL() -> bool:
     return sys.platform == "linux" and bool(shutil.which("powershell.exe"))
+
+
+P = ParamSpec("P")
+
+
+def make_process(
+    target: Callable[P, Any], *args: P.args, **kwargs: P.kwargs
+) -> multiprocessing.Process:
+    # Tiny wrapper around the `multiprocessing.Process` init to detect if the args and
+    # kwargs don't match the target signature using typing instead of at runtime.
+    return multiprocessing.Process(target=target, daemon=True, args=args, kwargs=kwargs)
