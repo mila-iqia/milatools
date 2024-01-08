@@ -48,7 +48,7 @@ consonants = list("bdfgjklmnprstvz")
 syllables = ["".join(letters) for letters in itertools.product(consonants, vowels)]
 
 ClusterWithInternetOnCNodes = Literal["mila", "cedar"]
-ClusterWithoutInternetOnCNodes = Literal["narval", "beluga", "graham", "niagara"]
+ClusterWithoutInternetOnCNodes = Literal["narval", "beluga", "graham"]
 
 Cluster = Union[ClusterWithInternetOnCNodes, ClusterWithoutInternetOnCNodes]
 

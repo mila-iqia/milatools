@@ -69,11 +69,13 @@ def test_hostname():
         for prefix in ["nc", "ng"]
         for cnode in [f"{prefix}12345"]
     ]
-    + [
-        # Host !niagara nia????
-        ("niagara", cnode, cnode)
-        for cnode in ["nia1234"]
-    ],
+    # NOTE: Not including niagara for now, since DRAC users don't automatically get
+    # access to it (plus, it doesn't have GPUs).
+    # + [
+    #     # Host !niagara nia????
+    #     ("niagara", cnode, cnode)
+    #     for cnode in ["nia1234"]
+    # ],
 )
 def test_get_fully_qualified_hostname_of_compute_node(
     cluster: str, node: str, expected: str
