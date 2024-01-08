@@ -639,7 +639,7 @@ class TestSlurmRemote:
         alloc = ["--time=00:01:00"]
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
-        expected_command = f"bash -c 'salloc {shjoin(alloc)}'"
+        expected_command = f"cd $SCRATCH && salloc {shjoin(alloc)}"
 
         def write_stuff(
             command: str,
