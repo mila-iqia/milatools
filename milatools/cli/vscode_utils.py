@@ -11,7 +11,7 @@ from pathlib import Path
 import tqdm
 
 from milatools.cli.remote import Remote
-from milatools.cli.utils import Cluster, T, internet_on_compute_nodes
+from milatools.cli.utils import ClusterWithoutInternetOnCNodes, T
 
 logger = get_logger(__name__)
 
@@ -46,36 +46,42 @@ def vscode_installed() -> bool:
     return bool(shutil.which(os.environ.get("MILATOOLS_CODE_COMMAND", "code")))
 
 
-def copy_vscode_extensions_to_remote(
-    cluster: Cluster,
-    local_vscode_extensions_folder: Path,
-    remote: Remote | None = None,
-    local_extensions_archive_path: str | Path = "~/.milatools/vscode-extensions.tar.gz",
-    remote_vscode_extensions_folder: str = "~/.vscode-server/extensions",
-):
-    assert not internet_on_compute_nodes(cluster)
+EXTENSIONS_ARCHIVE_NAME = "vscode-extensions.tar.gz"
+EXTRACTED_VSCODE_EXTENSIONS_FILE = "extracted_vscode_extensions.txt"
+TRANSFERED_VSCODE_EXTENSIONS_FILE = "transferred_vscode_extensions.txt"
 
+
+def copy_vscode_extensions_to_remote(
+    cluster: ClusterWithoutInternetOnCNodes,
+    local_vscode_extensions_dir: Path,
+    remote: Remote | None = None,
+    remote_vscode_extensions_dir: str = "~/.vscode-server/extensions",
+    local_milatools_dir: Path = Path("~/.milatools"),
+    remote_milatools_dir: str = "~/.milatools",
+):
     if remote is None:
         remote = Remote(cluster)
 
-    local_extensions_archive_path = Path(local_extensions_archive_path).expanduser()
-    local_extensions_archive_path.parent.mkdir(exist_ok=True, parents=False)
+    local_milatools_dir = local_milatools_dir.expanduser()
+    local_milatools_dir.mkdir(exist_ok=True, parents=True)
+
+    local_extensions_archive_path = local_milatools_dir / EXTENSIONS_ARCHIVE_NAME
 
     local_extensions_names = list(
-        str(p.relative_to(local_vscode_extensions_folder))
-        for p in local_vscode_extensions_folder.iterdir()
+        str(p.relative_to(local_vscode_extensions_dir))
+        for p in local_vscode_extensions_dir.iterdir()
     )
-    remote.run(f"mkdir -p {remote_vscode_extensions_folder}", display=False)
+    remote.run(f"mkdir -p {remote_vscode_extensions_dir}", display=False)
     remote_extension_files = remote.run(
-        f"ls {remote_vscode_extensions_folder}", display=False, hide="stdout", warn=True
+        f"ls {remote_vscode_extensions_dir}", display=False, hide="stdout", warn=True
     ).stdout.split()
 
     # A file on the remote that contains the names of all the previously successfully
     # extracted VsCode extensions.
     remote_extracted_vscode_extensions_file = (
-        ".milatools/extracted_vscode_extensions.txt"
+        f"{remote_milatools_dir}/{EXTRACTED_VSCODE_EXTENSIONS_FILE}"
     )
-    remote.run("mkdir -p ~/.milatools", display=False)
+    remote.run(f"mkdir -p {remote_milatools_dir}", display=False)
     remote.run(f"touch {remote_extracted_vscode_extensions_file}", display=False)
     already_extracted_extensions = _read_text_file_lines(
         remote, remote_extracted_vscode_extensions_file
@@ -84,7 +90,9 @@ def copy_vscode_extensions_to_remote(
     # Same idea: a file that contains the list of extensions in the archive that was
     # already scp'ed to the remote. If we already scp'ed the archive with all the
     # required extensions, then we don't need to scp it again.
-    remote_transferred_extensions_file = ".milatools/transferred_vscode_extensions.txt"
+    remote_transferred_extensions_file = (
+        f"{remote_milatools_dir}/{TRANSFERED_VSCODE_EXTENSIONS_FILE}"
+    )
     remote.run(f"touch {remote_transferred_extensions_file}", display=False)
     already_transfered_extensions = _read_text_file_lines(
         remote, remote_transferred_extensions_file
@@ -104,7 +112,7 @@ def copy_vscode_extensions_to_remote(
         if extension in remote_extension_files
     ]
     missing_extensions = set(local_extensions_names) - set(extensions_on_remote)
-    logger.debug(f"Missing extensions: {missing_extensions}")
+    logger.debug(f"Missing extensions: {sorted(missing_extensions)}")
 
     if not missing_extensions:
         print(
@@ -127,7 +135,7 @@ def copy_vscode_extensions_to_remote(
                 f"{cluster} cluster..."
             )
         )
-
+        # TODO: Make sure that this also works on Windows.
         with tarfile.open(
             local_extensions_archive_path, mode="w:gz"
         ) as extensions_tarfile:
@@ -139,7 +147,7 @@ def copy_vscode_extensions_to_remote(
             ) as pbar:
                 for extension in pbar:
                     extensions_tarfile.add(
-                        local_vscode_extensions_folder / extension,
+                        local_vscode_extensions_dir / extension,
                         # Name in the archive will be {extension} so it can be extracted
                         # directly in the extensions folder.
                         arcname=extension,
@@ -150,9 +158,10 @@ def copy_vscode_extensions_to_remote(
         print(f"Sending archive of missing VsCode extensions over to {cluster}...")
         scp_command = (
             f"scp {local_extensions_archive_path} "
-            f"{cluster}:.milatools/{local_extensions_archive_path.name}"
+            f"{cluster}:{remote_milatools_dir}/{local_extensions_archive_path.name}"
         )
         print(T.bold_green("(local) $ ", scp_command))
+        # TODO: Look into using `remote.connection.local` instead of subprocess.run.
         subprocess.run(scp_command, shell=True, check=True)
 
         print(
@@ -170,8 +179,8 @@ def copy_vscode_extensions_to_remote(
     )
     remote.run(
         f"tar --extract --gzip --totals "
-        f"--file ~/.milatools/{local_extensions_archive_path.name} "
-        f"--directory {remote_vscode_extensions_folder}"
+        f"--file {remote_milatools_dir}/{local_extensions_archive_path.name} "
+        f"--directory {remote_vscode_extensions_dir}"
     )
 
     print(
