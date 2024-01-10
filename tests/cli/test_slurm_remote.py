@@ -142,8 +142,13 @@ def test_salloc(cluster_login_node: Remote, allocation_flags: str):
         "piping of the input stream."
     )
     in_stream = io.StringIO()
+    out_stream = io.StringIO()
     cluster_login_node.run(
-        f"salloc {allocation_flags}", asynchronous=True, in_stream=in_stream
+        f"salloc {allocation_flags}",
+        asynchronous=True,
+        display=True,
+        in_stream=in_stream,
+        out_stream=out_stream,
     )
 
 
@@ -161,7 +166,9 @@ def slurm_remote(cluster_login_node: Remote, allocation_flags: str):
     )
 
 
-# @pytest.mark.skip(reason="seems to hang on the CI.")
+@pytest.mark.skipif(
+    SLURM_CLUSTER == "localhost", reason="seems to hang on the GitHub CI."
+)
 @requires_access_to_slurm_cluster
 def test_ensure_allocation(slurm_remote: SlurmRemote):
     """Test that `ensure_allocation` calls salloc for a SlurmRemote with persist=False.
@@ -171,6 +178,10 @@ def test_ensure_allocation(slurm_remote: SlurmRemote):
     connected to the compute node (or not, idk).
     """
     data, login_node_remote_runner = slurm_remote.ensure_allocation()
+    # FIXME: (!!!) It should be impossible / a critical error to use `.run()` after
+    # `.ensure_allocation()`, because every call to `run` uses all the transforms, with
+    # the last transform adding either `salloc` or `sbatch`, hence every call to `run`
+    # launches a job!
     assert isinstance(login_node_remote_runner, fabric.runners.Remote)
     hostname_from_salloc_output = data["node_name"]
 
@@ -179,6 +190,17 @@ def test_ensure_allocation(slurm_remote: SlurmRemote):
     squeue_output = slurm_remote.simple_run("squeue --me")
     assert hostname_from_salloc_output in squeue_output.stdout
     print("End of test")
+
+
+@requires_access_to_slurm_cluster
+def test_run(cluster_login_node: Remote, slurm_remote: SlurmRemote):
+    promise = slurm_remote.run("hostname", display=True, asynchronous=True)
+    squeue_output = cluster_login_node.run("squeue --me", display=True).stdout
+    result = promise.join()
+    compute_node_hostname = result.stdout
+    # The node name should be in the output of squeue while the job was queueing/running
+    assert compute_node_hostname in squeue_output
+    assert compute_node_hostname != cluster_login_node.hostname  # hopefully >1 machines
 
 
 @pytest.fixture
@@ -190,17 +212,13 @@ def persistent_slurm_remote(cluster_login_node: Remote, allocation_flags: str):
     )
 
 
-@pytest.mark.skip(
-    reason="TODO: Fix this test, seems to hang at the end even though the job ran."
+@pytest.mark.skipif(
+    SLURM_CLUSTER == "localhost", reason="seems to hang on the GitHub CI."
 )
 @requires_access_to_slurm_cluster
 def test_ensure_allocation_sbatch(persistent_slurm_remote: SlurmRemote):
-    # TODO: The SlurmRemote class is quite confusing: Is it a connection to the compute
-    # node? Or is it a connection to the login node?
-
     job_data, login_node_remote_runner = persistent_slurm_remote.ensure_allocation()
     print(job_data, login_node_remote_runner)
-
     assert isinstance(login_node_remote_runner, fabric.runners.Remote)
 
     node_name_from_sbatch_extract = job_data["node_name"]
@@ -208,7 +226,7 @@ def test_ensure_allocation_sbatch(persistent_slurm_remote: SlurmRemote):
     job_id_from_sbatch_extract = job_data["jobid"]
 
     time.sleep(5)  # Let enough time for squeue to update.
-    squeue_output = persistent_slurm_remote.run("squeue --me")
+    squeue_output = persistent_slurm_remote.simple_run("squeue --me")
     assert squeue_output
     squeue_output = squeue_output.stdout.strip()
     print(squeue_output)
@@ -218,6 +236,10 @@ def test_ensure_allocation_sbatch(persistent_slurm_remote: SlurmRemote):
 
 
 # WIP stuff:
+
+
+def make_get_output_fn(login_node_remote_runner: fabric.runners.Remote, hostname: str):
+    return functools.partial(_get_output, login_node_remote_runner, hostname)
 
 
 def _get_output(
@@ -239,7 +261,3 @@ def _get_output(
     output = result.stdout.strip()
     print(T.cyan(output))
     return output
-
-
-def make_get_output_fn(login_node_remote_runner: fabric.runners.Remote, hostname: str):
-    return functools.partial(_get_output, login_node_remote_runner, hostname)
