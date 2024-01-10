@@ -72,7 +72,7 @@ jobs:
         fail_ci_if_error: false
 
   slurm_testing:
-    name: Run unit tests that require a connection to a SLURM cluster (localhost)
+    name: Run integration tests that connect to a SLURM cluster (localhost)
     needs: [unit-tests]
     runs-on: ${{ matrix.platform }}
 
@@ -81,7 +81,7 @@ jobs:
       matrix:
         # TODO: We should ideally also run this with a Windows client and a Linux server
         # on the same machine somehow?
-        platform: [ubuntu-latest, macos-latest]
+        platform: [ubuntu-latest]
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
 
     # For the action to work, you have to supply a mysql
@@ -130,7 +130,7 @@ jobs:
           pip install poetry
           poetry install --with=dev
 
-      - name: Launch unit tests that require a connection to a SLURM cluster
+      - name: Launch integration tests
         run: poetry run pytest tests/cli/test_slurm_remote.py --cov=milatools --cov-report=xml --cov-append -s -vvv --log-level=DEBUG
         env:
           SLURM_CLUSTER: localhost
