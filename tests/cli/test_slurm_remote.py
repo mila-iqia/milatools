@@ -176,8 +176,8 @@ def test_ensure_allocation(slurm_remote: SlurmRemote):
 
     time.sleep(5)  # seems like squeue doesn't update quite fast enough sometimes.
     print("Running squeue --me")
-    squeue_output = slurm_remote.get_output("squeue --me")
-    assert hostname_from_salloc_output in squeue_output
+    squeue_output = slurm_remote.simple_run("squeue --me")
+    assert hostname_from_salloc_output in squeue_output.stdout
     print("End of test")
 
 
