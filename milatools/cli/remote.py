@@ -146,6 +146,7 @@ class Remote:
     def _run(
         self,
         cmd: str,
+        *,
         hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
         warn: bool = False,
         asynchronous: bool = False,
@@ -176,19 +177,7 @@ class Remote:
     def run(
         self,
         cmd: str,
-        display: bool | None = None,
-        hide: bool = False,
-        warn: bool = False,
-        asynchronous: Literal[True] = True,
-        out_stream: TextIO | None = None,
-        **kwargs,
-    ) -> invoke.runners.Promise:
-        ...
-
-    @overload
-    def run(
-        self,
-        cmd: str,
+        *,
         display: bool | None = None,
         hide: bool = False,
         warn: bool = False,
@@ -202,10 +191,25 @@ class Remote:
     def run(
         self,
         cmd: str,
+        *,
         display: bool | None = None,
         hide: bool = False,
         warn: bool = False,
-        asynchronous: bool = False,
+        asynchronous: Literal[True] = True,
+        out_stream: TextIO | None = None,
+        **kwargs,
+    ) -> invoke.runners.Promise:
+        ...
+
+    @overload
+    def run(
+        self,
+        cmd: str,
+        *,
+        display: bool | None = None,
+        hide: bool = False,
+        warn: bool = False,
+        asynchronous: bool = ...,
         out_stream: TextIO | None = None,
         **kwargs,
     ) -> invoke.runners.Result | invoke.runners.Promise:
@@ -464,13 +468,22 @@ class SlurmRemote(Remote):
     def ensure_allocation(
         self,
     ) -> tuple[NodeNameDict | NodeNameAndJobidDict, fabric.runners.Remote]:
-        """Makes the `salloc` or `sbatch` call (if persist=True).
+        """Makes the `salloc` or `sbatch` call and waits until the job starts.
 
-        Returns the node name and a `fabric.runners.Remote` object connected to the
-        login node.
+        When `persist=True`:
+        - uses `sbatch`
+        - returns a tuple with:
+            - a dict with the compute node name and the jobid
+            - a `fabric.runners.Remote` object connected to the *login* node.
+
+        When `persist=False`:
+        - uses `salloc`
+        - returns a tuple with:
+            - a dict with the compute node name (without the jobid)
+            - a `fabric.runners.Remote` object connected to the *login* node.
         """
         if self._persist:
-            remote_runner, results = self.extract(
+            login_node_runner, results = self.extract(
                 "echo @@@ $(hostname) @@@ && sleep 1000d",
                 patterns={
                     "node_name": "@@@ ([^ ]+) @@@",
@@ -479,15 +492,26 @@ class SlurmRemote(Remote):
                 hide=True,
             )
             node_name = get_first_node_name(results["node_name"])
-            return {"node_name": node_name, "jobid": results["jobid"]}, remote_runner
+            return {
+                "node_name": node_name,
+                "jobid": results["jobid"],
+            }, login_node_runner
         else:
             remote = Remote(hostname="->", connection=self.connection).with_bash()
             login_node_runner, results = remote.extract(
                 shjoin(["salloc", *self.alloc]),
-                patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
+                patterns={
+                    "node_name": "salloc: Nodes ([^ ]+) are ready for job",
+                    # TODO: This would also work!
+                    "jobid": "salloc: Granted job allocation ([0-9]+)",
+                },
             )
             # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
             # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to
             # a single one, though, so we will simply pick the first one.
             node_name = get_first_node_name(results["node_name"])
-            return {"node_name": node_name}, login_node_runner
+            return {
+                "node_name": node_name,
+                # TODO: This would also work!
+                # "jobid": results["jobid"],
+            }, login_node_runner
