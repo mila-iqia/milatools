@@ -161,7 +161,7 @@ def slurm_remote(cluster_login_node: Remote, allocation_flags: str):
     )
 
 
-@pytest.mark.skip(reason="seems to hang on the CI.")
+# @pytest.mark.skip(reason="seems to hang on the CI.")
 @requires_access_to_slurm_cluster
 def test_ensure_allocation(slurm_remote: SlurmRemote):
     """Test that `ensure_allocation` calls salloc for a SlurmRemote with persist=False.
@@ -175,8 +175,10 @@ def test_ensure_allocation(slurm_remote: SlurmRemote):
     hostname_from_salloc_output = data["node_name"]
 
     time.sleep(5)  # seems like squeue doesn't update quite fast enough sometimes.
+    print("Running squeue --me")
     squeue_output = slurm_remote.get_output("squeue --me")
     assert hostname_from_salloc_output in squeue_output
+    print("End of test")
 
 
 @pytest.fixture
@@ -191,7 +193,6 @@ def persistent_slurm_remote(cluster_login_node: Remote, allocation_flags: str):
 @pytest.mark.skip(
     reason="TODO: Fix this test, seems to hang at the end even though the job ran."
 )
-# @pytest.mark.timeout(60)
 @requires_access_to_slurm_cluster
 def test_ensure_allocation_sbatch(persistent_slurm_remote: SlurmRemote):
     # TODO: The SlurmRemote class is quite confusing: Is it a connection to the compute
