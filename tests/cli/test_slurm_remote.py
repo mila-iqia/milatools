@@ -7,6 +7,7 @@ SLURM_CLUSTER is set to "localhost".
 from __future__ import annotations
 
 import datetime
+import functools
 import os
 import time
 from logging import getLogger as get_logger
@@ -24,6 +25,10 @@ WCKEY = "milatools_test"
 MAX_JOB_DURATION = datetime.timedelta(seconds=10)
 # BUG: pytest-timeout seems to cause issues with paramiko threads..
 # pytestmark = pytest.mark.timeout(60)
+
+
+_SACCT_UPDATE_DELAY = datetime.timedelta(seconds=10)
+"""How long after salloc/sbatch before we expect to see the job show up in sacct."""
 
 requires_access_to_slurm_cluster = pytest.mark.skipif(
     not SLURM_CLUSTER,
@@ -62,22 +67,31 @@ def can_run_on_all_clusters():
     return pytest.mark.parametrize("cluster", CLUSTERS, indirect=True)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def login_node(cluster: str) -> Remote:
-    """Fixture that gives a Remote connected to the login node of the slurm cluster."""
+    """Fixture that gives a Remote connected to the login node of the slurm cluster.
+
+    NOTE: Making this a function-scoped fixture because the Connection object is of the
+    Remote is used when creating the SlurmRemotes.
+    """
     return Remote(cluster)
 
 
 @pytest.fixture(scope="module", autouse=True)
-def cancel_all_milatools_jobs_after_tests(login_node: Remote):
+def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
+    # Note: need to recreate this because login_node is a function-scoped fixture.
+    login_node = Remote(cluster)
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
+    time.sleep(1)
     yield
-    login_node.simple_run(f"scancel -u $USER --wckey={WCKEY}")
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
     time.sleep(1)
     # Display the output of squeue just to be sure that the jobs were cancelled.
-    login_node.simple_run("squeue --me")
+    login_node._run("squeue --me", echo=True, in_stream=False)
 
 
-def get_slurm_account(cluster_login_node: Remote) -> str:
+@functools.lru_cache()
+def get_slurm_account(cluster: str) -> str:
     """Gets the SLURM account of the user using sacctmgr on the slurm cluster.
 
     When there are multiple accounts, this selects the first account, alphabetically.
@@ -95,38 +109,51 @@ def get_slurm_account(cluster_login_node: Remote) -> str:
     rrg-someprofessor_gpu
     ```
     """
-    accounts: list[str] = cluster_login_node.get_output(
+    # note: recreating the Connection here because this will be called for every test
+    # and we use functools.cache to cache the result, so the input has to be a simpler
+    # value like a string.
+    result = fabric.Connection(cluster).run(
         "sacctmgr --noheader show associations where user=$USER format=Account%50",
-    ).split()
-    assert accounts
-    logger.info(
-        f"Accounts on the slurm cluster {cluster_login_node.hostname}: {accounts}"
+        echo=True,
+        in_stream=False,
     )
+    assert isinstance(result, fabric.runners.Result)
+    accounts: list[str] = [line.strip() for line in result.stdout.splitlines()]
+    assert accounts
+    logger.info(f"Accounts on the slurm cluster {cluster}: {accounts}")
     account = sorted(accounts)[0]
     logger.info(f"Using account {account} to launch jobs in tests.")
     return account
 
 
 def get_recent_jobs_info(
-    cluster_login_node: Remote,
+    login_node: Remote,
     since=datetime.timedelta(minutes=5),
     fields=("JobID", "JobName", "Node", "State"),
-) -> list[list[str]]:
+) -> list[tuple[str, ...]]:
     """Returns a list of fields for jobs that started recently."""
     # otherwise this would launch a job!
-    assert not isinstance(cluster_login_node, SlurmRemote)
-    lines = cluster_login_node.run(
-        f"sacct --noheader --allocations --starttime=now-{since.seconds}seconds "
+    assert not isinstance(login_node, SlurmRemote)
+    lines = login_node.run(
+        f"sacct --noheader --allocations "
+        f"--starttime=now-{int(since.total_seconds())}seconds "
         "--format=" + ",".join(f"{field}%40" for field in fields),
         echo=True,
+        in_stream=False,
     ).stdout.splitlines()
     # note: using maxsplit because the State field can contain spaces: "canceled by ..."
-    return [line.strip().split(maxsplit=len(fields)) for line in lines]
+    return [tuple(line.strip().split(maxsplit=len(fields))) for line in lines]
 
 
-@pytest.fixture(scope="session")
-def allocation_flags(login_node: Remote, request: pytest.FixtureRequest):
-    account = get_slurm_account(login_node)
+def sleep_so_sacct_can_update():
+    print("Sleeping so sacct can update...")
+    time.sleep(_SACCT_UPDATE_DELAY.total_seconds())
+
+
+@pytest.fixture()
+def allocation_flags(cluster: str, request: pytest.FixtureRequest):
+    # note: thanks to lru_cache, this is only making one ssh connection per cluster.
+    account = get_slurm_account(cluster)
     allocation_options = {
         "job-name": JOB_NAME,
         "wckey": WCKEY,
@@ -169,14 +196,12 @@ def test_cluster_setup(login_node: Remote, allocation_flags: str):
     assert compute_node
     assert job_id.isdigit()
 
+    sleep_so_sacct_can_update()
+
     # NOTE: the job should be done by now, since `.run` of the Remote is called with
     # asynchronous=False.
-    sacct_output = login_node.get_output(
-        "sacct --noheader --allocations --starttime=now-1minutes "
-        "--format=JobID,JobName,Node%30,State"
-    )
-    assert compute_node in sacct_output
-    assert job_id in sacct_output
+    sacct_output = get_recent_jobs_info(login_node, fields=("JobID", "JobName", "Node"))
+    assert (job_id, JOB_NAME, compute_node) in sacct_output
 
 
 @pytest.fixture
@@ -239,10 +264,10 @@ def test_run(
     login_node_hostname = login_node.get_output("hostname")
     assert login_node_hostname != compute_node
 
-    time.sleep(1)
+    sleep_so_sacct_can_update()
 
     sacct_output = get_recent_jobs_info(login_node, fields=("JobID", "JobName", "Node"))
-    assert [job_id, JOB_NAME, compute_node] in sacct_output
+    assert (job_id, JOB_NAME, compute_node) in sacct_output
 
 
 @requires_access_to_slurm_cluster
@@ -259,7 +284,7 @@ def test_ensure_allocation(
         TODO: What should it be?
         - connected to the login node (what's currently happening)
         - connected to the compute node through the interactive terminal of salloc on
-          the login node.)
+          the login node.
 
     FIXME:  It should be made impossible / a critical error to make more than a single
     call to `run` or `ensure_allocation` on a SlurmRemote, because every call to `run`
@@ -268,19 +293,8 @@ def test_ensure_allocation(
     transform adds either `salloc` or `sbatch`, hence every call to `run` launches
     either an interactive or batch job!)
     """
-    # todo: test using this kind of workflow:
-    # from milatools.cli.commands import _find_allocation
-    # cnode = _find_allocation(
-    #     remote, job_name="mila-code", job=job, node=node, alloc=alloc
-    # )
-    # if persist:
-    #     cnode = cnode.persist()
-    # data, proc = cnode.ensure_allocation()
-
     data, remote_runner = salloc_slurm_remote.ensure_allocation()
     assert isinstance(remote_runner, fabric.runners.Remote)
-    # Mark this as the start time.
-    datetime.datetime.now()
 
     assert "node_name" in data
     # NOTE: it very well could be if we also extracted it from the salloc output.
@@ -289,21 +303,23 @@ def test_ensure_allocation(
 
     # Check that salloc was called. This would be printed to stderr by fabric if we were
     # using `run`, but `ensure_allocation` uses `extract` which somehow doesn't print it
-    stdout, stderr = capsys.readouterr()
+    salloc_stdout, salloc_stderr = capsys.readouterr()
     # assert not stdout
     # assert not stderr
-    assert "salloc: Granted job allocation" in stdout
+    assert "salloc: Granted job allocation" in salloc_stdout
     assert (
-        f"salloc: Nodes {compute_node_from_salloc_output} are ready for job" in stdout
+        f"salloc: Nodes {compute_node_from_salloc_output} are ready for job"
+        in salloc_stdout
     )
-    assert not stderr
+    assert not salloc_stderr
 
     # Check that the returned remote runner is indeed connected to a *login* node (?!)
-    # NOTE: This is a fabric.runners.Remote, not a Remote or SlurmRemote of milatools.
+    # NOTE: This is a fabric.runners.Remote, not a Remote or SlurmRemote of milatools,
+    # so calling `.run` doesn't launch a job.
     result = remote_runner.run("hostname", echo=True, in_stream=False)
     assert result
     hostname_from_remote_runner = result.stdout.strip()
-    result2 = login_node._run("hostname", echo=True, in_stream=False)
+    result2 = login_node.run("hostname", echo=True, in_stream=False)
     assert result2
     hostname_from_login_node_runner = result2.stdout.strip()
     assert hostname_from_remote_runner == hostname_from_login_node_runner
@@ -321,7 +337,6 @@ def test_ensure_allocation(
     # assert result
     # assert not result.stderr
     # assert result.stdout.strip()
-
     # job_id, compute_node = result.stdout.strip().split()
     # # cn-a001 vs cn-a001.server.mila.quebec for example.
     # assert compute_node.startswith(compute_node_from_salloc_output)
@@ -337,36 +352,33 @@ def test_ensure_allocation(
     #     assert [JOB_NAME, compute_node_from_salloc_output, "RUNNING"] in sacct_output
 
     print(f"Sleeping for {MAX_JOB_DURATION.total_seconds()}s until job finishes...")
-    time.sleep(MAX_JOB_DURATION.total_seconds() + 1)
+    time.sleep(MAX_JOB_DURATION.total_seconds())
 
     sacct_output = get_recent_jobs_info(login_node, fields=("JobName", "Node", "State"))
-    assert [JOB_NAME, compute_node_from_salloc_output, "COMPLETED"] in sacct_output
+    assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output
 
 
 @requires_access_to_slurm_cluster
 def test_ensure_allocation_sbatch(login_node: Remote, sbatch_slurm_remote: SlurmRemote):
-    # todo: test using this kind of workflow:
-    # from milatools.cli.commands import _find_allocation
-    # cnode = _find_allocation(
-    #     remote, job_name="mila-code", job=job, node=node, alloc=alloc
-    # )
-    # if persist:
-    #     cnode = cnode.persist()
-    # data, proc = cnode.ensure_allocation()
-
     job_data, login_node_remote_runner = sbatch_slurm_remote.ensure_allocation()
     print(job_data, login_node_remote_runner)
     assert isinstance(login_node_remote_runner, fabric.runners.Remote)
 
-    node_name_from_sbatch_output = job_data["node_name"]
+    node_hostname = job_data["node_name"]
     assert "jobid" in job_data
     job_id_from_sbatch_extract = job_data["jobid"]
 
-    time.sleep(1)  # Let enough time for sacct to update.
+    sleep_so_sacct_can_update()
 
-    sacct_output = get_recent_jobs_info(login_node, fields=("JobId", "JobName", "Node"))
-    assert [
-        job_id_from_sbatch_extract,
-        JOB_NAME,
-        node_name_from_sbatch_output,
-    ] in sacct_output
+    job_infos = get_recent_jobs_info(login_node, fields=("JobId", "JobName", "Node"))
+    # NOTE: `.extract`, used by `ensure_allocation`, actually returns the full node
+    # hostname as an output (e.g. cn-a001.server.mila.quebec), but sacct only shows the
+    # node name.
+    assert any(
+        (
+            job_id_from_sbatch_extract == job_id
+            and JOB_NAME == job_name
+            and node_hostname.startswith(node_name)
+            for job_id, job_name, node_name in job_infos
+        )
+    )
