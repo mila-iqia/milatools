@@ -183,6 +183,7 @@ class Remote:
         warn: bool = False,
         asynchronous: Literal[False] = False,
         out_stream: TextIO | None = None,
+        in_stream: TextIO | bool = False,
         **kwargs,
     ) -> invoke.runners.Result:
         ...
@@ -197,6 +198,7 @@ class Remote:
         warn: bool = False,
         asynchronous: Literal[True] = True,
         out_stream: TextIO | None = None,
+        in_stream: TextIO | bool = False,
         **kwargs,
     ) -> invoke.runners.Promise:
         ...
@@ -211,6 +213,7 @@ class Remote:
         warn: bool = False,
         asynchronous: bool = ...,
         out_stream: TextIO | None = None,
+        in_stream: TextIO | bool = False,
         **kwargs,
     ) -> invoke.runners.Result | invoke.runners.Promise:
         ...
@@ -503,7 +506,7 @@ class SlurmRemote(Remote):
                 patterns={
                     "node_name": "salloc: Nodes ([^ ]+) are ready for job",
                     # TODO: This would also work!
-                    "jobid": "salloc: Granted job allocation ([0-9]+)",
+                    # "jobid": "salloc: Granted job allocation ([0-9]+)",
                 },
             )
             # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
