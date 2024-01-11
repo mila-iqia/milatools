@@ -270,6 +270,12 @@ def test_run(
     assert (job_id, JOB_NAME, compute_node) in sacct_output
 
 
+hangs_in_github_CI = pytest.mark.skipif(
+    SLURM_CLUSTER == "localhost", reason="BUG: Hangs in the GitHub CI.."
+)
+
+
+@hangs_in_github_CI
 @requires_access_to_slurm_cluster
 def test_ensure_allocation(
     login_node: Remote,
@@ -358,6 +364,7 @@ def test_ensure_allocation(
     assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output
 
 
+@hangs_in_github_CI
 @requires_access_to_slurm_cluster
 def test_ensure_allocation_sbatch(login_node: Remote, sbatch_slurm_remote: SlurmRemote):
     job_data, login_node_remote_runner = sbatch_slurm_remote.ensure_allocation()
