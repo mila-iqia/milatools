@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import difflib
 import json
-import shlex
 import shutil
 import subprocess
 import sys
@@ -239,7 +238,7 @@ def get_windows_home_path_in_wsl() -> Path:
 
 
 def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
-    local.run(*shlex.split(f"ssh-keygen -f {ssh_private_key_path} -t rsa"), "-N=''")
+    local.run("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''")
 
 
 def setup_vscode_settings():
