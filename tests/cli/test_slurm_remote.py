@@ -250,8 +250,11 @@ def test_run(
     assert compute_node
     assert job_id.isdigit()
 
-    # This stuff gets printed out when you do an `srun` on the login node.
-    assert "srun: ----" in result.stderr
+    # This stuff gets printed out when you do an `srun` on the login node (at least it
+    # does on the Mila cluster. Doesn't seem to be the case when using the slurm cluster
+    # on localhost in the CI.)
+    if login_node.hostname != "localhost":
+        assert "srun: ----" in result.stderr
 
     # NOTE: the job should be done by now, since `.run` of the Remote is called with
     # asynchronous=False.
