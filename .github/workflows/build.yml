@@ -132,6 +132,7 @@ jobs:
 
       - name: Launch integration tests
         run: poetry run pytest tests/cli/test_slurm_remote.py --cov=milatools --cov-report=xml --cov-append -s -vvv --log-level=DEBUG
+        timeout-minutes: 3
         env:
           SLURM_CLUSTER: localhost
 
