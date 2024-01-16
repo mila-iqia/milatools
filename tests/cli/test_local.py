@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import shlex
+import subprocess
 from subprocess import PIPE
+from unittest import mock
 
 import pytest
+from pytest_mock import MockerFixture
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local
 
 from .common import output_tester, requires_no_s_flag, xfails_on_windows
+from .test_remote import passwordless_ssh_connection_to_localhost_is_setup
 
 _ECHO_CMD = pytest.param(
     ["echo", "--arg1", "val1", "--arg2=val2", "X"],
@@ -102,3 +107,27 @@ def test_popen(
         capsys,
         file_regression,
     )
+
+
+def test_check_passwordless(mocker: MockerFixture):
+    mock_subprocess_run: mock.Mock = mocker.patch(
+        "subprocess.run", wraps=subprocess.run
+    )
+    hostname = "localhost"
+    local = Local()
+    result = local.check_passwordless(hostname)
+
+    mock_subprocess_run.assert_called_once_with(
+        tuple(
+            shlex.split(
+                "ssh -oPreferredAuthentications=publickey -oStrictHostKeyChecking=no "
+                f"{hostname} 'echo OK'"
+            )
+        ),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        capture_output=False,
+        timeout=None,
+        universal_newlines=True,
+    )
+    assert result == passwordless_ssh_connection_to_localhost_is_setup
