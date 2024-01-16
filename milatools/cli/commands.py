@@ -552,9 +552,10 @@ def code(
     if not command_path:
         raise CommandNotFoundError(command)
 
-    # NOTE: Since we have the config entries for the compute nodes, there is no need to
-    # use the fully qualified hostname here.
-    # node_name = qualified(node_name)
+    # NOTE: Since we have the config entries for the DRAC compute nodes, there is no
+    # need to use the fully qualified hostname here.
+    if cluster == "mila":
+        node_name = get_fully_qualified_hostname_of_compute_node(node_name)
 
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open VSCode without
