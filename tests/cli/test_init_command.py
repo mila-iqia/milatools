@@ -26,7 +26,7 @@ from milatools.cli.init_command import (
 )
 from milatools.cli.local import Local
 from milatools.cli.utils import SSHConfig, running_inside_WSL
-from tests.cli.common import xfails_on_windows
+from tests.cli.common import on_windows, xfails_on_windows
 
 
 def raises_NoConsoleScreenBufferError_on_windows_ci_action():
@@ -614,7 +614,6 @@ class TestSetupSshFile:
         assert file.stat().st_mode & 0o777 == 0o600
 
 
-@permission_bits_check_doesnt_work_on_windows()
 def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     here = Local()
     mock_run = Mock(
@@ -624,9 +623,11 @@ def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     fake_ssh_folder = tmp_path / "fake_ssh"
     fake_ssh_folder.mkdir(mode=0o700)
     ssh_private_key_path = fake_ssh_folder / "bob"
+
     create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, local=here)
+
     mock_run.assert_called_once_with(
-        ("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N", '""'),
+        ("ssh-keygen", "-f", f"{ssh_private_key_path}", "-t", "rsa", "-N="),
         universal_newlines=True,
         capture_output=False,
         stderr=None,
@@ -634,10 +635,12 @@ def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         timeout=None,
     )
     assert ssh_private_key_path.exists()
-    assert ssh_private_key_path.stat().st_mode & 0o777 == 0o600
+    if not on_windows:
+        assert ssh_private_key_path.stat().st_mode & 0o777 == 0o600
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
-    assert ssh_public_key_path.stat().st_mode & 0o777 == 0o644
+    if not on_windows:
+        assert ssh_public_key_path.stat().st_mode & 0o777 == 0o644
 
 
 @pytest.fixture

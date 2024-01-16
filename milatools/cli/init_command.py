@@ -240,13 +240,9 @@ def get_windows_home_path_in_wsl() -> Path:
 
 def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
     local.run(
-        "ssh-keygen",
-        "-f",
-        shlex.quote(str(ssh_private_key_path)),
-        "-t",
-        "rsa",
-        "-N",
-        '""',
+        *shlex.split(
+            f'ssh-keygen -f {shlex.quote(str(ssh_private_key_path))} -t rsa -N=""'
+        ),
     )
 
 
