@@ -246,7 +246,7 @@ def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
         "-t",
         "rsa",
         "-N",
-        "''",
+        '""',
     )
 
 

@@ -626,7 +626,7 @@ def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     ssh_private_key_path = fake_ssh_folder / "bob"
     create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, local=here)
     mock_run.assert_called_once_with(
-        ("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''"),
+        ("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N", '""'),
         universal_newlines=True,
         capture_output=False,
         stderr=None,
