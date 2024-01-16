@@ -457,9 +457,7 @@ class SlurmRemote(Remote):
         self.puttext(batch, batch_file)
         self.simple_run(f"chmod +x {batch_file}")
         cmd = shjoin(["sbatch", *self.alloc, f"~/{batch_file}"])
-        return (
-            f"cd $SCRATCH && {cmd}; touch {output_file}; tail -n +1 -f {output_file}"
-        )
+        return f"cd $SCRATCH && {cmd}; touch {output_file}; tail -n +1 -f {output_file}"
 
     def with_transforms(
         self, *transforms: Callable[[str], str], persist: bool | None = None
@@ -519,8 +517,10 @@ class SlurmRemote(Remote):
             # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to
             # a single one, though, so we will simply pick the first one.
             node_name = get_first_node_name(results["node_name"])
+            # TODO: Is the `remote` object here connected to the compute node?
+            # remote.hostname = node_name
             return {
                 "node_name": node_name,
-                # TODO: This would also work!
+                # TODO: This would also work, there is output with the jobid in salloc.
                 # "jobid": results["jobid"],
             }, proc
