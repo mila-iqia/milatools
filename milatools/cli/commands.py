@@ -546,10 +546,7 @@ def code(
     if not path.startswith("/"):
         # Get $HOME because we have to give the full path to code
         home = remote.home()
-        if path == ".":
-            path = home
-        else:
-            path = "/".join([home, path])
+        path = home if path == "." else f"{home}/{path}"
 
     command_path = shutil.which(command)
     if not command_path:
