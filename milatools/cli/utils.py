@@ -60,6 +60,7 @@ Cluster = Union[ClusterWithInternetOnCNodes, ClusterWithoutInternetOnCNodes]
 CLUSTERS: list[Cluster] = list(
     get_args(ClusterWithInternetOnCNodes) + get_args(ClusterWithoutInternetOnCNodes)
 )
+DRAC_CLUSTERS: list[Cluster] = [c for c in CLUSTERS if c != "mila"]
 
 
 def no_internet_on_compute_nodes(
