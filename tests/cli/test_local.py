@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from subprocess import PIPE
 
 import pytest
@@ -32,11 +31,17 @@ def test_display(
     output_tester(lambda: (Local().display(cmd), None), capsys, file_regression)
 
 
-@xfails_on_windows(
+prints_unexpected_text_to_stdout_on_windows = xfails_on_windows(
     raises=AssertionError,
     strict=False,
-    reason="BUG: There is somehow some text being printed to stdout during this test on windows.",
+    reason=(
+        "BUG: There is somehow some text being printed to stdout during this test on "
+        "windows."
+    ),
 )
+
+
+@prints_unexpected_text_to_stdout_on_windows
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_silent_get(
     cmd: list[str],
@@ -46,11 +51,7 @@ def test_silent_get(
     output_tester(lambda: (Local().silent_get(*cmd), None), capsys, file_regression)
 
 
-@xfails_on_windows(
-    raises=AssertionError,
-    strict=False,
-    reason="BUG: There is somehow some text being printed to stdout during this test on windows.",
-)
+@prints_unexpected_text_to_stdout_on_windows
 @requires_no_s_flag
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_get(
@@ -61,10 +62,7 @@ def test_get(
     output_tester(lambda: (Local().get(*cmd), None), capsys, file_regression)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="TODO: The output of this test varies between Windows and Ubuntu.",
-)
+@prints_unexpected_text_to_stdout_on_windows
 @requires_no_s_flag
 @pytest.mark.parametrize("cmd", [_ECHO_CMD, _FAKE_CMD, _FAIL_CODE_CMD])
 def test_run(
@@ -91,11 +89,7 @@ def test_run(
         output_tester(func, capsys, file_regression)
 
 
-@xfails_on_windows(
-    raises=AssertionError,
-    strict=False,
-    reason="BUG: There is somehow some text being printed to stdout during this test on windows.",
-)
+@prints_unexpected_text_to_stdout_on_windows
 @requires_no_s_flag
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_popen(
