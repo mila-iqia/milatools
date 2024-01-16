@@ -35,5 +35,5 @@ bob
 and produced the following command as output:
 
 ```bash
-cd ~/scratch && sbatch --time=00:01:00 '~/.milatools/batch/batch-1234567890.sh'; touch .milatools/batch/out-1234567890.txt; tail -n +1 -f .milatools/batch/out-1234567890.txt
+cd $SCRATCH && sbatch --time=00:01:00 '~/.milatools/batch/batch-1234567890.sh'; touch .milatools/batch/out-1234567890.txt; tail -n +1 -f .milatools/batch/out-1234567890.txt
 ```

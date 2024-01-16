@@ -458,7 +458,7 @@ class SlurmRemote(Remote):
         self.simple_run(f"chmod +x {batch_file}")
         cmd = shjoin(["sbatch", *self.alloc, f"~/{batch_file}"])
         return (
-            f"cd ~/scratch && {cmd}; touch {output_file}; tail -n +1 -f {output_file}"
+            f"cd $SCRATCH && {cmd}; touch {output_file}; tail -n +1 -f {output_file}"
         )
 
     def with_transforms(
