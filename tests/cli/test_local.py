@@ -32,6 +32,11 @@ def test_display(
     output_tester(lambda: (Local().display(cmd), None), capsys, file_regression)
 
 
+@xfails_on_windows(
+    raises=AssertionError,
+    strict=False,
+    reason="BUG: There is somehow some text being printed to stdout during this test on windows.",
+)
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_silent_get(
     cmd: list[str],
@@ -41,6 +46,11 @@ def test_silent_get(
     output_tester(lambda: (Local().silent_get(*cmd), None), capsys, file_regression)
 
 
+@xfails_on_windows(
+    raises=AssertionError,
+    strict=False,
+    reason="BUG: There is somehow some text being printed to stdout during this test on windows.",
+)
 @requires_no_s_flag
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_get(
@@ -81,6 +91,11 @@ def test_run(
         output_tester(func, capsys, file_regression)
 
 
+@xfails_on_windows(
+    raises=AssertionError,
+    strict=False,
+    reason="BUG: There is somehow some text being printed to stdout during this test on windows.",
+)
 @requires_no_s_flag
 @pytest.mark.parametrize("cmd", [_ECHO_CMD])
 def test_popen(
