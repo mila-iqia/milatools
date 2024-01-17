@@ -31,6 +31,7 @@ class Local:
         stderr: int | IO[Any] | None = None,
         capture_output: bool = False,
         timeout: float | None = None,
+        check: bool = False,
     ) -> CompletedProcess[str]:
         self.display(cmd)
         try:
@@ -41,6 +42,7 @@ class Local:
                 capture_output=capture_output,
                 universal_newlines=True,
                 timeout=timeout,
+                check=check,
             )
         except FileNotFoundError as e:
             if e.filename == cmd[0]:
