@@ -81,6 +81,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         **ssh_multiplexing_config,
     },
 }
+DRAC_CLUSTERS = ["beluga", "cedar", "graham", "narval", "niagara"]
 DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     "beluga cedar graham narval niagara": {
         "Hostname": "%h.computecanada.ca",
@@ -233,6 +234,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
 
     # Check that there is an id file
     ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
 
     sshdir = os.path.expanduser("~/.ssh")
     if not any(
@@ -264,36 +266,51 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
         else:
             exit("No passwordless login.")
 
-    # Check the connection to the DRAC clusters.
-    # TODO: Replcae this hard-coded list with some constant
-    for cluster in ["beluga", "narval", "cedar", "graham"]:
-        if all(cluster not in hostname for hostname in ssh_config.hosts()):
-            logger.debug(
-                f"Skipping {cluster} cluster because it is not in the ssh config"
-            )
-            continue
+    drac_clusters_in_ssh_config: list[str] = []
+    hosts_in_config = ssh_config.hosts()
+    for cluster in DRAC_CLUSTERS:
+        if any(cluster in hostname for hostname in hosts_in_config):
+            drac_clusters_in_ssh_config.append(cluster)
 
-        if here.check_passwordless(cluster, timeout=10):
-            logger.debug(
-                f"Passwordless authentication to {cluster} cluster is already setup."
-            )
-            continue
-        if yn(
-            f"Your public key does not appear be registered on the {cluster} cluster. "
-            "Register it?"
-        ):
-            here.run("ssh-copy-id", cluster)
-            if not here.check_passwordless(cluster):
-                exit(f"'ssh-copy-id {cluster}' appears to have failed!")
-        else:
-            exit("No passwordless login.")
+    if not drac_clusters_in_ssh_config:
+        return
 
+    # TODO: Print the public key content and give a link to the DRAC website so users
+    # can put the key in themselves.
+
+    # NOTE: Because of how ssh is setup on the DRAC clusters, we're not able to easily
+    # check if the connection to the DRAC clusters is passwordless or not.
+    print(
+        "To setup passwordless SSH access to DRAC clusters, please visit the "
+        "following link and copy in the content of your public key:\n"
+        "\n"
+        "https://ccdb.alliancecan.ca/ssh_authorized_keys\n"
+        "\n"
+        f"Here's the content of your public key file at {ssh_public_key_path} which "
+        "you should copy into the box:\n" + ssh_public_key_path.read_text()
+    )
+    # webbrowser.open("https://ccdb.alliancecan.ca/ssh_authorized_keys")
+    return
+    # NOTE: TODO: Using ssh-copy-id works but is a bit tedious. We also can't reliably
+    # check if passwordless ssh is setup on the DRAC clusters because of the password
+    # prompt.
+    # for cluster in clusters_without_passwordless_ssh:
+    #     if yn(
+    #         f"Your public key does not appear be registered on {cluster}. "
+    #         "Register it?"
+    #     ):
+    #         here.run("ssh-copy-id", cluster)
+    #         if not here.check_passwordless(cluster):
+    #             exit(f"'ssh-copy-id {cluster}' appears to have failed!")
+    #     else:
+    #         exit("No passwordless login.")
+
+
+def setup_keys_on_login_node():
     #####################################
     # Step 3: Set up keys on login node #
     #####################################
 
-
-def setup_keys_on_login_node():
     print("Checking connection to compute nodes")
 
     remote = Remote("mila")
