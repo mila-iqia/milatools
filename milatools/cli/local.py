@@ -5,6 +5,8 @@ from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import IO, Any
 
+import fabric
+import paramiko.ssh_exception
 from typing_extensions import deprecated
 
 from .utils import CommandNotFoundError, T, shjoin
@@ -14,14 +16,14 @@ logger = get_logger(__name__)
 
 class Local:
     def display(self, args: list[str] | tuple[str, ...]) -> None:
-        print(T.bold_green("(local) $ ", shjoin(args)))
+        display(args)
 
     def silent_get(self, *cmd: str) -> str:
         return subprocess.check_output(cmd, universal_newlines=True)
 
     @deprecated("This isn't used and will probably be removed. Don't start using it.")
     def get(self, *cmd: str) -> str:
-        self.display(cmd)
+        display(cmd)
         return subprocess.check_output(cmd, universal_newlines=True)
 
     def run(
@@ -33,7 +35,7 @@ class Local:
         timeout: float | None = None,
         check: bool = False,
     ) -> CompletedProcess[str]:
-        self.display(cmd)
+        display(cmd)
         try:
             return subprocess.run(
                 cmd,
@@ -60,34 +62,30 @@ class Local:
             cmd, stdout=stdout, stderr=stderr, universal_newlines=True
         )
 
-    def check_passwordless(self, host: str, timeout: int | None = None):
-        try:
-            results = self.run(
-                "ssh",
-                "-oPreferredAuthentications=publickey",
-                "-oStrictHostKeyChecking=no",
-                host,
+    def check_passwordless(self, host: str):
+        return check_passwordless(host)
+
+
+def display(split_command: list[str] | tuple[str, ...]) -> None:
+    print(T.bold_green("(local) $ ", shjoin(split_command)))
+
+
+def check_passwordless(host: str) -> bool:
+    try:
+        with fabric.Connection(host) as connection:
+            results: fabric.runners.Result = connection.run(
                 "echo OK",
-                capture_output=True,
-                check=True,
-                timeout=timeout,
+                in_stream=False,
+                echo=True,
+                echo_format=T.bold_cyan(f"({host})" + " $ {command}"),
             )
 
-        except subprocess.TimeoutExpired:
-            logger.debug(
-                f"Timeout ({timeout}s) while connecting to {host}, must be waiting "
-                f"for a password."
-            )
-            return False
-        except subprocess.CalledProcessError as err:
-            logger.debug(
-                f"Unable to connect to {host} without a password: {err.stderr}"
-            )
-            return False
-
-        if "OK" in results.stdout:
-            print("# OK")
-            return True
-        logger.error("Unexpected output from SSH command, output didn't contain 'OK'!")
-        logger.error(f"stdout: {results.stdout}, stderr: {results.stderr}")
+    except paramiko.ssh_exception.AuthenticationException as err:
+        logger.debug(f"Unable to connect to {host} without a password: {err}")
         return False
+
+    if "OK" in results.stdout:
+        return True
+    logger.error("Unexpected output from SSH command, output didn't contain 'OK'!")
+    logger.error(f"stdout: {results.stdout}, stderr: {results.stderr}")
+    return False

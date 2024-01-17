@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import subprocess
+import functools
+import os
 from subprocess import PIPE
-from unittest import mock
 
 import pytest
-from pytest_mock import MockerFixture
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.local import CommandNotFoundError, Local
+from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
 
 from .common import output_tester, requires_no_s_flag, xfails_on_windows
 from .test_remote import passwordless_ssh_connection_to_localhost_is_setup
@@ -108,53 +107,24 @@ def test_popen(
     )
 
 
-def test_check_passwordless(mocker: MockerFixture):
-    mock_subprocess_run: mock.Mock = mocker.patch(
-        "subprocess.run", wraps=subprocess.run
-    )
-    hostname = "localhost"
-    local = Local()
-    result = local.check_passwordless(hostname)
-    mock_subprocess_run.assert_called_once()
-    assert result == passwordless_ssh_connection_to_localhost_is_setup
+skip_if_on_github_CI = pytest.mark.skipif(
+    "PLATFORM" in os.environ, reason="This test shouldn't run on the Github CI."
+)
+skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_github_CI)
 
 
-def test_check_passwordless_permission_denied(mocker: MockerFixture):
-    mock_subprocess_run: mock.Mock = mocker.patch(
-        "subprocess.run", wraps=subprocess.run
-    )
-    hostname = "blablabob@localhost"
-    local = Local()
-    result = local.check_passwordless(hostname)
-    mock_subprocess_run.assert_called_once()
-    assert result is False
-
-
-@pytest.mark.parametrize("output", [None, "some unexpected output"])
-def test_check_passwordless_timeout(mocker: MockerFixture, output: str | None):
-    mock_subprocess_run: mock.Mock = mocker.patch(
-        "subprocess.run",
-        spec=subprocess.run,
-        side_effect=subprocess.TimeoutExpired("ssh", 1, output=output),
-    )
-    local = Local()
-    result = local.check_passwordless("doesnt_matter", timeout=1)
-    mock_subprocess_run.assert_called_once()
-    assert result is False
-
-
-def test_check_passwordless_weird_output(mocker: MockerFixture):
-    mock_subprocess_run: mock.Mock = mocker.patch(
-        "subprocess.run",
-        spec=subprocess.run,
-        side_effect=[
-            subprocess.CompletedProcess(
-                args=["ssh", "..."], returncode=0, stdout="something unexpected"
-            )
-        ],
-    )
-    hostname = "blablabob@localhost"
-    local = Local()
-    result = local.check_passwordless(hostname)
-    mock_subprocess_run.assert_called_once()
-    assert result is False
+@pytest.mark.parametrize(
+    ("hostname", "expected"),
+    [
+        ("localhost", passwordless_ssh_connection_to_localhost_is_setup),
+        ("blablabob@localhost", False),
+        skip_param_if_on_github_ci("narval", True),
+        skip_param_if_on_github_ci("blablabob@narval", False),
+        skip_param_if_on_github_ci("beluga", True),
+        skip_param_if_on_github_ci("cedar", True),
+        skip_param_if_on_github_ci("graham", True),
+        skip_param_if_on_github_ci("niagara", False),  # Not enabled by default.
+    ],
+)
+def test_check_passwordless(hostname: str, expected: bool):
+    assert check_passwordless(hostname) == expected
