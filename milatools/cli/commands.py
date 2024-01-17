@@ -50,9 +50,10 @@ from .utils import (
     with_control_file,
 )
 
-logger = get_logger(__name__)
 if typing.TYPE_CHECKING:
     from typing_extensions import Unpack
+
+logger = get_logger(__name__)
 
 
 def main():

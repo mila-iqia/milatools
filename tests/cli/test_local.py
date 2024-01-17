@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shlex
 import subprocess
 from subprocess import PIPE
 from unittest import mock
@@ -116,18 +115,46 @@ def test_check_passwordless(mocker: MockerFixture):
     hostname = "localhost"
     local = Local()
     result = local.check_passwordless(hostname)
-
-    mock_subprocess_run.assert_called_once_with(
-        tuple(
-            shlex.split(
-                "ssh -oPreferredAuthentications=publickey -oStrictHostKeyChecking=no "
-                f"{hostname} 'echo OK'"
-            )
-        ),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        capture_output=False,
-        timeout=None,
-        universal_newlines=True,
-    )
+    mock_subprocess_run.assert_called_once()
     assert result == passwordless_ssh_connection_to_localhost_is_setup
+
+
+def test_check_passwordless_permission_denied(mocker: MockerFixture):
+    mock_subprocess_run: mock.Mock = mocker.patch(
+        "subprocess.run", wraps=subprocess.run
+    )
+    hostname = "blablabob@localhost"
+    local = Local()
+    result = local.check_passwordless(hostname)
+    mock_subprocess_run.assert_called_once()
+    assert result is False
+
+
+@pytest.mark.parametrize("output", [None, "some unexpected output"])
+def test_check_passwordless_timeout(mocker: MockerFixture, output: str | None):
+    mock_subprocess_run: mock.Mock = mocker.patch(
+        "subprocess.run",
+        spec=subprocess.run,
+        side_effect=subprocess.TimeoutExpired("ssh", 1, output=output),
+    )
+    local = Local()
+    result = local.check_passwordless("doesnt_matter", timeout=1)
+    mock_subprocess_run.assert_called_once()
+    assert result is False
+
+
+def test_check_passwordless_weird_output(mocker: MockerFixture):
+    mock_subprocess_run: mock.Mock = mocker.patch(
+        "subprocess.run",
+        spec=subprocess.run,
+        side_effect=[
+            subprocess.CompletedProcess(
+                args=["ssh", "..."], returncode=0, stdout="something unexpected"
+            )
+        ],
+    )
+    hostname = "blablabob@localhost"
+    local = Local()
+    result = local.check_passwordless(hostname)
+    mock_subprocess_run.assert_called_once()
+    assert result is False

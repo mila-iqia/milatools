@@ -68,31 +68,26 @@ class Local:
                 "-oStrictHostKeyChecking=no",
                 host,
                 "echo OK",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
+                check=True,
                 timeout=timeout,
             )
-        except subprocess.TimeoutExpired as err:
-            if err.stdout is None and err.stderr is None:
-                logger.debug(
-                    f"Timeout ({timeout}s) while connecting to {host}, must be waiting "
-                    f"for a password."
-                )
-                return False
+
+        except subprocess.TimeoutExpired:
             logger.debug(
-                f"Timeout while connecting to {host}, and got unexpected output:\n"
-                f"stdout: {err.stdout}\n"
-                f"stderr: {err.stderr}"
+                f"Timeout ({timeout}s) while connecting to {host}, must be waiting "
+                f"for a password."
+            )
+            return False
+        except subprocess.CalledProcessError as err:
+            logger.debug(
+                f"Unable to connect to {host} without a password: {err.stderr}"
             )
             return False
 
-        if results.returncode != 0:
-            if "Permission denied" in results.stderr:
-                return False
-            else:
-                print(results.stdout)
-                print(results.stderr)
-                exit(f"Failed to connect to {host}, could not understand error")
-        else:
+        if "OK" in results.stdout:
             print("# OK")
             return True
+        logger.error("Unexpected output from SSH command, output didn't contain 'OK'!")
+        logger.error(f"stdout: {results.stdout}, stderr: {results.stderr}")
+        return False
