@@ -16,6 +16,7 @@ jobs:
         python-version: [3.9]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    environment: release
     steps:
     - uses: actions/checkout@v4
     - name: Install poetry
@@ -33,4 +34,6 @@ jobs:
       run: poetry install
 
     - name: Publish package
+      env:
+        POETRY_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
       run: poetry publish --build
