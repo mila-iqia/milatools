@@ -20,6 +20,7 @@ from milatools.cli.init_command import (
     _setup_ssh_config_file,
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
+    setup_passwordless_ssh_access_to_cluster,
     setup_ssh_config,
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
@@ -871,3 +872,8 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     assert windows_private_key_path.read_text() == private_key_text
     assert windows_public_key_path.exists()
     assert windows_public_key_path.read_text() == public_key_text
+
+
+def test_setup_passwordless_ssh_access_to_cluster(input_pipe: PipeInput):
+    raise NotImplementedError("TODO: Add tests for this.")
+    setup_passwordless_ssh_access_to_cluster
