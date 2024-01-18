@@ -227,24 +227,32 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
         _copy_if_needed(linux_key_file, windows_key_file)
 
 
-def setup_passwordless_ssh_access(ssh_config: SSHConfig):
+def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
+    """Sets up passwordless ssh access to the Mila and optionally also to DRAC.
+
+    Sets up ssh connection to the DRAC clusters if they are present in the SSH config
+    file.
+
+    Returns whether the operation completed successfully or not.
+    """
     print("Checking passwordless authentication")
 
     here = Local()
-
-    # Check that there is an id file
     sshdir = Path.home() / ".ssh"
     ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+
+    # Check if there is a public key file in ~/.ssh
     if not list(sshdir.glob("id*.pub")):
         if yn("You have no public keys. Generate one?"):
             # Run ssh-keygen with the given location and no passphrase.
             create_ssh_keypair(ssh_private_key_path, here)
         else:
-            exit("No public keys.")
+            print("No public keys.")
+            return False
 
     success = setup_passwordless_ssh_access_to_cluster("mila")
     if not success:
-        exit()
+        return False
 
     drac_clusters_in_ssh_config: list[str] = []
     hosts_in_config = ssh_config.hosts()
@@ -253,7 +261,10 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
             drac_clusters_in_ssh_config.append(cluster)
 
     if not drac_clusters_in_ssh_config:
-        return
+        logger.debug(
+            f"There are no DRAC clusters in the SSH config at {ssh_config.path}."
+        )
+        return True
 
     print(
         "Setting up passwordless ssh access to the DRAC clusters with ssh-copy-id.\n"
@@ -266,7 +277,8 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
     for drac_cluster in drac_clusters_in_ssh_config:
         success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
         if not success:
-            exit()
+            return False
+    return True
 
 
 def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:

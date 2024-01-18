@@ -409,7 +409,9 @@ def init():
 
     # TODO: Move the rest of this command to functions in the init_command module,
     # so they can more easily be tested.
-    setup_passwordless_ssh_access(ssh_config=ssh_config)
+    success = setup_passwordless_ssh_access(ssh_config=ssh_config)
+    if not success:
+        exit()
     setup_keys_on_login_node()
     setup_vscode_settings()
     print_welcome_message()
