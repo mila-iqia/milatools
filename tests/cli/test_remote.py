@@ -11,11 +11,9 @@ from typing import Callable, Generator, Iterable
 from unittest.mock import Mock
 
 import invoke
-import paramiko.ssh_exception
 import pytest
 from fabric.connection import Connection
 from pytest_regressions.file_regression import FileRegressionFixture
-from typing_extensions import ParamSpec
 
 from milatools.cli.remote import (
     QueueIO,
@@ -25,33 +23,17 @@ from milatools.cli.remote import (
 )
 from milatools.cli.utils import T, shjoin
 
-from .common import function_call_string, requires_s_flag
-
-P = ParamSpec("P")
-
-passwordless_ssh_connection_to_localhost_is_setup = False
-
-try:
-    Connection("localhost").open()
-except (
-    paramiko.ssh_exception.SSHException,
-    paramiko.ssh_exception.NoValidConnectionsError,
-):
-    pass
-else:
-    passwordless_ssh_connection_to_localhost_is_setup = True
+from .common import (
+    function_call_string,
+    requires_s_flag,
+    requires_ssh_to_localhost,
+)
 
 
 @pytest.fixture(
     scope="session",
     params=[
-        pytest.param(
-            "localhost",
-            marks=pytest.mark.skipif(
-                not passwordless_ssh_connection_to_localhost_is_setup,
-                reason="Passwordless ssh access to localhost needs to be setup.",
-            ),
-        ),
+        pytest.param("localhost", marks=requires_ssh_to_localhost),
         # TODO: Think about a smart way to enable this. Some tests won't work as-is.
         # pytest.param(
         #     "mila",
@@ -261,7 +243,9 @@ and `result.stdout.strip()={repr(result.stdout.strip())}`.
 
 @pytest.fixture(scope="function")
 def remote(mock_connection: Connection):
-    return Remote(hostname=mock_connection.host, connection=mock_connection)
+    hostname = mock_connection.host
+    assert isinstance(hostname, str)
+    return Remote(hostname=hostname, connection=mock_connection)
 
 
 @pytest.mark.parametrize("message", ["foobar"])

@@ -7,6 +7,8 @@ import typing
 from subprocess import CompletedProcess
 from typing import Any, Callable
 
+import fabric
+import paramiko.ssh_exception
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
@@ -14,8 +16,28 @@ from typing_extensions import ParamSpec
 if typing.TYPE_CHECKING:
     from typing_extensions import TypeGuard
 
+in_github_CI = all(var in os.environ for var in ["CI", "GITHUB_ACTION", "GITHUB_ENV"])
+"""True if this is being run inside the GitHub CI."""
 
-P = ParamSpec("P")
+
+passwordless_ssh_connection_to_localhost_is_setup = False
+
+try:
+    with fabric.Connection("localhost"):
+        pass
+except (
+    paramiko.ssh_exception.SSHException,
+    paramiko.ssh_exception.NoValidConnectionsError,
+):
+    pass
+else:
+    passwordless_ssh_connection_to_localhost_is_setup = True
+
+requires_ssh_to_localhost = pytest.mark.skipif(
+    not passwordless_ssh_connection_to_localhost_is_setup,
+    reason="Test requires a SSH connection to localhost.",
+)
+
 
 REQUIRES_S_FLAG_REASON = (
     "Seems to require reading from stdin? Works with the -s flag, but other "
@@ -32,7 +54,9 @@ requires_no_s_flag = pytest.mark.skipif(
     reason="Passing pytest's -s flag makes this test fail.",
 )
 on_windows = sys.platform == "win32"
-in_github_windows_ci = os.environ.get("PLATFORM") == "windows-latest"
+in_github_windows_ci = in_github_CI and os.environ.get("PLATFORM") == "windows-latest"
+
+P = ParamSpec("P")
 
 
 def xfails_on_windows(

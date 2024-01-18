@@ -241,7 +241,9 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
         else:
             exit("No public keys.")
 
-    setup_passwordless_ssh_access_to_cluster("mila")
+    success = setup_passwordless_ssh_access_to_cluster("mila")
+    if not success:
+        exit()
 
     drac_clusters_in_ssh_config: list[str] = []
     hosts_in_config = ssh_config.hosts()
@@ -261,40 +263,55 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig):
         "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
     )
     for drac_cluster in drac_clusters_in_ssh_config:
-        setup_passwordless_ssh_access_to_cluster(drac_cluster)
+        success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
+        if not success:
+            exit()
 
 
-def setup_passwordless_ssh_access_to_cluster(cluster: str) -> None:
+def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
+    """Sets up passwordless SSH access to the given hostname.
+
+    On Mac/Linux, uses `ssh-copy-id`. Performs the steps of ssh-copy-id manually on
+    Windows.
+
+    Returns whether the operation completed successfully or not.
+    """
     here = Local()
     # Check that it is possible to connect without using a password.
-    # todo: the path to the key is hard-coded here.
-    print(f"Checking passwordless SSH access to the {cluster} cluster.")
+    print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
     # TODO: Potentially use the public key from the SSH config file instead of
     # the default. It's also possible that ssh-copy-id selects the key from the
     # config file, I'm not sure.
+    # ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+
     if check_passwordless(cluster):
-        logger.info(f"Passwordless SSH access to {cluster} is setup correctly.")
-        return
-    if yn(
+        logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
+        return True
+
+    if not yn(
         f"Your public key does not appear be registered on the {cluster} cluster. "
         "Register it?"
     ):
-        if sys.platform == "win32":
-            # todo: the path to the key is hard-coded here.
-            command = (
-                "powershell.exe type $env:USERPROFILE\\.ssh\\id_rsa.pub "
-                f"| ssh {cluster} "
-                '"cat >> ~/.ssh/authorized_keys"'
-            )
-            here.run(command)
-        else:
-            here.run("ssh-copy-id", cluster)
+        print("No passwordless login.")
+        return False
 
-        # double-check that this worked.
-        if not check_passwordless(cluster):
-            exit(f"'ssh-copy-id {cluster}' appears to have failed!")
+    print("Please enter your password when prompted.")
+    if sys.platform == "win32":
+        # todo: the path to the key is hard-coded here.
+        command = (
+            "powershell.exe type $env:USERPROFILE\\.ssh\\id_rsa.pub "
+            f"| ssh -o StrictHostKeyChecking=no {cluster} "
+            '"cat >> ~/.ssh/authorized_keys"'
+        )
+        here.run(command)
     else:
-        exit("No passwordless login.")
+        here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster)
+
+    # double-check that this worked.
+    if not check_passwordless(cluster):
+        print(f"'ssh-copy-id {cluster}' appears to have failed!")
+        return False
+    return True
 
 
 def setup_keys_on_login_node():

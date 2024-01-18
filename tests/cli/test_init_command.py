@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 import textwrap
 from functools import partial
+from logging import getLogger as get_logger
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+import pytest_mock
 import questionary
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
@@ -27,7 +31,16 @@ from milatools.cli.init_command import (
 )
 from milatools.cli.local import Local
 from milatools.cli.utils import SSHConfig, running_inside_WSL
-from tests.cli.common import on_windows, xfails_on_windows
+
+from .common import (
+    in_github_CI,
+    on_windows,
+    passwordless_ssh_connection_to_localhost_is_setup,
+    requires_ssh_to_localhost,
+    xfails_on_windows,
+)
+
+logger = get_logger(__name__)
 
 
 def raises_NoConsoleScreenBufferError_on_windows_ci_action():
@@ -874,6 +887,116 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     assert windows_public_key_path.read_text() == public_key_text
 
 
-def test_setup_passwordless_ssh_access_to_cluster(input_pipe: PipeInput):
-    raise NotImplementedError("TODO: Add tests for this.")
-    setup_passwordless_ssh_access_to_cluster
+BACKUP_SSH_DIR = Path.home() / ".ssh_backup"
+USE_MY_REAL_SSH_DIR = os.environ.get("USE_MY_REAL_SSH_DIR", "0") == "1"
+"""Set this to `True` for the tests below to actually use your real SSH directory.
+
+A backup is saved in `BACKUP_SSH_DIR`.
+"""
+
+
+@pytest.fixture
+def backup_ssh_dir():
+    """Creates a backup of the SSH config files."""
+    import shutil
+
+    assert passwordless_ssh_connection_to_localhost_is_setup
+    assert in_github_CI or USE_MY_REAL_SSH_DIR
+
+    ssh_dir = Path.home() / ".ssh"
+    backup_ssh_dir = BACKUP_SSH_DIR
+
+    ssh_dir_existed_before = ssh_dir.exists()
+
+    if ssh_dir_existed_before:
+        logger.warning(f"Backing up {ssh_dir} to {backup_ssh_dir}")
+        if backup_ssh_dir.exists():
+            shutil.rmtree(backup_ssh_dir)
+        shutil.copytree(ssh_dir, backup_ssh_dir, dirs_exist_ok=False)
+    else:
+        logger.warning(f"Test might temporarily create files in a new {ssh_dir} dir.")
+
+    yield backup_ssh_dir
+
+    if ssh_dir_existed_before:
+        logger.warning(f"Restoring {ssh_dir} from backup at {backup_ssh_dir}")
+        if ssh_dir.exists():
+            shutil.rmtree(ssh_dir)
+        shutil.copytree(backup_ssh_dir, ssh_dir, dirs_exist_ok=False)
+        shutil.rmtree(backup_ssh_dir)
+    else:
+        logger.warning(f"Removing temporarily generated sshdir at {ssh_dir}.")
+        shutil.rmtree(ssh_dir)
+
+
+@pytest.mark.skipif(
+    not (in_github_CI or USE_MY_REAL_SSH_DIR),
+    reason=(
+        "It's a bit risky to actually change the SSH config directory on a dev "
+        "machine. Only doing it in the CI or if the USE_MY_REAL_SSH_DIR env var is set."
+    ),
+)
+@pytest.mark.timeout(10)
+@requires_ssh_to_localhost
+@pytest.mark.parametrize("passwordless_to_cluster_is_already_setup", [True, False])
+@pytest.mark.parametrize("user_accepts_registering_key", [True, False])
+def test_setup_passwordless_ssh_access_to_cluster(
+    input_pipe: PipeInput,
+    backup_ssh_dir: Path,
+    mocker: pytest_mock.MockerFixture,
+    passwordless_to_cluster_is_already_setup: bool,
+    user_accepts_registering_key: bool,
+):
+    """Test the function that sets up passwordless SSH to a cluster (localhost in tests)
+
+    NOTE: Running this test will make a backup of the ~/.ssh directory in
+    `backup_ssh_dir` (~/.ssh_backup), and restore it after the test.
+    For that reason, it currently only runs in the GitHub CI, unless you specifically
+    set the `USE_MY_REAL_SSH_DIR` env variable to '1'.
+    """
+    assert passwordless_ssh_connection_to_localhost_is_setup
+    assert in_github_CI or USE_MY_REAL_SSH_DIR
+
+    ssh_dir = Path.home() / ".ssh"
+
+    if not passwordless_to_cluster_is_already_setup:
+        if ssh_dir.exists():
+            logger.warning(
+                f"Temporarily removing the contents of {ssh_dir}. "
+                f"(A backup is available at {backup_ssh_dir})"
+            )
+            shutil.rmtree(ssh_dir)
+
+        input_pipe.send_text("y" if user_accepts_registering_key else "n")
+
+    backup_authorized_keys_file = backup_ssh_dir / "authorized_keys"
+    assert backup_authorized_keys_file.exists()
+
+    logger.info(backup_authorized_keys_file.read_text())
+
+    def _mock_subprocess_run(command: tuple[str], *args, **kwargs):
+        """Mock of the ssh-copy-id command.
+
+        Copies the `authorized_keys` file from the backup to the (temporarily cleared)
+        .ssh directory.
+        """
+        logger.debug(f"Running: {command} {args} {kwargs}")
+        assert command[0] == "ssh-copy-id"
+        dest = ssh_dir / backup_authorized_keys_file.name
+        dest.parent.mkdir(exist_ok=True, mode=0o700)
+        shutil.copy(backup_authorized_keys_file, dest)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
+
+    success = setup_passwordless_ssh_access_to_cluster("localhost")
+
+    if passwordless_to_cluster_is_already_setup:
+        mock_subprocess_run.assert_not_called()
+        assert success is True
+    elif user_accepts_registering_key:
+        mock_subprocess_run.assert_called_once()
+        assert success is True
+    else:
+        mock_subprocess_run.assert_not_called()
+        assert success is False
