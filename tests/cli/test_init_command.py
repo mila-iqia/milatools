@@ -1009,7 +1009,7 @@ def backup_ssh_dir():
         logger.warning(f"Backing up {ssh_dir} to {backup_ssh_dir}")
         if backup_ssh_dir.exists():
             shutil.rmtree(backup_ssh_dir)
-        shutil.copytree(ssh_dir, backup_ssh_dir, dirs_exist_ok=False)
+        shutil.copytree(ssh_dir, backup_ssh_dir)
     else:
         logger.warning(f"Test might temporarily create files in a new {ssh_dir} dir.")
 
@@ -1019,7 +1019,7 @@ def backup_ssh_dir():
         logger.warning(f"Restoring {ssh_dir} from backup at {backup_ssh_dir}")
         if ssh_dir.exists():
             shutil.rmtree(ssh_dir)
-        shutil.copytree(backup_ssh_dir, ssh_dir, dirs_exist_ok=False)
+        shutil.copytree(backup_ssh_dir, ssh_dir)
         shutil.rmtree(backup_ssh_dir)
     else:
         logger.warning(f"Removing temporarily generated sshdir at {ssh_dir}.")
