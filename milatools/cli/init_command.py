@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import difflib
+import functools
 import json
 import shlex
 import shutil
@@ -548,7 +549,7 @@ def _get_mila_username(ssh_config: SSHConfig) -> str:
     while not username:
         username = qn.text(
             "What's your username on the mila cluster?\n",
-            validate=_is_valid_username,
+            validate=functools.partial(_is_valid_username, cluster_name="mila cluster"),
         ).unsafe_ask()
     return username.strip()
 
@@ -563,13 +564,7 @@ def _get_drac_username(ssh_config: SSHConfig) -> str | None:
         for host in ssh_config.hosts()
         if any(
             cc_cluster in host.split() or f"!{cc_cluster}" in host.split()
-            for cc_cluster in (
-                "beluga",
-                "cedar",
-                "graham",
-                "narval",
-                "niagara",
-            )
+            for cc_cluster in DRAC_CLUSTERS
         )
         and "user" in ssh_config.host(host)
     ]
@@ -585,14 +580,16 @@ def _get_drac_username(ssh_config: SSHConfig) -> str | None:
         while not username:
             username = qn.text(
                 "What's your username on the CC/DRAC clusters?\n",
-                validate=_is_valid_username,
+                validate=functools.partial(
+                    _is_valid_username, cluster_name="ComputeCanada/DRAC clusters"
+                ),
             ).unsafe_ask()
     return username.strip() if username else None
 
 
-def _is_valid_username(text: str) -> bool | str:
+def _is_valid_username(text: str, cluster_name: str = "mila cluster") -> bool | str:
     return (
-        "Please enter your username on the mila cluster."
+        f"Please enter your username on the {cluster_name}."
         if not text or text.isspace()
         else True
     )

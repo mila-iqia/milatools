@@ -20,6 +20,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import init_command
 from milatools.cli.init_command import (
+    _get_drac_username,
     _get_mila_username,
     _setup_ssh_config_file,
     create_ssh_keypair,
@@ -564,6 +565,102 @@ def test_get_username(
     for prompt_input in prompt_inputs:
         input_pipe.send_text(prompt_input)
     assert _get_mila_username(ssh_config) == expected
+
+
+@pytest.mark.parametrize(
+    ("contents", "prompt_inputs", "expected"),
+    [
+        pytest.param(
+            "",  # empty file.
+            ["n"],  # No I don't have a DRAC account.
+            None,  # get None as a result
+            id="no_drac_account",
+        ),
+        pytest.param(
+            "",  # empty file.
+            ["y", "bob\r"],  # enter yes, then "bob" then enter.
+            "bob",  # get "bob" as username.
+            id="empty_file",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host narval
+                  HostName narval.computecanada.ca
+                  User bob
+                """
+            ),
+            [],
+            "bob",
+            id="existing_drac_entry",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host beluga cedar graham narval niagara
+                  HostName %h.computecanada.ca
+                  ControlMaster auto
+                  ControlPath ~/.cache/ssh/%r@%h:%p
+                  ControlPersist 600
+                """
+            ),
+            ["y", "bob\r"],  # Yes I have a username on the drac clusters, and it's bob.
+            "bob",
+            id="entry_without_user",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host beluga cedar graham narval niagara
+                    HostName login.server.mila.quebec
+                    User george
+                # duplicate entry
+                Host beluga cedar graham narval niagara other_cluster
+                    User Bob
+                """
+            ),
+            ["y", "bob\r"],
+            "bob",
+            id="two_matching_entries",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                Host fooo beluga bar baz
+                    HostName beluga.alliancecan.ca
+                    User george
+                """
+            ),
+            [],
+            "george",
+            id="with_aliases",
+        ),
+        pytest.param(
+            "",
+            # Yes (by pressing just enter), then an invalid username (space), then a
+            # real username.
+            ["\r", " \r", "bob\r"],
+            "bob",
+            id="empty_username",
+        ),
+    ],
+)
+def test_get_drac_username(
+    contents: str,
+    prompt_inputs: list[str],
+    expected: str | None,
+    input_pipe: PipeInput,
+    tmp_path: Path,
+):
+    ssh_config_path = tmp_path / "config"
+    with open(ssh_config_path, "w") as f:
+        f.write(contents)
+    ssh_config = SSHConfig(ssh_config_path)
+    if not prompt_inputs:
+        input_pipe.close()
+    for prompt_input in prompt_inputs:
+        input_pipe.send_text(prompt_input)
+    assert _get_drac_username(ssh_config) == expected
 
 
 class TestSetupSshFile:
