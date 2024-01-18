@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import inspect
 import os
 import sys
@@ -18,6 +19,11 @@ if typing.TYPE_CHECKING:
 
 in_github_CI = all(var in os.environ for var in ["CI", "GITHUB_ACTION", "GITHUB_ENV"])
 """True if this is being run inside the GitHub CI."""
+
+skip_if_on_github_CI = pytest.mark.skipif(
+    in_github_CI, reason="This test shouldn't run on the Github CI."
+)
+skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_github_CI)
 
 
 passwordless_ssh_connection_to_localhost_is_setup = False

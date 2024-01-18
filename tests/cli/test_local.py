@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import functools
-import os
 from subprocess import PIPE
 
 import pytest
@@ -9,8 +7,13 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
 
-from .common import output_tester, requires_no_s_flag, xfails_on_windows
-from .test_remote import passwordless_ssh_connection_to_localhost_is_setup
+from .common import (
+    output_tester,
+    passwordless_ssh_connection_to_localhost_is_setup,
+    requires_no_s_flag,
+    skip_param_if_on_github_ci,
+    xfails_on_windows,
+)
 
 _ECHO_CMD = pytest.param(
     ["echo", "--arg1", "val1", "--arg2=val2", "X"],
@@ -105,12 +108,6 @@ def test_popen(
         capsys,
         file_regression,
     )
-
-
-skip_if_on_github_CI = pytest.mark.skipif(
-    "PLATFORM" in os.environ, reason="This test shouldn't run on the Github CI."
-)
-skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_github_CI)
 
 
 @pytest.mark.parametrize(
