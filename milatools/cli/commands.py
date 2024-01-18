@@ -398,8 +398,6 @@ def init():
 
     ssh_config = setup_ssh_config()
 
-    # print("# OK")
-
     # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
     # ~/.ssh/config to the Windows ssh directory (taking care to remove the
     # ControlMaster-related entries) so that the user doesn't need to install Python on
@@ -407,8 +405,6 @@ def init():
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
-    # TODO: Move the rest of this command to functions in the init_command module,
-    # so they can more easily be tested.
     success = setup_passwordless_ssh_access(ssh_config=ssh_config)
     if not success:
         exit()
