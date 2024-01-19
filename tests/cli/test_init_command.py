@@ -1117,6 +1117,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
         assert success is False
 
 
+@pytest.mark.timeout(10)
 @pytest.mark.skipif(
     not (in_github_CI or USE_MY_REAL_SSH_DIR),
     reason=(
