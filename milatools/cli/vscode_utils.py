@@ -72,9 +72,15 @@ def copy_vscode_extensions_to_remote(
         str(p.relative_to(local_vscode_extensions_dir))
         for p in local_vscode_extensions_dir.iterdir()
     )
-    remote.run(f"mkdir -p {remote_vscode_extensions_dir}", display=False)
+    remote.run(
+        f"mkdir -p {remote_vscode_extensions_dir}", display=False, in_stream=False
+    )
     remote_extension_files = remote.run(
-        f"ls {remote_vscode_extensions_dir}", display=False, hide="stdout", warn=True
+        f"ls {remote_vscode_extensions_dir}",
+        display=False,
+        hide="stdout",
+        warn=True,
+        in_stream=False,
     ).stdout.split()
 
     # A file on the remote that contains the names of all the previously successfully
@@ -82,8 +88,12 @@ def copy_vscode_extensions_to_remote(
     remote_extracted_vscode_extensions_file = (
         f"{remote_milatools_dir}/{EXTRACTED_VSCODE_EXTENSIONS_FILE}"
     )
-    remote.run(f"mkdir -p {remote_milatools_dir}", display=False)
-    remote.run(f"touch {remote_extracted_vscode_extensions_file}", display=False)
+    remote.run(f"mkdir -p {remote_milatools_dir}", display=False, in_stream=False)
+    remote.run(
+        f"touch {remote_extracted_vscode_extensions_file}",
+        display=False,
+        in_stream=False,
+    )
     already_extracted_extensions = _read_text_file_lines(
         remote, remote_extracted_vscode_extensions_file
     )
@@ -94,7 +104,9 @@ def copy_vscode_extensions_to_remote(
     remote_transferred_extensions_file = (
         f"{remote_milatools_dir}/{TRANSFERED_VSCODE_EXTENSIONS_FILE}"
     )
-    remote.run(f"touch {remote_transferred_extensions_file}", display=False)
+    remote.run(
+        f"touch {remote_transferred_extensions_file}", display=False, in_stream=False
+    )
     already_transfered_extensions = _read_text_file_lines(
         remote, remote_transferred_extensions_file
     )
@@ -167,7 +179,8 @@ def copy_vscode_extensions_to_remote(
     remote.run(
         f"tar --extract --gzip --totals "
         f"--file {remote_milatools_dir}/{local_extensions_archive_path.name} "
-        f"--directory {remote_vscode_extensions_dir}"
+        f"--directory {remote_vscode_extensions_dir}",
+        in_stream=False,
     )
 
     print(

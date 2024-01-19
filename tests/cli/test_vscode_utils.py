@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import filecmp
 import json
 import shutil
 import tarfile
@@ -17,8 +18,6 @@ from milatools.cli.vscode_utils import (
     pack_vscode_extensions_into_archive,
     vscode_installed,
 )
-
-from .common import requires_s_flag
 
 
 def test_vscode_installed(monkeypatch: pytest.MonkeyPatch):
@@ -209,27 +208,40 @@ def _make_fake_vscode_extension(
 
 
 def assert_files_were_copied_correctly(source: Path, dest: Path):
-    """If `source` is a dir, checks that all files in `source` have been copied to
-    `dest`.
+    """Checks that all files in `source` have been copied to `dest`."""
 
-    If `source` is a file, checks that the content of `dest` is the same.
-    """
-    assert source.exists()
-    if source.is_dir():
-        assert dest.is_dir()
-        for file in source.iterdir():
-            assert_files_were_copied_correctly(file, dest / file.name)
-    else:
-        assert dest.exists()
-        assert not dest.is_dir()
-
-        assert source.stat().st_mode == dest.stat().st_mode
-        assert source.stat().st_size == dest.stat().st_size
-        # assert source.read_text() == dest.read_text()
-        assert source.read_bytes() == dest.read_bytes()
+    dirs_comparison = filecmp.dircmp(source, dest)
+    dirs_comparison.report_full_closure()
+    # note: we allow files to only be present in `dest` but not in source.
+    assert (
+        not dirs_comparison.left_only
+    ), f"Files in source but not in dest: {dirs_comparison.left_only}"
+    assert (
+        not dirs_comparison.diff_files
+    ), f"Files with different contents: {dirs_comparison.diff_files}"
 
 
-@requires_s_flag
+def test_assert_files_were_copied_correctly(tmp_path: Path):
+    source = tmp_path / "src"
+    source.mkdir()
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+
+    (source / "file1.txt").write_text("foo")
+
+    with pytest.raises(AssertionError, match="file1.txt"):
+        assert_files_were_copied_correctly(source, dest)
+
+    (dest / "file1.txt").write_text("foobar")
+
+    with pytest.raises(AssertionError, match="file1.txt"):
+        assert_files_were_copied_correctly(source, dest)
+
+    (dest / "file1.txt").write_text("foo")
+    assert_files_were_copied_correctly(source, dest)
+
+
 def test_copy_vscode_extensions_to_clean_remote(
     remote: Remote,
     tmp_path_factory: pytest.TempPathFactory,
