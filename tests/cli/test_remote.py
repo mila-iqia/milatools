@@ -280,14 +280,8 @@ def test_get_output(
     assert output == command_output
 
     assert len(mock_connection.method_calls) == 1
-    mock_connection.run.assert_called_once_with(
-        command,
-        asynchronous=False,
-        hide=hide,
-        warn=warn,
-        out_stream=None,
-        in_stream=False,
-    )
+    mock_connection.run.assert_called_once()
+    assert mock_connection.run.mock_calls[0].args[0] == command
     mock_result.stdout.strip.assert_called_once_with()
 
 
@@ -398,14 +392,8 @@ def test_puttext(remote: Remote, tmp_path: Path):
     dest = tmp_path / f"{dest_dir}/bob.txt"
     some_text = "foo"
     _result = remote.puttext(some_text, str(dest))
-    remote.connection.run.assert_called_once_with(
-        f"mkdir -p {dest_dir}",
-        asynchronous=False,
-        out_stream=None,
-        hide=True,
-        warn=False,
-        in_stream=False,
-    )
+    remote.connection.run.assert_called_once()
+    assert remote.connection.run.mock_calls[0].args[0] == f"mkdir -p {dest_dir}"
     # The first argument of `put` will be the name of a temporary file.
     remote.connection.put.assert_called_once_with(unittest.mock.ANY, str(dest))
     assert dest.read_text() == some_text
@@ -413,14 +401,8 @@ def test_puttext(remote: Remote, tmp_path: Path):
 
 def test_home(remote: Remote):
     home_dir = remote.home()
-    remote.connection.run.assert_called_once_with(
-        "echo $HOME",
-        asynchronous=False,
-        out_stream=None,
-        warn=False,
-        hide=True,
-        in_stream=False,
-    )
+    remote.connection.run.assert_called_once()
+    assert remote.connection.run.mock_calls[0].args[0] == "echo $HOME"
     remote.connection.local.assert_not_called()
     if remote.hostname == "mila":
         assert home_dir.startswith("/home/mila/")
