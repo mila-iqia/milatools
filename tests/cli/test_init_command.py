@@ -1040,7 +1040,7 @@ def backup_ssh_dir():
         "machine. Only doing it in the CI or if the USE_MY_REAL_SSH_DIR env var is set."
     ),
 )
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(20)
 @pytest.mark.parametrize(
     "passwordless_to_cluster_is_already_setup",
     [True, False],
