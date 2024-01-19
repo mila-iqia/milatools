@@ -998,7 +998,6 @@ def backup_ssh_dir():
     """Creates a backup of the SSH config files."""
     import shutil
 
-    assert passwordless_ssh_connection_to_localhost_is_setup
     assert in_github_CI or USE_MY_REAL_SSH_DIR
 
     ssh_dir = Path.home() / ".ssh"
@@ -1027,7 +1026,8 @@ def backup_ssh_dir():
         shutil.rmtree(backup_ssh_dir)
     else:
         logger.warning(f"Removing temporarily generated sshdir at {ssh_dir}.")
-        shutil.rmtree(ssh_dir)
+        if ssh_dir.exists():
+            shutil.rmtree(ssh_dir)
 
 
 @pytest.mark.skipif(
@@ -1084,6 +1084,8 @@ def test_setup_passwordless_ssh_access_to_cluster(
         input_pipe.send_text("y" if user_accepts_registering_key else "n")
 
         assert not check_passwordless("localhost")
+    else:
+        assert check_passwordless("localhost")
 
     logger.info(backup_authorized_keys_file.read_text())
 
@@ -1156,28 +1158,22 @@ def test_setup_passwordless_ssh_access(
 ):
     assert in_github_CI or USE_MY_REAL_SSH_DIR
     ssh_dir = Path.home() / ".ssh"
+    if ssh_dir.exists():
+        logger.warning(
+            f"Temporarily deleting the ssh dir (backed up at {backup_ssh_dir})"
+        )
+        shutil.rmtree(ssh_dir)
 
     if not public_key_exists:
-        # Public key is supposed to not exist. Remove them from the (backed up) ssh dir.
-        for public_key_file in ssh_dir.glob("id*.pub"):
-            private_key_file = public_key_file.with_suffix("")
-
-            backup_public_key_file = backup_ssh_dir / public_key_file.name
-            backup_private_key_file = backup_public_key_file.with_suffix("")
-            logger.warning(
-                f"Temporarily removing ssh key files {public_key_file} and "
-                f"{private_key_file} (backed up at {backup_public_key_file} and "
-                f" {backup_private_key_file})"
-            )
-            assert backup_public_key_file.exists()
-            assert backup_private_key_file.exists()
-            public_key_file.unlink()
-            private_key_file.unlink()
-
+        # There should be no ssh keys in the ssh dir before calling the function.
         # We should get a prompt asking if we want to generate a key.
         input_pipe.send_text("y" if accept_generating_key else "n")
     else:
+        # There should be an ssh key in the .ssh dir.
         # Won't ask to generate a key.
+        create_ssh_keypair(
+            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=Local()
+        )
         if drac_clusters_in_ssh_config:
             # We should get a promtp asking if we want or not to register the public key
             # on the DRAC clusters.
