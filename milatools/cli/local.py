@@ -80,7 +80,10 @@ def check_passwordless(host: str) -> bool:
                 echo_format=T.bold_cyan(f"({host})" + " $ {command}"),
             )
 
-    except paramiko.ssh_exception.AuthenticationException as err:
+    except (
+        paramiko.ssh_exception.SSHException,
+        paramiko.ssh_exception.NoValidConnectionsError,
+    ) as err:
         logger.debug(f"Unable to connect to {host} without a password: {err}")
         return False
 

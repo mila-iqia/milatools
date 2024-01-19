@@ -29,8 +29,8 @@ skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_gi
 passwordless_ssh_connection_to_localhost_is_setup = False
 
 try:
-    with fabric.Connection("localhost"):
-        pass
+    _connection = fabric.Connection("localhost")
+    _connection.open()
 except (
     paramiko.ssh_exception.SSHException,
     paramiko.ssh_exception.NoValidConnectionsError,
@@ -38,6 +38,7 @@ except (
     pass
 else:
     passwordless_ssh_connection_to_localhost_is_setup = True
+    _connection.close()
 
 requires_ssh_to_localhost = pytest.mark.skipif(
     not passwordless_ssh_connection_to_localhost_is_setup,

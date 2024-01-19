@@ -32,14 +32,13 @@ from milatools.cli.init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.local import Local
+from milatools.cli.local import Local, check_passwordless
 from milatools.cli.utils import SSHConfig, running_inside_WSL
 
 from .common import (
     in_github_CI,
     on_windows,
     passwordless_ssh_connection_to_localhost_is_setup,
-    requires_ssh_to_localhost,
     xfails_on_windows,
 )
 
@@ -1007,11 +1006,14 @@ def backup_ssh_dir():
 
     ssh_dir_existed_before = ssh_dir.exists()
 
+    def _ignore_sockets_dir(src: str, names: list[str]) -> list[str]:
+        return names if Path(src).name == "sockets" else []
+
     if ssh_dir_existed_before:
         logger.warning(f"Backing up {ssh_dir} to {backup_ssh_dir}")
         if backup_ssh_dir.exists():
             shutil.rmtree(backup_ssh_dir)
-        shutil.copytree(ssh_dir, backup_ssh_dir)
+        shutil.copytree(ssh_dir, backup_ssh_dir, ignore=_ignore_sockets_dir)
     else:
         logger.warning(f"Test might temporarily create files in a new {ssh_dir} dir.")
 
@@ -1029,16 +1031,26 @@ def backup_ssh_dir():
 
 
 @pytest.mark.skipif(
-    not (in_github_CI or USE_MY_REAL_SSH_DIR),
+    not (
+        (in_github_CI or USE_MY_REAL_SSH_DIR)
+        and passwordless_ssh_connection_to_localhost_is_setup
+    ),
     reason=(
         "It's a bit risky to actually change the SSH config directory on a dev "
         "machine. Only doing it in the CI or if the USE_MY_REAL_SSH_DIR env var is set."
     ),
 )
 @pytest.mark.timeout(10)
-@requires_ssh_to_localhost
-@pytest.mark.parametrize("passwordless_to_cluster_is_already_setup", [True, False])
-@pytest.mark.parametrize("user_accepts_registering_key", [True, False])
+@pytest.mark.parametrize(
+    "passwordless_to_cluster_is_already_setup",
+    [True, False],
+    ids=["already_setup", "not_already_setup"],
+)
+@pytest.mark.parametrize(
+    "user_accepts_registering_key",
+    [True, False],
+    ids=["accept_registering_key", "reject_registering_key"],
+)
 def test_setup_passwordless_ssh_access_to_cluster(
     input_pipe: PipeInput,
     backup_ssh_dir: Path,
@@ -1068,9 +1080,10 @@ def test_setup_passwordless_ssh_access_to_cluster(
                 f"(A backup is available at {backup_authorized_keys_file})"
             )
             authorized_keys_file.unlink()
-            shutil.rmtree(ssh_dir)
 
         input_pipe.send_text("y" if user_accepts_registering_key else "n")
+
+        assert not check_passwordless("localhost")
 
     logger.info(backup_authorized_keys_file.read_text())
 
@@ -1083,9 +1096,8 @@ def test_setup_passwordless_ssh_access_to_cluster(
         logger.debug(f"Running: {command} {args} {kwargs}")
         if sys.platform == "linux":
             assert command[0] == "ssh-copy-id"
-        dest = ssh_dir / backup_authorized_keys_file.name
-        dest.parent.mkdir(exist_ok=True, mode=0o700)
-        shutil.copy(backup_authorized_keys_file, dest)
+        ssh_dir.mkdir(exist_ok=True, mode=0o700)
+        shutil.copy(backup_authorized_keys_file, authorized_keys_file)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
