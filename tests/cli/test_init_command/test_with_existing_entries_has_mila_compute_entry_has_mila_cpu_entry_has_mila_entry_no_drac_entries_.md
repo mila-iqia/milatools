@@ -51,7 +51,7 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   User bob
 
 Host beluga cedar graham narval niagara
-  HostName %h.computecanada.ca
+  HostName %h.alliancecan.ca
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600

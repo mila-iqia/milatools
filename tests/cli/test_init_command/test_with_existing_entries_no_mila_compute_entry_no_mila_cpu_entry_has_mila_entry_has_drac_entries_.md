@@ -49,7 +49,7 @@ Host mila
 
 # Compute Canada
 Host beluga cedar graham narval niagara
-  Hostname %h.computecanada.ca
+  Hostname %h.alliancecan.ca
   User bob
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
