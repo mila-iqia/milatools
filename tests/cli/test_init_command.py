@@ -1158,6 +1158,7 @@ def test_setup_passwordless_ssh_access(
     ssh_dir = Path.home() / ".ssh"
 
     if not public_key_exists:
+        # Public key is supposed to not exist. Remove them from the (backed up) ssh dir.
         for public_key_file in ssh_dir.glob("id*.pub"):
             private_key_file = public_key_file.with_suffix("")
 
@@ -1173,13 +1174,16 @@ def test_setup_passwordless_ssh_access(
             public_key_file.unlink()
             private_key_file.unlink()
 
+        # We should get a prompt asking if we want to generate a key.
         input_pipe.send_text("y" if accept_generating_key else "n")
     else:
         # Won't ask to generate a key.
-        # Accept or not to generate a key for the DRAC clusters.
         if drac_clusters_in_ssh_config:
+            # We should get a promtp asking if we want or not to register the public key
+            # on the DRAC clusters.
             input_pipe.send_text("y" if accept_drac else "n")
 
+    # Pre-populate the ssh config file.
     ssh_config_path = tmp_path / "ssh_config"
     ssh_config_path.write_text(
         textwrap.dedent(
@@ -1194,6 +1198,9 @@ def test_setup_passwordless_ssh_access(
     )
     ssh_config = SSHConfig(path=ssh_config_path)
 
+    # We mock the main function used by the `setup_passwordless_ssh_access` function.
+    # It's okay because we have a good test for it above. Therefore we just test how it
+    # gets called here.
     mock_setup_passwordless_ssh_access_to_cluster = Mock(
         spec=setup_passwordless_ssh_access_to_cluster,
         side_effect=[accept_mila, *(accept_drac for _ in drac_clusters_in_ssh_config)],
