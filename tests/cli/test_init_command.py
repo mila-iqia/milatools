@@ -726,6 +726,8 @@ class TestSetupSshFile:
         assert file.stat().st_mode & 0o777 == 0o600
 
 
+# takes a little longer in the CI runner (Windows in particular)
+@pytest.mark.timeout(10)
 def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     here = Local()
     mock_run = Mock(
