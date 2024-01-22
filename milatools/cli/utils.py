@@ -56,7 +56,7 @@ Cluster = Union[ClusterWithInternetOnCNodes, ClusterWithoutInternetOnCNodes]
 # NOTE: An alternative approach could also be to avoid hard-coding anything at all, but
 # lose the benefits of rich typing. Perhaps we can opt for that at some point if we add
 # support for more and more clusters, or want to make it possible for users to add
-# custom clusters.
+# custom clusters via config files.
 CLUSTERS: list[Cluster] = list(
     get_args(ClusterWithInternetOnCNodes) + get_args(ClusterWithoutInternetOnCNodes)
 )
