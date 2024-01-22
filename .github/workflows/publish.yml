@@ -8,6 +8,7 @@
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -31,7 +32,9 @@ jobs:
         cache: poetry
 
     - name: Install dependencies
-      run: poetry install
+      run: |
+        poetry install
+        poetry self add "poetry-dynamic-versioning[plugin]"
 
     - name: Publish package
       env:
