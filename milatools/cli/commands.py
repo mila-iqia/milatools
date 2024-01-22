@@ -506,8 +506,10 @@ def code(
     if vscode_extensions_folder.exists() and no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
         print(
-            f"Copying VSCode extensions from local machine to {cluster} in the "
-            f"background..."
+            T.bold_cyan(
+                f"Copying VSCode extensions from local machine to {cluster} in the "
+                f"background..."
+            )
         )
         # Async:
         copy_vscode_extensions_process = make_process(
@@ -520,7 +522,7 @@ def code(
         # Sync:
         # copy_vscode_extensions_to_remote(
         #     cluster,
-        #     local_vscode_extensions_folder=vscode_extensions_folder,
+        #     local_vscode_extensions_dir=vscode_extensions_folder,
         #     remote=remote,
         # )
 

@@ -68,6 +68,7 @@ def copy_vscode_extensions_to_remote(
 
     local_extensions_archive_path = local_milatools_dir / EXTENSIONS_ARCHIVE_NAME
 
+    # todo: Use code --list-extensions to get the extension names instead.
     local_extensions_names = list(
         str(p.relative_to(local_vscode_extensions_dir))
         for p in local_vscode_extensions_dir.iterdir()
@@ -145,7 +146,7 @@ def copy_vscode_extensions_to_remote(
         print(
             T.bold_cyan(
                 f"Syncing {len(missing_extensions)} local VsCode extensions with the "
-                f"{cluster} cluster..."
+                f"{cluster} cluster in the background..."
             )
         )
         pack_vscode_extensions_into_archive(
@@ -154,7 +155,11 @@ def copy_vscode_extensions_to_remote(
             local_vscode_extensions_dir=local_vscode_extensions_dir,
         )
 
-        print(f"Sending archive of missing VsCode extensions over to {cluster}...")
+        print(
+            T.bold_cyan(
+                f"Sending archive of missing VsCode extensions over to {cluster}..."
+            )
+        )
         scp_command = (
             f"scp {local_extensions_archive_path} "
             f"{cluster}:{remote_milatools_dir}/{local_extensions_archive_path.name}"
