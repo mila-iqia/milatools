@@ -312,13 +312,19 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     if sys.platform == "win32":
         # todo: the path to the key is hard-coded here.
         command = (
-            "powershell.exe type $env:USERPROFILE\\.ssh\\id_rsa.pub "
-            f"| ssh -o StrictHostKeyChecking=no {cluster} "
-            '"cat >> ~/.ssh/authorized_keys"'
+            "powershell.exe",
+            "type",
+            "$env:USERPROFILE\\.ssh\\id_rsa.pub",
+            "|",
+            "ssh",
+            "-o",
+            "StrictHostKeyChecking=no",
+            cluster,
+            '"cat >> ~/.ssh/authorized_keys"',
         )
-        here.run(command)
+        here.run(*command, check=True)
     else:
-        here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster)
+        here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
 
     # double-check that this worked.
     if not check_passwordless(cluster):
