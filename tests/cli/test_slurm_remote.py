@@ -220,7 +220,7 @@ def salloc_slurm_remote(login_node: Remote, allocation_flags: str):
 
 @pytest.fixture
 def sbatch_slurm_remote(login_node: Remote, allocation_flags: str):
-    """Fixture that creates a `SlurmRemote` that uses `sbatch` (persist=False)."""
+    """Fixture that creates a `SlurmRemote` that uses `sbatch` (persist=True)."""
     return SlurmRemote(
         connection=login_node.connection,
         alloc=allocation_flags.split(),
