@@ -36,6 +36,7 @@ leads to the following ssh config file:
 Host beluga cedar graham narval niagara
   Hostname %h.alliancecan.ca
   User bob
+  IdentityFile /home/fabrice/.ssh/id_rsa_drac
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
@@ -64,6 +65,7 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
+  IdentityFile /home/fabrice/.ssh/id_rsa_mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600

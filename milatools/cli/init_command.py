@@ -10,7 +10,7 @@ import subprocess
 import sys
 import warnings
 from logging import getLogger as get_logger
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 import questionary as qn
@@ -43,6 +43,9 @@ else:
         "ControlPersist": 600,
     }
 
+mila_default_private_key_path = Path.home() / ".ssh" / "id_rsa_mila"
+DRAC_default_private_key_path = Path.home() / ".ssh" / "id_rsa_drac"
+
 
 MILA_ENTRIES: dict[str, dict[str, int | str]] = {
     "mila": {
@@ -52,6 +55,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         "Port": 2222,
         "ServerAliveInterval": 120,
         "ServerAliveCountMax": 5,
+        "IdentityFile": mila_default_private_key_path.as_posix(),
         **ssh_multiplexing_config,
     },
     "mila-cpu": {
@@ -86,6 +90,7 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     "beluga cedar graham narval niagara": {
         "Hostname": "%h.alliancecan.ca",
         # User=drac_username,
+        "IdentityFile": DRAC_default_private_key_path.as_posix(),
         **ssh_multiplexing_config,
     },
     "!beluga  bc????? bg????? bl?????": {
@@ -237,20 +242,23 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
     """
     print("Checking passwordless authentication")
 
-    here = Local()
-    sshdir = Path.home() / ".ssh"
-    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+    mila_ssh_config_entry = ssh_config.host("mila")
+    mila_ssh_private_key_path = Path(
+        mila_ssh_config_entry.get("identityfile", mila_default_private_key_path)
+    ).expanduser()
+    if not mila_ssh_private_key_path.exists():
+        print(
+            T.bold_cyan(
+                f"Generating a new SSH key pair for the Mila cluster at "
+                f"{mila_ssh_private_key_path}"
+            )
+        )
+        create_ssh_keypair(mila_ssh_private_key_path)
+    assert mila_ssh_private_key_path.exists()
 
-    # Check if there is a public key file in ~/.ssh
-    if not list(sshdir.glob("id*.pub")):
-        if yn("You have no public keys. Generate one?"):
-            # Run ssh-keygen with the given location and no passphrase.
-            create_ssh_keypair(ssh_private_key_path, here)
-        else:
-            print("No public keys.")
-            return False
-
-    success = setup_passwordless_ssh_access_to_cluster("mila")
+    success = setup_passwordless_ssh_access_to_cluster(
+        "mila", ssh_private_key_path=mila_ssh_private_key_path
+    )
     if not success:
         return False
 
@@ -266,6 +274,22 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         )
         return True
 
+    # Get the entry in the ssh config for the DRAC clusters.
+    DRAC_ssh_config_entry = ssh_config.host(list(DRAC_ENTRIES.keys())[0])
+    DRAC_ssh_private_key_path = Path(
+        DRAC_ssh_config_entry.get("identityfile", DRAC_default_private_key_path)
+    ).expanduser()
+
+    if not DRAC_ssh_private_key_path.exists():
+        print(
+            T.bold_cyan(
+                f"Generating a new SSH key pair for the DRAC clusters at "
+                f"{DRAC_ssh_private_key_path}"
+            )
+        )
+        create_ssh_keypair(DRAC_ssh_private_key_path)
+    assert DRAC_ssh_private_key_path.exists()
+
     print(
         "Setting up passwordless ssh access to the DRAC clusters with ssh-copy-id.\n"
         "\n"
@@ -275,13 +299,17 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
     )
     for drac_cluster in drac_clusters_in_ssh_config:
-        success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
+        success = setup_passwordless_ssh_access_to_cluster(
+            drac_cluster, ssh_private_key_path=DRAC_ssh_private_key_path
+        )
         if not success:
             return False
     return True
 
 
-def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
+def setup_passwordless_ssh_access_to_cluster(
+    cluster: str, ssh_private_key_path: Path
+) -> bool:
     """Sets up passwordless SSH access to the given hostname.
 
     On Mac/Linux, uses `ssh-copy-id`. Performs the steps of ssh-copy-id manually on
@@ -289,32 +317,28 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
 
     Returns whether the operation completed successfully or not.
     """
-    here = Local()
+    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     # Check that it is possible to connect without using a password.
     print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
-    # TODO: Potentially use the public key from the SSH config file instead of
-    # the default. It's also possible that ssh-copy-id selects the key from the
-    # config file, I'm not sure.
-    # ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
 
     if check_passwordless(cluster):
         logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
         return True
 
-    if not yn(
-        f"Your public key does not appear be registered on the {cluster} cluster. "
-        "Register it?"
-    ):
-        print("No passwordless login.")
-        return False
+    print(
+        T.bold_cyan(
+            f"Your public key does not appear be registered on the {cluster} cluster. "
+            "Registering it now."
+        )
+    )
+    print(T.cyan("(Please enter your password when prompted.)"))
 
-    print("Please enter your password when prompted.")
+    here = Local()
     if sys.platform == "win32":
-        # todo: the path to the key is hard-coded here.
         command = (
             "powershell.exe",
             "type",
-            "$env:USERPROFILE\\.ssh\\id_rsa.pub",
+            str(PureWindowsPath(ssh_public_key_path)),
             "|",
             "ssh",
             "-o",
@@ -324,7 +348,15 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
         )
         here.run(*command, check=True)
     else:
-        here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
+        here.run(
+            "ssh-copy-id",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-i",
+            str(ssh_private_key_path),
+            cluster,
+            check=True,
+        )
 
     # double-check that this worked.
     if not check_passwordless(cluster):
@@ -410,8 +442,8 @@ def get_windows_home_path_in_wsl() -> Path:
     return Path(f"/mnt/c/Users/{windows_username}")
 
 
-def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
-    local.run(
+def create_ssh_keypair(ssh_private_key_path: Path) -> None:
+    Local().run(
         *shlex.split(
             f'ssh-keygen -f {shlex.quote(str(ssh_private_key_path))} -t rsa -N=""'
         ),

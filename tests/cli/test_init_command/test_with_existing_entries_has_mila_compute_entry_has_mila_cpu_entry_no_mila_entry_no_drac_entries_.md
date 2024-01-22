@@ -41,6 +41,7 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
+  IdentityFile /home/fabrice/.ssh/id_rsa_mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
@@ -48,6 +49,7 @@ Host mila
 
 Host beluga cedar graham narval niagara
   HostName %h.alliancecan.ca
+  IdentityFile /home/fabrice/.ssh/id_rsa_drac
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
