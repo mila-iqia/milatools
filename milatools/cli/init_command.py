@@ -81,7 +81,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         **ssh_multiplexing_config,
     },
 }
-DRAC_CLUSTERS = ["beluga", "cedar", "graham", "narval", "niagara"]
+DRAC_CLUSTERS = ["beluga", "cedar", "graham", "narval"]
 DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     "beluga cedar graham narval niagara": {
         "Hostname": "%h.alliancecan.ca",
