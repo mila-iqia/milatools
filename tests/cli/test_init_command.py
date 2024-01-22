@@ -44,9 +44,6 @@ from .common import (
 
 logger = get_logger(__name__)
 
-# Set a module-level mark: Each test cannot take longer than a few seconds to run.
-pytestmark = pytest.mark.timeout(5)
-
 
 def raises_NoConsoleScreenBufferError_on_windows_ci_action():
     if sys.platform == "win32":
@@ -66,10 +63,14 @@ def raises_NoConsoleScreenBufferError_on_windows_ci_action():
 
 def permission_bits_check_doesnt_work_on_windows():
     return pytest.mark.xfail(
-        on_windows,
+        sys.platform == "win32",
         raises=AssertionError,
         reason="TODO: The check for permission bits is failing on Windows in CI.",
     )
+
+
+# Set a module-level mark: Each test cannot take longer than 1 second to run.
+pytestmark = pytest.mark.timeout(2)
 
 
 @pytest.fixture
@@ -1067,12 +1068,10 @@ def test_setup_passwordless_ssh_access_to_cluster(
         # We need to un-setup the ssh access to localhost for the test to work.
         if authorized_keys_file.exists():
             logger.warning(
-                f"Temporarily removing {ssh_dir}."
-                f"(A backup is available at {backup_ssh_dir})"
+                f"Temporarily removing {authorized_keys_file}. "
+                f"(A backup is available at {backup_authorized_keys_file})"
             )
-            shutil.rmtree(ssh_dir)
-            # authorized_keys_file.unlink()
-            # authorized_keys_file.touch(mode=0o600)
+            authorized_keys_file.unlink()
         assert not check_passwordless("localhost")
     else:
         assert check_passwordless("localhost")
@@ -1093,7 +1092,6 @@ def test_setup_passwordless_ssh_access_to_cluster(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
-
     success = setup_passwordless_ssh_access_to_cluster(
         "localhost", ssh_private_key_path=Path.home() / ".ssh/id_rsa"
     )
@@ -1170,38 +1168,26 @@ def test_setup_passwordless_ssh_access(
     assert ssh_dir.exists()
     if not on_windows:
         assert ssh_dir.stat().st_mode & 0o777 == 0o700
-
-    mila_private_key = ssh_dir / "id_rsa_mila"
-    assert mila_private_key.exists()
+    assert (ssh_dir / "id_rsa_mila").exists()
     if not on_windows:
-        assert mila_private_key.stat().st_mode & 0o777 == 0o600
-    assert mila_private_key.with_suffix(".pub").exists()
+        assert (ssh_dir / "id_rsa_mila").stat().st_mode & 0o777 == 0o600
+    assert (ssh_dir / "id_rsa_mila.pub").exists()
 
-    drac_private_key = ssh_dir / "id_rsa_drac"
-    if drac_clusters_in_ssh_config:
-        assert drac_private_key.exists()
-        if not on_windows:
-            assert drac_private_key.stat().st_mode & 0o777 == 0o600
-        assert drac_private_key.with_suffix(".pub").exists()
-    else:
-        assert not drac_private_key.exists()
+    assert (ssh_dir / "id_rsa_drac").exists()
+    if not on_windows:
+        assert (ssh_dir / "id_rsa_drac").stat().st_mode & 0o777 == 0o600
+    assert (ssh_dir / "id_rsa_drac.pub").exists()
 
-    mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(
-        "mila", ssh_private_key_path=mila_private_key
-    )
+    mock_setup_passwordless_ssh_access_to_cluster.assert_any_call("mila")
     # If we accept to setup passwordless SSH access to the Mila cluster, we go on
     # to ask for DRAC clusters.
     if not drac_clusters_in_ssh_config:
         assert result is True
-        mock_setup_passwordless_ssh_access_to_cluster.assert_called_once_with(
-            "mila", ssh_private_key_path=mila_private_key
-        )
+        mock_setup_passwordless_ssh_access_to_cluster.assert_called_once_with("mila")
         return
 
     # If there were DRAC clusters in the SSH config, then the fn is called for each
     # cluster.
     for drac_cluster in drac_clusters_in_ssh_config:
-        mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(
-            drac_cluster, ssh_private_key_path=drac_private_key
-        )
+        mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(drac_cluster)
     assert result is True
