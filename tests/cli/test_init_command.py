@@ -32,7 +32,7 @@ from milatools.cli.init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.local import check_passwordless
+from milatools.cli.local import Local, check_passwordless
 from milatools.cli.utils import SSHConfig, running_inside_WSL
 
 from .common import (
@@ -53,8 +53,7 @@ def raises_NoConsoleScreenBufferError_on_windows_ci_action():
     else:
         raises = ()
 
-    return pytest.mark.xfail(
-        on_windows,
+    return xfails_on_windows(
         raises=raises,
         reason="TODO: Tests using input pipes don't work on GitHub CI.",
         strict=False,
@@ -128,7 +127,11 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
         "bob\r",  # mila username
         "y",  # drac?
         "bob\r",  # drac username
-        "y",  # confirm changes.
+        "y",
+        "y",
+        "y",
+        "y",
+        "y",
     ]:
         input_pipe.send_text(prompt)
     setup_ssh_config(tmp_path / "ssh_config")
@@ -726,6 +729,7 @@ class TestSetupSshFile:
 # takes a little longer in the CI runner (Windows in particular)
 @pytest.mark.timeout(10)
 def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    here = Local()
     mock_run = Mock(
         wraps=subprocess.run,
     )
@@ -734,7 +738,7 @@ def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     fake_ssh_folder.mkdir(mode=0o700)
     ssh_private_key_path = fake_ssh_folder / "bob"
 
-    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path)
+    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, local=here)
 
     mock_run.assert_called_once()
     assert ssh_private_key_path.exists()
@@ -1044,10 +1048,17 @@ def backup_ssh_dir():
     [True, False],
     ids=["already_setup", "not_already_setup"],
 )
+@pytest.mark.parametrize(
+    "user_accepts_registering_key",
+    [True, False],
+    ids=["accept_registering_key", "reject_registering_key"],
+)
 def test_setup_passwordless_ssh_access_to_cluster(
+    input_pipe: PipeInput,
     backup_ssh_dir: Path,
     mocker: pytest_mock.MockerFixture,
     passwordless_to_cluster_is_already_setup: bool,
+    user_accepts_registering_key: bool,
 ):
     """Test the function that sets up passwordless SSH to a cluster (localhost in tests)
 
@@ -1065,13 +1076,15 @@ def test_setup_passwordless_ssh_access_to_cluster(
     assert backup_authorized_keys_file.exists()
 
     if not passwordless_to_cluster_is_already_setup:
-        # We need to un-setup the ssh access to localhost for the test to work.
         if authorized_keys_file.exists():
             logger.warning(
                 f"Temporarily removing {authorized_keys_file}. "
                 f"(A backup is available at {backup_authorized_keys_file})"
             )
             authorized_keys_file.unlink()
+
+        input_pipe.send_text("y" if user_accepts_registering_key else "n")
+
         assert not check_passwordless("localhost")
     else:
         assert check_passwordless("localhost")
@@ -1092,18 +1105,18 @@ def test_setup_passwordless_ssh_access_to_cluster(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
-    success = setup_passwordless_ssh_access_to_cluster(
-        "localhost", ssh_private_key_path=Path.home() / ".ssh/id_rsa"
-    )
+
+    success = setup_passwordless_ssh_access_to_cluster("localhost")
 
     if passwordless_to_cluster_is_already_setup:
         mock_subprocess_run.assert_not_called()
         assert success is True
-    else:
+    elif user_accepts_registering_key:
         mock_subprocess_run.assert_called_once()
         assert success is True
-
-    assert check_passwordless("localhost")
+    else:
+        mock_subprocess_run.assert_not_called()
+        assert success is False
 
 
 @pytest.mark.timeout(10)
@@ -1118,12 +1131,33 @@ def test_setup_passwordless_ssh_access_to_cluster(
     "drac_clusters_in_ssh_config",
     [[]] + [DRAC_CLUSTERS[i:] for i in range(len(DRAC_CLUSTERS))],
 )
+@pytest.mark.parametrize(
+    "accept_generating_key",
+    [True, False],
+    ids=["accept_generate_key", "accept_generate_key"],
+)
+@pytest.mark.parametrize(
+    "public_key_exists",
+    [True, False],
+    ids=["key_exists", "no_key"],
+)
+@pytest.mark.parametrize(
+    "accept_mila", [True, False], ids=["accept_mila", "reject_mila"]
+)
+@pytest.mark.parametrize(
+    "accept_drac", [True, False], ids=["accept_drac", "reject_drac"]
+)
 def test_setup_passwordless_ssh_access(
+    accept_generating_key: bool,
+    public_key_exists: bool,
+    accept_mila: bool,
+    accept_drac: bool,
     drac_clusters_in_ssh_config: list[str],
     # capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     backup_ssh_dir: Path,
+    input_pipe: PipeInput,
 ):
     assert in_github_CI or USE_MY_REAL_SSH_DIR
     ssh_dir = Path.home() / ".ssh"
@@ -1132,6 +1166,21 @@ def test_setup_passwordless_ssh_access(
             f"Temporarily deleting the ssh dir (backed up at {backup_ssh_dir})"
         )
         shutil.rmtree(ssh_dir)
+
+    if not public_key_exists:
+        # There should be no ssh keys in the ssh dir before calling the function.
+        # We should get a prompt asking if we want to generate a key.
+        input_pipe.send_text("y" if accept_generating_key else "n")
+    else:
+        # There should be an ssh key in the .ssh dir.
+        # Won't ask to generate a key.
+        create_ssh_keypair(
+            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=Local()
+        )
+        if drac_clusters_in_ssh_config:
+            # We should get a promtp asking if we want or not to register the public key
+            # on the DRAC clusters.
+            input_pipe.send_text("y" if accept_drac else "n")
 
     # Pre-populate the ssh config file.
     ssh_config_path = tmp_path / "ssh_config"
@@ -1153,7 +1202,7 @@ def test_setup_passwordless_ssh_access(
     # gets called here.
     mock_setup_passwordless_ssh_access_to_cluster = Mock(
         spec=setup_passwordless_ssh_access_to_cluster,
-        return_value=True,
+        side_effect=[accept_mila, *(accept_drac for _ in drac_clusters_in_ssh_config)],
     )
     import milatools.cli.init_command
 
@@ -1165,20 +1214,26 @@ def test_setup_passwordless_ssh_access(
 
     result = setup_passwordless_ssh_access(ssh_config)
 
-    assert ssh_dir.exists()
-    if not on_windows:
-        assert ssh_dir.stat().st_mode & 0o777 == 0o700
-    assert (ssh_dir / "id_rsa_mila").exists()
-    if not on_windows:
-        assert (ssh_dir / "id_rsa_mila").stat().st_mode & 0o777 == 0o600
-    assert (ssh_dir / "id_rsa_mila.pub").exists()
-
-    assert (ssh_dir / "id_rsa_drac").exists()
-    if not on_windows:
-        assert (ssh_dir / "id_rsa_drac").stat().st_mode & 0o777 == 0o600
-    assert (ssh_dir / "id_rsa_drac.pub").exists()
+    if not public_key_exists:
+        if accept_generating_key:
+            assert ssh_dir.exists()
+            assert ssh_dir.stat().st_mode & 0o777 == 0o700
+            assert (ssh_dir / "id_rsa").exists()
+            assert (ssh_dir / "id_rsa").stat().st_mode & 0o777 == 0o600
+            assert (ssh_dir / "id_rsa.pub").exists()
+        else:
+            assert not (ssh_dir / "id_rsa").exists()
+            assert not (ssh_dir / "id_rsa.pub").exists()
+            assert not result
+            mock_setup_passwordless_ssh_access_to_cluster.assert_not_called()
+            return
 
     mock_setup_passwordless_ssh_access_to_cluster.assert_any_call("mila")
+    if not accept_mila:
+        mock_setup_passwordless_ssh_access_to_cluster.assert_called_once_with("mila")
+        assert result is False
+        return
+
     # If we accept to setup passwordless SSH access to the Mila cluster, we go on
     # to ask for DRAC clusters.
     if not drac_clusters_in_ssh_config:
@@ -1187,7 +1242,13 @@ def test_setup_passwordless_ssh_access(
         return
 
     # If there were DRAC clusters in the SSH config, then the fn is called for each
-    # cluster.
+    # cluster, unless the user rejects setting up passwordless SSH access to one of the
+    # clusters, in which case there's an early return False.
+    if not accept_drac:
+        assert len(mock_setup_passwordless_ssh_access_to_cluster.mock_calls) == 2
+        assert result is False
+        return
+
     for drac_cluster in drac_clusters_in_ssh_config:
         mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(drac_cluster)
     assert result is True
