@@ -43,7 +43,6 @@ from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (
     CLUSTERS,
-    DRAC_CLUSTERS,
     Cluster,
     CommandNotFoundError,
     MilatoolsUserError,
