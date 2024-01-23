@@ -282,7 +282,11 @@ def test_get_output(
 
     assert len(mock_connection.method_calls) == 1
     mock_connection.run.assert_called_once()
-    assert mock_connection.run.mock_calls[0].args[0] == command
+
+    if sys.version_info < (3, 8):
+        assert mock_connection.run.mock_calls[0][1] == (command,)
+    else:
+        assert mock_connection.run.mock_calls[0].args[0] == command
     mock_result.stdout.strip.assert_called_once_with()
 
 
