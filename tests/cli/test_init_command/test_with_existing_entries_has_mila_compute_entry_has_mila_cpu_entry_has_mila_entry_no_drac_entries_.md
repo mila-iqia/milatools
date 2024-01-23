@@ -1,8 +1,25 @@
-When this SSH config is already present in the WSL environment with these initial contents:
-```
+Running the `mila init` command with this initial content:
 
+```
 Host mila
   HostName login.server.mila.quebec
+  User bob
+
+Host mila-cpu
+  HostName login.server.mila.quebec
+
+Host *.server.mila.quebec !*login.server.mila.quebec
+  HostName foooobar.com
+
+```
+
+and these user inputs: ['y', 'bob\r', 'y']
+leads to the following ssh config file:
+
+```
+Host mila
+  HostName login.server.mila.quebec
+  User bob
   PreferredAuthentications publickey,keyboard-interactive
   Port 2222
   ServerAliveInterval 120
@@ -10,9 +27,9 @@ Host mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
-  User bob
 
 Host mila-cpu
+  HostName login.server.mila.quebec
   Port 2222
   ForwardAgent yes
   StrictHostKeyChecking no
@@ -59,12 +76,4 @@ Host !narval  nc????? ng?????
 Host !niagara nia????
   ProxyJump niagara
   User bob
-```
-
-
-and these user inputs: ('y', 'n')
-leads the following ssh config file on the Windows side:
-
-```
-
 ```

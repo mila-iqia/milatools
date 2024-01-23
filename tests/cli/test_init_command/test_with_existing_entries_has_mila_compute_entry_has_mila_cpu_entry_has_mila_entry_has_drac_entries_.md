@@ -1,8 +1,49 @@
-When this SSH config is already present in the WSL environment with these initial contents:
-```
+Running the `mila init` command with this initial content:
 
+```
 Host mila
   HostName login.server.mila.quebec
+  User bob
+
+Host mila-cpu
+  HostName login.server.mila.quebec
+
+Host *.server.mila.quebec !*login.server.mila.quebec
+  HostName foooobar.com
+
+
+# Compute Canada
+Host beluga cedar graham narval niagara
+  Hostname %h.alliancecan.ca
+  User bob
+Host mist
+  Hostname mist.scinet.utoronto.ca
+  User bob
+Host !beluga  bc????? bg????? bl?????
+  ProxyJump beluga
+  User bob
+Host !cedar   cdr? cdr?? cdr??? cdr????
+  ProxyJump cedar
+  User bob
+Host !graham  gra??? gra????
+  ProxyJump graham
+  User bob
+Host !narval  nc????? ng?????
+  ProxyJump narval
+  User bob
+Host !niagara nia????
+  ProxyJump niagara
+  User bob
+
+```
+
+and these user inputs: ['y']
+leads to the following ssh config file:
+
+```
+Host mila
+  HostName login.server.mila.quebec
+  User bob
   PreferredAuthentications publickey,keyboard-interactive
   Port 2222
   ServerAliveInterval 120
@@ -10,9 +51,9 @@ Host mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
-  User bob
 
 Host mila-cpu
+  HostName login.server.mila.quebec
   Port 2222
   ForwardAgent yes
   StrictHostKeyChecking no
@@ -33,38 +74,30 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   ControlPersist 600
   User bob
 
+
+# Compute Canada
 Host beluga cedar graham narval niagara
-  HostName %h.alliancecan.ca
+  Hostname %h.alliancecan.ca
+  User bob
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
+Host mist
+  Hostname mist.scinet.utoronto.ca
   User bob
-
 Host !beluga  bc????? bg????? bl?????
   ProxyJump beluga
   User bob
-
 Host !cedar   cdr? cdr?? cdr??? cdr????
   ProxyJump cedar
   User bob
-
 Host !graham  gra??? gra????
   ProxyJump graham
   User bob
-
 Host !narval  nc????? ng?????
   ProxyJump narval
   User bob
-
 Host !niagara nia????
   ProxyJump niagara
   User bob
-```
-
-
-and these user inputs: ('y', 'n')
-leads the following ssh config file on the Windows side:
-
-```
-
 ```

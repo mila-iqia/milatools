@@ -1,25 +1,29 @@
 from __future__ import annotations
 
-import shlex
 import subprocess
+from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import IO, Any
 
+import fabric
+import paramiko.ssh_exception
 from typing_extensions import deprecated
 
 from .utils import CommandNotFoundError, T, shjoin
 
+logger = get_logger(__name__)
+
 
 class Local:
     def display(self, args: list[str] | tuple[str, ...]) -> None:
-        print(T.bold_green("(local) $ ", shjoin(args)))
+        display(args)
 
     def silent_get(self, *cmd: str) -> str:
         return subprocess.check_output(cmd, universal_newlines=True)
 
     @deprecated("This isn't used and will probably be removed. Don't start using it.")
     def get(self, *cmd: str) -> str:
-        self.display(cmd)
+        display(cmd)
         return subprocess.check_output(cmd, universal_newlines=True)
 
     def run(
@@ -28,8 +32,10 @@ class Local:
         stdout: int | IO[Any] | None = None,
         stderr: int | IO[Any] | None = None,
         capture_output: bool = False,
+        timeout: float | None = None,
+        check: bool = False,
     ) -> CompletedProcess[str]:
-        self.display(cmd)
+        display(cmd)
         try:
             return subprocess.run(
                 cmd,
@@ -37,6 +43,8 @@ class Local:
                 stderr=stderr,
                 capture_output=capture_output,
                 universal_newlines=True,
+                timeout=timeout,
+                check=check,
             )
         except FileNotFoundError as e:
             if e.filename == cmd[0]:
@@ -54,20 +62,33 @@ class Local:
             cmd, stdout=stdout, stderr=stderr, universal_newlines=True
         )
 
-    def check_passwordless(self, host: str) -> bool:
-        results = self.run(
-            *shlex.split(f"ssh -oPreferredAuthentications=publickey {host} 'echo OK'"),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        if results.returncode != 0:
-            if "Permission denied" in results.stderr:
-                return False
-            print(results.stdout)
-            print(results.stderr)
-            exit(f"Failed to connect to {host}, could not understand error")
-        # TODO: Perhaps we could actually check the output of the command here!
-        # elif "OK" in results.stdout:
-        else:
-            print("# OK")
-            return True
+    def check_passwordless(self, host: str):
+        return check_passwordless(host)
+
+
+def display(split_command: list[str] | tuple[str, ...]) -> None:
+    print(T.bold_green("(local) $ ", shjoin(split_command)))
+
+
+def check_passwordless(host: str) -> bool:
+    try:
+        with fabric.Connection(host) as connection:
+            results: fabric.runners.Result = connection.run(
+                "echo OK",
+                in_stream=False,
+                echo=True,
+                echo_format=T.bold_cyan(f"({host})" + " $ {command}"),
+            )
+
+    except (
+        paramiko.ssh_exception.SSHException,
+        paramiko.ssh_exception.NoValidConnectionsError,
+    ) as err:
+        logger.debug(f"Unable to connect to {host} without a password: {err}")
+        return False
+
+    if "OK" in results.stdout:
+        return True
+    logger.error("Unexpected output from SSH command, output didn't contain 'OK'!")
+    logger.error(f"stdout: {results.stdout}, stderr: {results.stderr}")
+    return False

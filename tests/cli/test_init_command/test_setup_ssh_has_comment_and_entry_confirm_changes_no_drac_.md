@@ -1,28 +1,26 @@
 Running the `mila init` command with this initial content:
 
 ```
-Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName foooobar.com
+# a comment
+Host foo
+  HostName foobar.com
+
+# another comment
 
 ```
 
-and these user inputs: ['bob\r', 'y']
-leads to the following ssh config file:
+and these user inputs: ('bob\r', 'n', 'y')
+leads the following ssh config file:
 
 ```
-Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName %h
-  User bob
-  ProxyJump mila
-  ForwardAgent yes
-  ForwardX11 yes
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
+# a comment
+Host foo
+  HostName foobar.com
+
+# another comment
 
 Host mila
   HostName login.server.mila.quebec
-  User bob
   PreferredAuthentications publickey,keyboard-interactive
   Port 2222
   ServerAliveInterval 120
@@ -30,9 +28,9 @@ Host mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
+  User bob
 
 Host mila-cpu
-  User bob
   Port 2222
   ForwardAgent yes
   StrictHostKeyChecking no
@@ -43,4 +41,13 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
+  User bob
+
+Host *.server.mila.quebec !*login.server.mila.quebec
+  HostName %h
+  ProxyJump mila
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist 600
+  User bob
 ```

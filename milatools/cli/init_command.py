@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import copy
 import difflib
+import functools
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -12,8 +14,10 @@ from pathlib import Path
 from typing import Any
 
 import questionary as qn
+from invoke.exceptions import UnexpectedExit
 
-from .local import Local
+from .local import Local, check_passwordless
+from .remote import Remote
 from .utils import SSHConfig, T, running_inside_WSL, yn
 from .vscode_utils import (
     get_expected_vscode_settings_json_path,
@@ -23,8 +27,88 @@ from .vscode_utils import (
 logger = get_logger(__name__)
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
-HOSTS = ["mila", "mila-cpu", "*.server.mila.quebec !*login.server.mila.quebec"]
-"""List of host entries that get added to the SSH configuration by `mila init`."""
+
+
+if sys.platform == "win32":
+    ssh_multiplexing_config = {}
+else:
+    ssh_multiplexing_config = {
+        # Tries to reuse an existing connection, but if it fails, it will create a
+        # new one.
+        "ControlMaster": "auto",
+        # This makes a file per connection, like
+        # normandf@login.server.mila.quebec:2222
+        "ControlPath": r"~/.cache/ssh/%r@%h:%p",
+        # persist for 10 minutes after the last connection ends.
+        "ControlPersist": 600,
+    }
+
+
+MILA_ENTRIES: dict[str, dict[str, int | str]] = {
+    "mila": {
+        "HostName": "login.server.mila.quebec",
+        # "User": mila_username,
+        "PreferredAuthentications": "publickey,keyboard-interactive",
+        "Port": 2222,
+        "ServerAliveInterval": 120,
+        "ServerAliveCountMax": 5,
+        **ssh_multiplexing_config,
+    },
+    "mila-cpu": {
+        # "User": mila_username,
+        "Port": 2222,
+        "ForwardAgent": "yes",
+        "StrictHostKeyChecking": "no",
+        "LogLevel": "ERROR",
+        "UserKnownHostsFile": "/dev/null",
+        "RequestTTY": "force",
+        "ConnectTimeout": 600,
+        "ServerAliveInterval": 120,
+        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
+        # cannot share gpus
+        "ProxyCommand": (
+            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
+            'mila-cpu --mem=8G"'
+        ),
+        "RemoteCommand": (
+            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu"
+        ),
+    },
+    "*.server.mila.quebec !*login.server.mila.quebec": {
+        "HostName": "%h",
+        # "User": mila_username,
+        "ProxyJump": "mila",
+        **ssh_multiplexing_config,
+    },
+}
+DRAC_CLUSTERS = ["beluga", "cedar", "graham", "narval"]
+DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
+    "beluga cedar graham narval niagara": {
+        "Hostname": "%h.alliancecan.ca",
+        # User=drac_username,
+        **ssh_multiplexing_config,
+    },
+    "!beluga  bc????? bg????? bl?????": {
+        "ProxyJump": "beluga",
+        # User=drac_username,
+    },
+    "!cedar   cdr? cdr?? cdr??? cdr????": {
+        "ProxyJump": "cedar",
+        # User=drac_username,
+    },
+    "!graham  gra??? gra????": {
+        "ProxyJump": "graham",
+        # User=drac_username,
+    },
+    "!narval  nc????? ng?????": {
+        "ProxyJump": "narval",
+        # User=drac_username,
+    },
+    "!niagara nia????": {
+        "ProxyJump": "niagara",
+        # User=drac_username,
+    },
+}
 
 
 def setup_ssh_config(
@@ -44,96 +128,39 @@ def setup_ssh_config(
     - "*.server.mila.quebec !*login.server.mila.quebec": Sets some useful attributes for
       connecting directly to compute nodes.
 
-    TODO: Also ask if we should add entries for the ComputeCanada/DRAC clusters.
-
     Returns:
         The resulting SSHConfig if the changes are approved.
     """
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
     ssh_config = SSHConfig(ssh_config_path)
-    username: str = _get_username(ssh_config)
+    mila_username: str = _get_mila_username(ssh_config)
+    drac_username: str | None = _get_drac_username(ssh_config)
     orig_config = ssh_config.cfg.config()
 
-    control_path_dir = Path("~/.cache/ssh")
-    # note: a bit nicer to keep the "~" in the path in the ssh config file, but we need
-    # to make sure that the directory actually exists.
-    control_path_dir.expanduser().mkdir(exist_ok=True, parents=True)
+    for hostname, entry in MILA_ENTRIES.copy().items():
+        entry.update(User=mila_username)
+        _add_ssh_entry(ssh_config, hostname, entry)
+        _make_controlpath_dir(entry)
 
-    if sys.platform == "win32":
-        ssh_multiplexing_config = {}
-    else:
-        ssh_multiplexing_config = {
-            # Tries to reuse an existing connection, but if it fails, it will create a
-            # new one.
-            "ControlMaster": "auto",
-            # This makes a file per connection, like
-            # normandf@login.server.mila.quebec:2222
-            "ControlPath": str(control_path_dir / r"%r@%h:%p"),
-            # persist for 10 minutes after the last connection ends.
-            "ControlPersist": 600,
-        }
-
-    _add_ssh_entry(
-        ssh_config,
-        host="mila",
-        HostName="login.server.mila.quebec",
-        User=username,
-        PreferredAuthentications="publickey,keyboard-interactive",
-        Port=2222,
-        ServerAliveInterval=120,
-        ServerAliveCountMax=5,
-        **ssh_multiplexing_config,
-    )
-
-    _add_ssh_entry(
-        ssh_config,
-        "mila-cpu",
-        User=username,
-        Port=2222,
-        ForwardAgent="yes",
-        StrictHostKeyChecking="no",
-        LogLevel="ERROR",
-        UserKnownHostsFile="/dev/null",
-        RequestTTY="force",
-        ConnectTimeout=600,
-        ServerAliveInterval=120,
-        # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
-        # cannot share it
-        ProxyCommand=(
-            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
-            'mila-cpu --mem=8G"'
-        ),
-        RemoteCommand=(
-            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu"
-        ),
-    )
+    if drac_username:
+        logger.debug(
+            f"Adding entries for the ComputeCanada/DRAC clusters to {ssh_config_path}."
+        )
+        for hostname, entry in DRAC_ENTRIES.copy().items():
+            entry.update(User=drac_username)
+            _add_ssh_entry(ssh_config, hostname, entry)
+            _make_controlpath_dir(entry)
 
     # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
-
     old_cnode_pattern = "*.server.mila.quebec"
-    cnode_pattern = "*.server.mila.quebec !*login.server.mila.quebec"
 
     if old_cnode_pattern in ssh_config.hosts():
-        if yn(
-            "The '*.server.mila.quebec' entry in ~/.ssh/config is too general and "
-            "should exclude login.server.mila.quebec. Fix this?"
-        ):
-            if cnode_pattern in ssh_config.hosts():
-                ssh_config.remove(old_cnode_pattern)
-            else:
-                ssh_config.rename(old_cnode_pattern, cnode_pattern)
-    else:
-        _add_ssh_entry(
-            ssh_config,
-            cnode_pattern,
-            HostName="%h",
-            User=username,
-            ProxyJump="mila",
-            ForwardAgent="yes",
-            ForwardX11="yes",
-            **ssh_multiplexing_config,
+        logger.info(
+            f"The '{old_cnode_pattern}' entry in ~/.ssh/config is too general and "
+            "should exclude login.server.mila.quebec. Fixing this."
         )
+        ssh_config.remove(old_cnode_pattern)
 
     new_config = ssh_config.cfg.config()
     if orig_config == new_config:
@@ -200,6 +227,174 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
         _copy_if_needed(linux_key_file, windows_key_file)
 
 
+def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
+    """Sets up passwordless ssh access to the Mila and optionally also to DRAC.
+
+    Sets up ssh connection to the DRAC clusters if they are present in the SSH config
+    file.
+
+    Returns whether the operation completed successfully or not.
+    """
+    print("Checking passwordless authentication")
+
+    here = Local()
+    sshdir = Path.home() / ".ssh"
+    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+
+    # Check if there is a public key file in ~/.ssh
+    if not list(sshdir.glob("id*.pub")):
+        if yn("You have no public keys. Generate one?"):
+            # Run ssh-keygen with the given location and no passphrase.
+            create_ssh_keypair(ssh_private_key_path, here)
+        else:
+            print("No public keys.")
+            return False
+
+    success = setup_passwordless_ssh_access_to_cluster("mila")
+    if not success:
+        return False
+
+    drac_clusters_in_ssh_config: list[str] = []
+    hosts_in_config = ssh_config.hosts()
+    for cluster in DRAC_CLUSTERS:
+        if any(cluster in hostname for hostname in hosts_in_config):
+            drac_clusters_in_ssh_config.append(cluster)
+
+    if not drac_clusters_in_ssh_config:
+        logger.debug(
+            f"There are no DRAC clusters in the SSH config at {ssh_config.path}."
+        )
+        return True
+
+    print(
+        "Setting up passwordless ssh access to the DRAC clusters with ssh-copy-id.\n"
+        "\n"
+        "Please note that you can also setup passwordless SSH access to all the DRAC "
+        "clusters by visiting https://ccdb.alliancecan.ca/ssh_authorized_keys and "
+        "copying in the content of your public key in the box.\n"
+        "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
+    )
+    for drac_cluster in drac_clusters_in_ssh_config:
+        success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
+        if not success:
+            return False
+    return True
+
+
+def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
+    """Sets up passwordless SSH access to the given hostname.
+
+    On Mac/Linux, uses `ssh-copy-id`. Performs the steps of ssh-copy-id manually on
+    Windows.
+
+    Returns whether the operation completed successfully or not.
+    """
+    here = Local()
+    # Check that it is possible to connect without using a password.
+    print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
+    # TODO: Potentially use the public key from the SSH config file instead of
+    # the default. It's also possible that ssh-copy-id selects the key from the
+    # config file, I'm not sure.
+    # ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+
+    if check_passwordless(cluster):
+        logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
+        return True
+
+    if not yn(
+        f"Your public key does not appear be registered on the {cluster} cluster. "
+        "Register it?"
+    ):
+        print("No passwordless login.")
+        return False
+
+    print("Please enter your password when prompted.")
+    if sys.platform == "win32":
+        # todo: the path to the key is hard-coded here.
+        command = (
+            "powershell.exe",
+            "type",
+            "$env:USERPROFILE\\.ssh\\id_rsa.pub",
+            "|",
+            "ssh",
+            "-o",
+            "StrictHostKeyChecking=no",
+            cluster,
+            '"cat >> ~/.ssh/authorized_keys"',
+        )
+        here.run(*command, check=True)
+    else:
+        here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
+
+    # double-check that this worked.
+    if not check_passwordless(cluster):
+        print(f"'ssh-copy-id {cluster}' appears to have failed!")
+        return False
+    return True
+
+
+def setup_keys_on_login_node():
+    #####################################
+    # Step 3: Set up keys on login node #
+    #####################################
+
+    print("Checking connection to compute nodes")
+
+    remote = Remote("mila")
+    try:
+        pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
+        print("# OK")
+    except UnexpectedExit:
+        print("# MISSING")
+        if yn("You have no public keys on the login node. Generate them?"):
+            private_file = "~/.ssh/id_rsa"
+            remote.run(f'ssh-keygen -q -t rsa -N "" -f {private_file}')
+            pubkeys = [f"{private_file}.pub"]
+        else:
+            exit("Cannot proceed because there is no public key")
+
+    common = remote.with_bash().get_output(
+        "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)"
+    )
+    if common:
+        print("# OK")
+    else:
+        print("# MISSING")
+        if yn(
+            "To connect to a compute node from a login node you need one id_*.pub to "
+            "be in authorized_keys. Do it?"
+        ):
+            pubkey = pubkeys[0]
+            remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
+        else:
+            exit("You will not be able to SSH to a compute node")
+
+
+def print_welcome_message():
+    print(T.bold_cyan("=" * 60))
+    print(T.bold_cyan("Congrats! You are now ready to start working on the cluster!"))
+    print(T.bold_cyan("=" * 60))
+    print(T.bold("To connect to a login node:"))
+    print("    ssh mila")
+    print(T.bold("To allocate and connect to a compute node:"))
+    print("    ssh mila-cpu")
+    print(T.bold("To open a directory on the cluster with VSCode:"))
+    print("    mila code path/to/code/on/cluster")
+    print(T.bold("Same as above, but allocate 1 GPU, 4 CPUs, 32G of RAM:"))
+    print("    mila code path/to/code/on/cluster --alloc --gres=gpu:1 --mem=32G -c 4")
+    print()
+    print(
+        "For more information, read the milatools documentation at",
+        T.bold_cyan("https://github.com/mila-iqia/milatools"),
+        "or run `mila --help`.",
+        "Also make sure you read the Mila cluster documentation at",
+        T.bold_cyan("https://docs.mila.quebec/"),
+        "and join the",
+        T.bold_green("#mila-cluster"),
+        "channel on Slack.",
+    )
+
+
 def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
     if linux_key_file.exists() and not windows_key_file.exists():
         print(
@@ -216,7 +411,11 @@ def get_windows_home_path_in_wsl() -> Path:
 
 
 def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
-    local.run("ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa", "-N=''")
+    local.run(
+        *shlex.split(
+            f'ssh-keygen -f {shlex.quote(str(ssh_private_key_path))} -t rsa -N=""'
+        ),
+    )
 
 
 def setup_vscode_settings():
@@ -240,25 +439,34 @@ def setup_vscode_settings():
             )
         )
         return
-
+    vscode_settings_json_path = get_expected_vscode_settings_json_path()
     try:
-        _update_vscode_settings_json({"remote.SSH.connectTimeout": 60})
+        _update_vscode_settings_json(
+            vscode_settings_json_path, new_values={"remote.SSH.connectTimeout": 60}
+        )
     except Exception as err:
         logger.warning(
-            f"Unable to setup VsCode settings for remote development: {err}\n"
-            f"Skipping and leaving the settings unchanged.",
+            T.orange(
+                f"Unable to setup VsCode settings file at {vscode_settings_json_path} "
+                f"for remote development.\n"
+                f"Skipping and leaving the settings unchanged."
+            ),
             exc_info=err,
         )
 
 
-def _update_vscode_settings_json(new_values: dict[str, Any]) -> None:
-    vscode_settings_json_path = get_expected_vscode_settings_json_path()
-
+def _update_vscode_settings_json(
+    vscode_settings_json_path: Path, new_values: dict[str, Any]
+) -> None:
     settings_json: dict[str, Any] = {}
     if vscode_settings_json_path.exists():
         logger.info(f"Reading VsCode settings from {vscode_settings_json_path}")
         with open(vscode_settings_json_path) as f:
-            settings_json = json.load(f)
+            settings_json = json.loads(
+                "\n".join(
+                    line for line in f.readlines() if not line.strip().startswith("#")
+                )
+            )
 
     settings_before = copy.deepcopy(settings_json)
     settings_json.update(
@@ -338,7 +546,7 @@ def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
     return ask_to_confirm_changes(before, after, ssh_config.path)
 
 
-def _get_username(ssh_config: SSHConfig) -> str:
+def _get_mila_username(ssh_config: SSHConfig) -> str:
     # Check for a mila entry in ssh config
     # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila'
     # entry.
@@ -359,14 +567,47 @@ def _get_username(ssh_config: SSHConfig) -> str:
     while not username:
         username = qn.text(
             "What's your username on the mila cluster?\n",
-            validate=_is_valid_username,
+            validate=functools.partial(_is_valid_username, cluster_name="mila cluster"),
         ).unsafe_ask()
     return username.strip()
 
 
-def _is_valid_username(text: str) -> bool | str:
+def _get_drac_username(ssh_config: SSHConfig) -> str | None:
+    """Retrieve or ask the user for their username on the ComputeCanada/DRAC
+    clusters."""
+    # Check for one of the DRAC entries in ssh config
+    username: str | None = None
+    hosts_with_cluster_in_name_and_a_user_entry = [
+        host
+        for host in ssh_config.hosts()
+        if any(
+            cc_cluster in host.split() or f"!{cc_cluster}" in host.split()
+            for cc_cluster in DRAC_CLUSTERS
+        )
+        and "user" in ssh_config.host(host)
+    ]
+    users_from_drac_config_entries = set(
+        ssh_config.host(host)["user"]
+        for host in hosts_with_cluster_in_name_and_a_user_entry
+    )
+    # Note: If there are none, or more than one, then we'll ask the user for their
+    # username, just to be sure.
+    if len(users_from_drac_config_entries) == 1:
+        username = users_from_drac_config_entries.pop()
+    elif yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
+        while not username:
+            username = qn.text(
+                "What's your username on the CC/DRAC clusters?\n",
+                validate=functools.partial(
+                    _is_valid_username, cluster_name="ComputeCanada/DRAC clusters"
+                ),
+            ).unsafe_ask()
+    return username.strip() if username else None
+
+
+def _is_valid_username(text: str, cluster_name: str = "mila cluster") -> bool | str:
     return (
-        "Please enter your username on the mila cluster."
+        f"Please enter your username on the {cluster_name}."
         if not text or text.isspace()
         else True
     )
@@ -381,22 +622,27 @@ def _is_valid_username(text: str) -> bool | str:
 def _add_ssh_entry(
     ssh_config: SSHConfig,
     host: str,
-    Host: str | None = None,
+    entry: dict[str, str | int],
     *,
     _space_before: bool = True,
     _space_after: bool = False,
-    **entry,
 ) -> None:
     """Adds or updates an entry in the ssh config object."""
     # NOTE: `Host` is also a parameter to make sure it isn't in `entry`.
-    assert not (host and Host)
-    host = Host or host
+    assert "Host" not in entry
+
+    sorted_by_keys = False
+
     if host in ssh_config.hosts():
         existing_entry = ssh_config.host(host)
         existing_entry.update(entry)
+        if sorted_by_keys:
+            existing_entry = dict(sorted(existing_entry.items()))
         ssh_config.cfg.set(host, **existing_entry)
         logger.debug(f"Updated {host} entry in ssh config at path {ssh_config.path}.")
     else:
+        if sorted_by_keys:
+            entry = dict(sorted(entry.items()))
         ssh_config.add(
             host,
             _space_before=_space_before,
@@ -414,13 +660,15 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
     unsupported_keys_lowercase = set(k.lower() for k in WINDOWS_UNSUPPORTED_KEYS)
 
     # NOTE: need to preserve the ordering of entries:
-    for host in HOSTS + [
-        host for host in linux_ssh_config.hosts() if host not in HOSTS
+    entries_to_move = list(MILA_ENTRIES.keys()) + list(DRAC_ENTRIES.keys())
+    for host in entries_to_move + [
+        host for host in linux_ssh_config.hosts() if host not in entries_to_move
     ]:
         if host not in linux_ssh_config.hosts():
             warnings.warn(
                 RuntimeWarning(
-                    f"Weird, we expected to have a {host!r} entry in the SSH config..."
+                    f"We expected to have a {host!r} entry in the SSH config. "
+                    f"Did you run `mila init`?"
                 )
             )
             continue
@@ -428,9 +676,19 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
         _add_ssh_entry(
             windows_ssh_config,
             host,
-            **{
+            {
                 key: value
                 for key, value in linux_ssh_entry.items()
                 if key.lower() not in unsupported_keys_lowercase
             },
         )
+
+
+def _make_controlpath_dir(entry: dict[str, str | int]) -> None:
+    if "ControlPath" not in entry:
+        return
+    control_path = entry["ControlPath"]
+    assert isinstance(control_path, str)
+    # Create the ControlPath directory if it doesn't exist:
+    control_path_dir = Path(control_path).expanduser().parent
+    control_path_dir.mkdir(exist_ok=True, parents=True)

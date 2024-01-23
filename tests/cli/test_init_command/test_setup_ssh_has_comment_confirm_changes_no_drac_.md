@@ -1,5 +1,15 @@
-When this SSH config is already present in the WSL environment with these initial contents:
+Running the `mila init` command with this initial content:
+
 ```
+# A comment in the file.
+
+```
+
+and these user inputs: ('bob\r', 'n', 'y')
+leads the following ssh config file:
+
+```
+# A comment in the file.
 
 Host mila
   HostName login.server.mila.quebec
@@ -32,39 +42,4 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist 600
   User bob
-
-Host beluga cedar graham narval niagara
-  HostName %h.alliancecan.ca
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
-  User bob
-
-Host !beluga  bc????? bg????? bl?????
-  ProxyJump beluga
-  User bob
-
-Host !cedar   cdr? cdr?? cdr??? cdr????
-  ProxyJump cedar
-  User bob
-
-Host !graham  gra??? gra????
-  ProxyJump graham
-  User bob
-
-Host !narval  nc????? ng?????
-  ProxyJump narval
-  User bob
-
-Host !niagara nia????
-  ProxyJump niagara
-  User bob
-```
-
-
-and these user inputs: ('y', 'n')
-leads the following ssh config file on the Windows side:
-
-```
-
 ```

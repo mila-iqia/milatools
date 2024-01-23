@@ -24,12 +24,13 @@ from typing import Any, Sequence
 from urllib.parse import urlencode
 
 import questionary as qn
-from invoke.exceptions import UnexpectedExit
 from typing_extensions import TypedDict
 
 from ..version import version as mversion
 from .init_command import (
-    create_ssh_keypair,
+    print_welcome_message,
+    setup_keys_on_login_node,
+    setup_passwordless_ssh_access,
     setup_ssh_config,
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
@@ -47,12 +48,12 @@ from .utils import (
     randname,
     running_inside_WSL,
     with_control_file,
-    yn,
 )
 
-logger = get_logger(__name__)
 if typing.TYPE_CHECKING:
     from typing_extensions import Unpack
+
+logger = get_logger(__name__)
 
 
 def main():
@@ -139,12 +140,12 @@ def mila():
     intranet_parser.set_defaults(function=intranet)
 
     # ----- mila init ------
-
     init_parser = subparsers.add_parser(
         "init",
         help="Set up your configuration and credentials.",
         formatter_class=SortingHelpFormatter,
     )
+
     init_parser.set_defaults(function=init)
 
     # ----- mila forward ------
@@ -396,7 +397,6 @@ def init():
     print("Checking ssh config")
 
     ssh_config = setup_ssh_config()
-    print("# OK")
 
     # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
     # ~/.ssh/config to the Windows ssh directory (taking care to remove the
@@ -405,114 +405,12 @@ def init():
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
-    setup_passwordless_ssh_access()
+    success = setup_passwordless_ssh_access(ssh_config=ssh_config)
+    if not success:
+        exit()
     setup_keys_on_login_node()
     setup_vscode_settings()
     print_welcome_message()
-
-
-def setup_passwordless_ssh_access():
-    print("Checking passwordless authentication")
-
-    here = Local()
-
-    # Check that there is an id file
-    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
-
-    sshdir = os.path.expanduser("~/.ssh")
-    if not any(
-        entry.startswith("id") and entry.endswith(".pub")
-        for entry in os.listdir(sshdir)
-    ):
-        if yn("You have no public keys. Generate one?"):
-            # Run ssh-keygen with the given location and no passphrase.
-            create_ssh_keypair(ssh_private_key_path, here)
-        else:
-            exit("No public keys.")
-
-    # Check that it is possible to connect using the key
-
-    if not here.check_passwordless("mila"):
-        if yn(
-            "Your public key does not appear be registered on the cluster. Register it?"
-        ):
-            # NOTE: If we're on a Windows machine, we do something different here:
-            if sys.platform == "win32":
-                command = (
-                    "powershell.exe type $env:USERPROFILE\\.ssh\\id_rsa.pub | ssh mila "
-                    '"cat >> ~/.ssh/authorized_keys"'
-                )
-                here.run(command)
-            else:
-                here.run("ssh-copy-id", "mila")
-            if not here.check_passwordless("mila"):
-                exit("ssh-copy-id appears to have failed")
-        else:
-            exit("No passwordless login.")
-
-
-def setup_keys_on_login_node():
-    print("Checking connection to compute nodes")
-
-    remote = Remote("mila")
-    try:
-        pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
-        print("# OK")
-    except UnexpectedExit:
-        print("# MISSING")
-        if yn("You have no public keys on the login node. Generate them?"):
-            # print("(Note: You can just press Enter 3x to accept the defaults)")
-            # _, keyfile = remote.extract(
-            #     "ssh-keygen",
-            #     pattern="Your public key has been saved in ([^ ]+)",
-            #     wait=True,
-            # )
-            private_file = "~/.ssh/id_rsa"
-            remote.run(f'ssh-keygen -q -t rsa -N "" -f {private_file}')
-            pubkeys = [f"{private_file}.pub"]
-        else:
-            exit("Cannot proceed because there is no public key")
-
-    common = remote.with_bash().get_output(
-        "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)"
-    )
-    if common:
-        print("# OK")
-    else:
-        print("# MISSING")
-        if yn(
-            "To connect to a compute node from a login node you need one id_*.pub to "
-            "be in authorized_keys. Do it?"
-        ):
-            pubkey = pubkeys[0]
-            remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
-        else:
-            exit("You will not be able to SSH to a compute node")
-
-
-def print_welcome_message():
-    print(T.bold_cyan("=" * 60))
-    print(T.bold_cyan("Congrats! You are now ready to start working on the cluster!"))
-    print(T.bold_cyan("=" * 60))
-    print(T.bold("To connect to a login node:"))
-    print("    ssh mila")
-    print(T.bold("To allocate and connect to a compute node:"))
-    print("    ssh mila-cpu")
-    print(T.bold("To open a directory on the cluster with VSCode:"))
-    print("    mila code path/to/code/on/cluster")
-    print(T.bold("Same as above, but allocate 1 GPU, 4 CPUs, 32G of RAM:"))
-    print("    mila code path/to/code/on/cluster --alloc --gres=gpu:1 --mem=32G -c 4")
-    print()
-    print(
-        "For more information, read the milatools documentation at",
-        T.bold_cyan("https://github.com/mila-iqia/milatools"),
-        "or run `mila --help`.",
-        "Also make sure you read the Mila cluster documentation at",
-        T.bold_cyan("https://docs.mila.quebec/"),
-        "and join the",
-        T.bold_green("#mila-cluster"),
-        "channel on Slack.",
-    )
 
 
 def forward(
