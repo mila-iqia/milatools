@@ -143,7 +143,6 @@ def test_init_with_connection(
 
 
 # Note: We could actually run this for real also!
-@requires_s_flag
 @pytest.mark.parametrize("command_to_run", ["echo OK"])
 @pytest.mark.parametrize("initial_transforms", [[]])
 @pytest.mark.parametrize(
@@ -278,7 +277,6 @@ def hide(
         assert output.err == ""
 
 
-@requires_s_flag
 @pytest.mark.parametrize(("command", "expected_output"), [("echo OK", "OK")])
 @pytest.mark.parametrize("asynchronous", [True, False])
 @pytest.mark.parametrize("warn", [True, False])
@@ -320,6 +318,7 @@ def test_run(
         hide=hide,
         warn=warn,
         out_stream=None,
+        in_stream=False,
     )
     remote.connection.local.assert_not_called()
 
@@ -366,6 +365,7 @@ def test_get_output(
         hide=hide,
         warn=warn,
         out_stream=None,
+        in_stream=False,
     )
     mock_result.stdout.strip.assert_called_once_with()
 
@@ -471,7 +471,6 @@ def test_put(remote: Remote, tmp_path: Path):
     assert dest.read_text() == source_content
 
 
-@requires_s_flag
 def test_puttext(remote: Remote, tmp_path: Path):
     _xfail_if_not_on_localhost(remote.hostname)
     dest_dir = tmp_path / "bar/baz"
@@ -484,17 +483,22 @@ def test_puttext(remote: Remote, tmp_path: Path):
         out_stream=None,
         hide=True,
         warn=False,
+        in_stream=False,
     )
     # The first argument of `put` will be the name of a temporary file.
     remote.connection.put.assert_called_once_with(unittest.mock.ANY, str(dest))
     assert dest.read_text() == some_text
 
 
-@requires_s_flag
 def test_home(remote: Remote):
     home_dir = remote.home()
     remote.connection.run.assert_called_once_with(
-        "echo $HOME", asynchronous=False, out_stream=None, warn=False, hide=True
+        "echo $HOME",
+        asynchronous=False,
+        out_stream=None,
+        warn=False,
+        hide=True,
+        in_stream=False,
     )
     remote.connection.local.assert_not_called()
     if remote.hostname == "mila":
@@ -550,7 +554,6 @@ class TestSlurmRemote:
         command = "bob"
         assert remote.srun_transform(command) == f"srun {alloc[0]} bash -c {command}"
 
-    @requires_s_flag
     def test_srun_transform_persist(
         self,
         mock_connection: Connection,
@@ -724,6 +727,7 @@ class TestSlurmRemote:
             pty: bool,
             out_stream: QueueIO,
             warn: bool,
+            in_stream: bool,
         ):
             assert command == expected_command
             out_stream.write(f"salloc: Nodes {node} are ready for job")
@@ -739,6 +743,7 @@ class TestSlurmRemote:
             asynchronous=True,
             out_stream=unittest.mock.ANY,
             pty=True,
+            in_stream=False,
         )
         assert results == {"node_name": node}
 

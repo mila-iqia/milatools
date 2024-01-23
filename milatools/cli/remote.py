@@ -146,6 +146,7 @@ class Remote:
     def _run(
         self,
         cmd: str,
+        *,
         hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
         warn: bool = False,
         asynchronous: bool = False,
@@ -170,30 +171,19 @@ class Remote:
             )
 
     def simple_run(self, cmd: str):
-        return self._run(cmd, hide=True)
+        return self._run(cmd, hide=True, in_stream=False)
 
     @overload
     def run(
         self,
         cmd: str,
-        display: bool | None = None,
-        hide: bool = False,
-        warn: bool = False,
-        asynchronous: Literal[True] = True,
-        out_stream: TextIO | None = None,
-        **kwargs,
-    ) -> invoke.runners.Promise:
-        ...
-
-    @overload
-    def run(
-        self,
-        cmd: str,
+        *,
         display: bool | None = None,
         hide: bool = False,
         warn: bool = False,
         asynchronous: Literal[False] = False,
         out_stream: TextIO | None = None,
+        in_stream: TextIO | bool = False,
         **kwargs,
     ) -> invoke.runners.Result:
         ...
@@ -202,11 +192,28 @@ class Remote:
     def run(
         self,
         cmd: str,
+        *,
         display: bool | None = None,
         hide: bool = False,
         warn: bool = False,
-        asynchronous: bool = False,
+        asynchronous: Literal[True] = True,
         out_stream: TextIO | None = None,
+        in_stream: TextIO | bool = False,
+        **kwargs,
+    ) -> invoke.runners.Promise:
+        ...
+
+    @overload
+    def run(
+        self,
+        cmd: str,
+        *,
+        display: bool | None = None,
+        hide: bool = False,
+        warn: bool = False,
+        asynchronous: bool = ...,
+        out_stream: TextIO | None = None,
+        in_stream: TextIO | bool = False,
         **kwargs,
     ) -> invoke.runners.Result | invoke.runners.Promise:
         ...
@@ -219,6 +226,7 @@ class Remote:
         warn: bool = False,
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
+        in_stream: TextIO | bool = False,
         **kwargs,
     ) -> invoke.runners.Promise | invoke.runners.Result:
         """Run a command on the remote host, returning the `invoke.Result`.
@@ -233,7 +241,7 @@ class Remote:
         Parameters
         ----------
         cmd: The command to run
-        display: TODO: add a description of what this argument does.
+        display: Displays the host name and the command in colour before running it.
         hide: ``'out'`` (or ``'stdout'``) to hide only the stdout stream, \
             ``hide='err'`` (or ``'stderr'``) to hide only stderr, or ``hide='both'`` \
             (or ``True``) to hide both streams.
@@ -262,6 +270,7 @@ class Remote:
             warn=warn,
             asynchronous=asynchronous,
             out_stream=out_stream,
+            in_stream=in_stream,
             **kwargs,
         )
 
@@ -277,6 +286,7 @@ class Remote:
             display=display,
             hide=hide,
             warn=warn,
+            in_stream=False,
         ).stdout.strip()
 
     @deprecated(
@@ -305,7 +315,7 @@ class Remote:
         pty: bool = True,
         hide: bool = False,
         **kwargs,
-    ) -> tuple[fabric.runners.Runner, dict[str, str]]:
+    ) -> tuple[fabric.runners.Remote, dict[str, str]]:
         # TODO: We pass this `QueueIO` class to `connection.run`, which expects a
         # file-like object and defaults to sys.stdout (a TextIO). However they only use
         # the `write` and `flush` methods, which means that this QueueIO is actually
@@ -314,7 +324,7 @@ class Remote:
         # reading from it, and pass that `io.StringIO` buffer to `self.run`.
         qio: TextIO = QueueIO()
 
-        proc = self.run(
+        promise = self.run(
             cmd,
             hide=hide,
             asynchronous=True,
@@ -322,9 +332,12 @@ class Remote:
             pty=pty,
             **kwargs,
         )
+        runner = promise.runner
+        assert isinstance(runner, fabric.runners.Remote)
+
         results: dict[str, str] = {}
         try:
-            for line in qio.readlines(lambda: proc.runner.process_is_finished):
+            for line in qio.readlines(lambda: runner.process_is_finished):
                 print(line, end="")
                 for name, patt in list(patterns.items()):
                     m = re.search(patt, line)
@@ -332,21 +345,21 @@ class Remote:
                         results[name] = m.groups()[0]
                         patterns.pop(name)
                         if not patterns and not wait:
-                            return proc.runner, results
+                            return runner, results
 
                 # Check what the job id is when we sbatch
                 m = re.search("^Submitted batch job ([0-9]+)", line)
                 if m:
                     results["batch_id"] = m.groups()[0]
         except KeyboardInterrupt:
-            proc.runner.kill()
+            runner.kill()
             if "batch_id" in results:
                 # We need to preemptively cancel the job so that it doesn't
                 # clutter the user's squeue when they Ctrl+C
                 self.simple_run(f"scancel {results['batch_id']}")
             raise
-        proc.join()
-        return proc.runner, results
+        promise.join()
+        return runner, results
 
     def get(self, src: str, dest: str | None) -> fabric.transfer.Result:
         return self.connection.get(src, dest)
@@ -457,14 +470,23 @@ class SlurmRemote(Remote):
 
     def ensure_allocation(
         self,
-    ) -> tuple[NodeNameDict | NodeNameAndJobidDict, invoke.runners.Runner]:
-        """Requests a compute node from the cluster if not already allocated.
+    ) -> tuple[NodeNameDict | NodeNameAndJobidDict, fabric.runners.Remote]:
+        """Makes the `salloc` or `sbatch` call and waits until the job starts.
 
-        Returns a dictionary with the `node_name`, and additionally the `jobid` if this
-        Remote is already connected to a compute node.
+        When `persist=True`:
+        - uses `sbatch`
+        - returns a tuple with:
+            - a dict with the compute node name and the jobid
+            - a `fabric.runners.Remote` object connected to the *login* node.
+
+        When `persist=False`:
+        - uses `salloc`
+        - returns a tuple with:
+            - a dict with the compute node name (without the jobid)
+            - a `fabric.runners.Remote` object connected to the *login* node.
         """
         if self._persist:
-            proc, results = self.extract(
+            login_node_runner, results = self.extract(
                 "echo @@@ $(hostname) @@@ && sleep 1000d",
                 patterns={
                     "node_name": "@@@ ([^ ]+) @@@",
@@ -473,15 +495,26 @@ class SlurmRemote(Remote):
                 hide=True,
             )
             node_name = get_first_node_name(results["node_name"])
-            return {"node_name": node_name, "jobid": results["jobid"]}, proc
+            return {
+                "node_name": node_name,
+                "jobid": results["jobid"],
+            }, login_node_runner
         else:
             remote = Remote(hostname="->", connection=self.connection).with_bash()
-            proc, results = remote.extract(
+            login_node_runner, results = remote.extract(
                 shjoin(["salloc", *self.alloc]),
-                patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
+                patterns={
+                    "node_name": "salloc: Nodes ([^ ]+) are ready for job",
+                    # TODO: This would also work!
+                    # "jobid": "salloc: Granted job allocation ([0-9]+)",
+                },
             )
             # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
             # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to
             # a single one, though, so we will simply pick the first one.
             node_name = get_first_node_name(results["node_name"])
-            return {"node_name": node_name}, proc
+            return {
+                "node_name": node_name,
+                # TODO: This would also work!
+                # "jobid": results["jobid"],
+            }, login_node_runner

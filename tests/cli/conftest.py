@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from .common import REQUIRES_S_FLAG_REASON
 
+in_github_ci = "PLATFORM" in os.environ
 
-@pytest.fixture(autouse=True)
-def skip_if_s_flag_passed_and_test_doesnt_require_it(
+
+@pytest.fixture(autouse=in_github_ci)
+def skip_if_s_flag_passed_during_ci_run_and_test_doesnt_require_it(
     request: pytest.FixtureRequest, pytestconfig: pytest.Config
 ):
     capture_value = pytestconfig.getoption("-s")
