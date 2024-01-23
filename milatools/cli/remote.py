@@ -27,6 +27,8 @@ echo jobid = $SLURM_JOB_ID >> {control_file}
 {command}
 """
 
+Hide = Literal[True, False, "out", "stdout", "err", "stderr"]
+
 
 class NodeNameDict(TypedDict):
     node_name: str
@@ -146,8 +148,7 @@ class Remote:
     def _run(
         self,
         cmd: str,
-        *,
-        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
@@ -179,7 +180,7 @@ class Remote:
         cmd: str,
         *,
         display: bool | None = None,
-        hide: bool = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: Literal[False] = False,
         out_stream: TextIO | None = None,
@@ -194,7 +195,7 @@ class Remote:
         cmd: str,
         *,
         display: bool | None = None,
-        hide: bool = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: Literal[True] = True,
         out_stream: TextIO | None = None,
@@ -209,7 +210,7 @@ class Remote:
         cmd: str,
         *,
         display: bool | None = None,
-        hide: bool = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: bool = ...,
         out_stream: TextIO | None = None,
@@ -222,7 +223,7 @@ class Remote:
         self,
         cmd: str,
         display: bool | None = None,
-        hide: Literal[True, False, "out", "stdout", "err", "stderr"] = False,
+        hide: Hide = False,
         warn: bool = False,
         asynchronous: bool = False,
         out_stream: TextIO | None = None,
@@ -278,7 +279,7 @@ class Remote:
         self,
         cmd: str,
         display: bool | None = None,
-        hide: bool = False,
+        hide: Hide = False,
         warn: bool = False,
     ) -> str:
         return self.run(
@@ -292,13 +293,13 @@ class Remote:
     @deprecated(
         "This method will be removed because its name is misleading: This "
         "returns a list with all the words in the output instead of all the "
-        "lines. Use get_output(cmd).split() instead.",
+        "lines. Use get_output(cmd).splitlines() instead.",
         category=None,  # TODO: Remove this so a warning is raised at runtime.
     )
     def get_lines(
         self,
         cmd: str,
-        hide: bool = False,
+        hide: Hide = False,
         warn: bool = False,
     ) -> list[str]:
         return self.get_output(
@@ -313,7 +314,7 @@ class Remote:
         patterns: dict[str, str],
         wait: bool = False,
         pty: bool = True,
-        hide: bool = False,
+        hide: Hide = False,
         **kwargs,
     ) -> tuple[fabric.runners.Remote, dict[str, str]]:
         # TODO: We pass this `QueueIO` class to `connection.run`, which expects a
@@ -427,11 +428,12 @@ class SlurmRemote(Remote):
         alloc: Sequence[str],
         transforms: Sequence[Callable[[str], str]] = (),
         persist: bool = False,
+        hostname: str = "->",
     ):
         self.alloc = alloc
         self._persist = persist
         super().__init__(
-            hostname="->",
+            hostname=hostname,
             connection=connection,
             transforms=[
                 *transforms,
@@ -451,9 +453,11 @@ class SlurmRemote(Remote):
             output_file=output_file,
             control_file=control_file_var.get(),
         )
+        # NOTE: We need to move to $SCRATCH before we run `sbatch`.
         self.puttext(batch, batch_file)
-        cmd = shjoin(["sbatch", *self.alloc, batch_file])
-        return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
+        self.simple_run(f"chmod +x {batch_file}")
+        cmd = shjoin(["sbatch", *self.alloc, f"~/{batch_file}"])
+        return f"cd $SCRATCH && {cmd}; touch {output_file}; tail -n +1 -f {output_file}"
 
     def with_transforms(
         self, *transforms: Callable[[str], str], persist: bool | None = None
@@ -500,21 +504,23 @@ class SlurmRemote(Remote):
                 "jobid": results["jobid"],
             }, login_node_runner
         else:
-            remote = Remote(hostname="->", connection=self.connection).with_bash()
-            login_node_runner, results = remote.extract(
-                shjoin(["salloc", *self.alloc]),
-                patterns={
-                    "node_name": "salloc: Nodes ([^ ]+) are ready for job",
-                    # TODO: This would also work!
-                    # "jobid": "salloc: Granted job allocation ([0-9]+)",
-                },
+            remote = Remote(hostname=self.hostname, connection=self.connection)
+            # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or
+            # /projects
+            # before submitting a job.
+            proc, results = remote.extract(
+                "cd $SCRATCH && " + shjoin(["salloc", *self.alloc]),
+                patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
             )
+
             # The node name can look like 'cn-c001', or 'cn-c[001-003]', or
             # 'cn-c[001,008]', or 'cn-c001,rtx8', etc. We will only connect to
             # a single one, though, so we will simply pick the first one.
             node_name = get_first_node_name(results["node_name"])
+            # TODO: Is the `remote` object here connected to the compute node?
+            # remote.hostname = node_name
             return {
                 "node_name": node_name,
-                # TODO: This would also work!
+                # TODO: This would also work, there is output with the jobid in salloc.
                 # "jobid": results["jobid"],
-            }, login_node_runner
+            }, proc

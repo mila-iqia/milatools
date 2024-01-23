@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextvars
 import functools
 import itertools
+import multiprocessing
 import random
 import shlex
 import shutil
@@ -10,20 +11,23 @@ import socket
 import subprocess
 import sys
 import typing
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Callable, Iterable, Union
 
 import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
+from typing_extensions import Literal, ParamSpec, TypeGuard, get_args
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
+
 
 T = blessed.Terminal()
 
@@ -42,6 +46,34 @@ style = qn.Style(
 vowels = list("aeiou")
 consonants = list("bdfgjklmnprstvz")
 syllables = ["".join(letters) for letters in itertools.product(consonants, vowels)]
+
+ClusterWithInternetOnCNodes = Literal["mila", "cedar"]
+ClusterWithoutInternetOnCNodes = Literal["narval", "beluga", "graham"]
+
+Cluster = Union[ClusterWithInternetOnCNodes, ClusterWithoutInternetOnCNodes]
+
+# Introspect the type annotation above so we don't duplicate hard-coded values.
+# NOTE: An alternative approach could also be to avoid hard-coding anything at all, but
+# lose the benefits of rich typing. Perhaps we can opt for that at some point if we add
+# support for more and more clusters, or want to make it possible for users to add
+# custom clusters via config files.
+CLUSTERS: list[Cluster] = list(
+    get_args(ClusterWithInternetOnCNodes) + get_args(ClusterWithoutInternetOnCNodes)
+)
+DRAC_CLUSTERS: list[Cluster] = [c for c in CLUSTERS if c != "mila"]
+
+
+def no_internet_on_compute_nodes(
+    cluster: Cluster,
+) -> TypeGuard[ClusterWithoutInternetOnCNodes]:
+    if cluster not in CLUSTERS:
+        warnings.warn(
+            UserWarning(
+                f"Unknown cluster {cluster}. Assuming that compute nodes do not have "
+                f"internet access on this cluster for now."
+            )
+        )
+    return cluster not in get_args(ClusterWithInternetOnCNodes)
 
 
 def randname():
@@ -208,11 +240,25 @@ class SSHConfig:
         return "\n".join(lines)
 
 
-def qualified(node_name):
+def get_fully_qualified_hostname_of_compute_node(
+    node_name: str, cluster: str = "mila"
+) -> str:
     """Return the fully qualified name corresponding to this node name."""
-
-    if "." not in node_name and not node_name.endswith(".server.mila.quebec"):
-        node_name = f"{node_name}.server.mila.quebec"
+    if cluster == "mila":
+        if node_name.endswith(".server.mila.quebec"):
+            return node_name
+        return f"{node_name}.server.mila.quebec"
+    if cluster in CLUSTERS:
+        # For the other explicitly supported clusters in the SSH config, the node name
+        # of the compute node can be used directly with ssh from the local machine, no
+        # need to use a fully qualified name.
+        return node_name
+    warnings.warn(
+        UserWarning(
+            f"Using a custom cluster {cluster}. Assuming that we can ssh directly to "
+            f"its compute node {node_name!r}."
+        )
+    )
     return node_name
 
 
@@ -232,3 +278,14 @@ def get_fully_qualified_name() -> str:
 @functools.lru_cache()
 def running_inside_WSL() -> bool:
     return sys.platform == "linux" and bool(shutil.which("powershell.exe"))
+
+
+P = ParamSpec("P")
+
+
+def make_process(
+    target: Callable[P, Any], *args: P.args, **kwargs: P.kwargs
+) -> multiprocessing.Process:
+    # Tiny wrapper around the `multiprocessing.Process` init to detect if the args and
+    # kwargs don't match the target signature using typing instead of at runtime.
+    return multiprocessing.Process(target=target, daemon=True, args=args, kwargs=kwargs)

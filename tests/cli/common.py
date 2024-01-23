@@ -111,6 +111,7 @@ def output_tester(
     capsys: pytest.CaptureFixture,
     file_regression: FileRegressionFixture,
 ):
+    # TODO: Rework this, or add a proper docstring explaining what this does.
     out, err = None, None
     try:
         out, err = func()

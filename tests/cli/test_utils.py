@@ -1,11 +1,19 @@
 import functools
+import multiprocessing
 import random
 from unittest.mock import patch
 
 import pytest
 from prompt_toolkit.input.defaults import create_pipe_input
 
-from milatools.cli.utils import get_fully_qualified_name, qn, randname, yn
+from milatools.cli.utils import (
+    get_fully_qualified_hostname_of_compute_node,
+    get_fully_qualified_name,
+    make_process,
+    qn,
+    randname,
+    yn,
+)
 
 
 def test_randname(file_regression):
@@ -30,3 +38,67 @@ def test_yn():
 
 def test_hostname():
     assert get_fully_qualified_name()
+
+
+@pytest.mark.parametrize(
+    ("cluster", "node", "expected"),
+    [
+        ("mila", "cn-a001", "cn-a001.server.mila.quebec"),
+    ]
+    + [
+        # Host !beluga  bc????? bg????? bl?????
+        ("beluga", cnode, cnode)
+        for prefix in ["bc", "bg", "bl"]
+        for cnode in [f"{prefix}12345"]
+    ]
+    + [
+        # Host !cedar   cdr? cdr?? cdr??? cdr????
+        ("cedar", cnode, cnode)
+        for n in range(5)
+        for cnode in [f"cdr{'0' * n}"]
+    ]
+    + [
+        # Host !graham  gra??? gra????
+        ("cedar", cnode, cnode)
+        for n in range(3, 5)
+        for cnode in [f"cdr{'0' * n}"]
+    ]
+    + [
+        # Host !narval  nc????? ng?????
+        ("beluga", cnode, cnode)
+        for prefix in ["nc", "ng"]
+        for cnode in [f"{prefix}12345"]
+    ]
+    # NOTE: Not including niagara for now, since DRAC users don't automatically get
+    # access to it (plus, it doesn't have GPUs).
+    # + [
+    #     # Host !niagara nia????
+    #     ("niagara", cnode, cnode)
+    #     for cnode in ["nia1234"]
+    # ],
+)
+def test_get_fully_qualified_hostname_of_compute_node(
+    cluster: str, node: str, expected: str
+):
+    assert (
+        get_fully_qualified_hostname_of_compute_node(node_name=node, cluster=cluster)
+        == expected
+    )
+
+
+def test_get_fully_qualified_hostname_of_compute_node_unknown_cluster():
+    node_name = "some-node"
+    with pytest.warns(UserWarning):
+        assert (
+            get_fully_qualified_hostname_of_compute_node(
+                node_name=node_name, cluster="unknown-cluster"
+            )
+            == node_name
+        )
+
+
+def test_make_process():
+    process = make_process(print, "hello", end="!")
+    assert isinstance(process, multiprocessing.Process)
+    assert process.daemon
+    assert not process.is_alive()

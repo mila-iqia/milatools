@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+import sys
 import time
 import typing
 import unittest
@@ -23,79 +24,7 @@ from milatools.cli.remote import (
 )
 from milatools.cli.utils import T, shjoin
 
-from .common import (
-    function_call_string,
-    requires_s_flag,
-    requires_ssh_to_localhost,
-)
-
-
-@pytest.fixture(
-    scope="session",
-    params=[
-        pytest.param("localhost", marks=requires_ssh_to_localhost),
-        # TODO: Think about a smart way to enable this. Some tests won't work as-is.
-        # pytest.param(
-        #     "mila",
-        #     marks=pytest.mark.skipif(
-        #         "-vvv" not in sys.argv, reason="Not testing using the Mila cluster."
-        #     ),
-        # ),
-    ],
-)
-def host(request: pytest.FixtureRequest) -> str:
-    return request.param
-
-
-@pytest.fixture(scope="session")
-def connection(host: str) -> Generator[Connection, None, None]:
-    """Fixture that gives a Connection object that is reused by all tests."""
-    with Connection(host) as connection:
-        yield connection
-
-
-@pytest.fixture(scope="function")
-def MockConnection(
-    monkeypatch: pytest.MonkeyPatch, connection: Connection, host: str
-) -> Mock:
-    """Returns a Mock wrapping the `fabric.connection.Connection` class."""
-    # The return value of the constructor will always be the shared `Connection` object.
-    MockConnection = Mock(
-        name="MockConnection",
-        wraps=Connection,
-        return_value=Mock(
-            name="mock_connection",
-            # Modify the repr so they show up nicely in the regression files and with
-            # consistent/reproducible names.
-            wraps=connection,
-            host=host,
-            __repr__=lambda _: f"Connection({repr(host)})",
-        ),
-    )
-    # mock_connection.configure_mock(
-    #     __repr__=lambda _: f"Connection({repr(host)})",
-    # )
-    import milatools.cli.remote
-
-    monkeypatch.setattr(milatools.cli.remote, Connection.__name__, MockConnection)
-    return MockConnection
-
-
-@pytest.fixture(scope="function")
-def mock_connection(
-    MockConnection: Mock,
-) -> Mock:
-    """returns a Mock wrapping a real `Connection` instance.
-
-    This Mock is used to check how the connection is used by `Remote` and `SlurmRemote`.
-    """
-    mock_connection: Mock = MockConnection.return_value
-    # mock_connection.configure_mock(
-    #     # Modify the repr so they show up nicely in the regression files and with
-    #     # consistent/reproducible names.
-    #     __repr__=lambda _: f"Connection({repr(host)})",
-    # )
-    return mock_connection
+from .common import function_call_string, requires_s_flag
 
 
 @pytest.mark.parametrize("keepalive", [0, 123])
@@ -240,13 +169,6 @@ and `result.stdout.strip()={repr(result.stdout.strip())}`.
     file_regression.check(regression_file_text, extension=".md")
 
 
-@pytest.fixture(scope="function")
-def remote(mock_connection: Connection):
-    hostname = mock_connection.host
-    assert isinstance(hostname, str)
-    return Remote(hostname=hostname, connection=mock_connection)
-
-
 @pytest.mark.parametrize("message", ["foobar"])
 def test_display(
     message: str,
@@ -359,14 +281,12 @@ def test_get_output(
     assert output == command_output
 
     assert len(mock_connection.method_calls) == 1
-    mock_connection.run.assert_called_once_with(
-        command,
-        asynchronous=False,
-        hide=hide,
-        warn=warn,
-        out_stream=None,
-        in_stream=False,
-    )
+    mock_connection.run.assert_called_once()
+
+    if sys.version_info < (3, 8):
+        assert mock_connection.run.mock_calls[0][1] == (command,)
+    else:
+        assert mock_connection.run.mock_calls[0].args[0] == command
     mock_result.stdout.strip.assert_called_once_with()
 
 
@@ -477,14 +397,11 @@ def test_puttext(remote: Remote, tmp_path: Path):
     dest = tmp_path / f"{dest_dir}/bob.txt"
     some_text = "foo"
     _result = remote.puttext(some_text, str(dest))
-    remote.connection.run.assert_called_once_with(
-        f"mkdir -p {dest_dir}",
-        asynchronous=False,
-        out_stream=None,
-        hide=True,
-        warn=False,
-        in_stream=False,
-    )
+    remote.connection.run.assert_called_once()
+    if sys.version_info < (3, 8):
+        assert remote.connection.run.mock_calls[0][1] == (f"mkdir -p {dest_dir}",)
+    else:
+        assert remote.connection.run.mock_calls[0].args[0] == f"mkdir -p {dest_dir}"
     # The first argument of `put` will be the name of a temporary file.
     remote.connection.put.assert_called_once_with(unittest.mock.ANY, str(dest))
     assert dest.read_text() == some_text
@@ -492,14 +409,11 @@ def test_puttext(remote: Remote, tmp_path: Path):
 
 def test_home(remote: Remote):
     home_dir = remote.home()
-    remote.connection.run.assert_called_once_with(
-        "echo $HOME",
-        asynchronous=False,
-        out_stream=None,
-        warn=False,
-        hide=True,
-        in_stream=False,
-    )
+    remote.connection.run.assert_called_once()
+    if sys.version_info < (3, 8):
+        assert remote.connection.run.mock_calls[0][1] == ("echo $HOME",)
+    else:
+        assert remote.connection.run.mock_calls[0].args[0] == "echo $HOME"
     remote.connection.local.assert_not_called()
     if remote.hostname == "mila":
         assert home_dir.startswith("/home/mila/")
@@ -718,7 +632,7 @@ class TestSlurmRemote:
         alloc = ["--time=00:01:00"]
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
-        expected_command = f"bash -c 'salloc {shjoin(alloc)}'"
+        expected_command = f"cd $SCRATCH && salloc {shjoin(alloc)}"
 
         def write_stuff(
             command: str,

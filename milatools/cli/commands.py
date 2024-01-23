@@ -15,6 +15,7 @@ import sys
 import time
 import traceback
 import typing
+import warnings
 import webbrowser
 from argparse import ArgumentParser, _HelpAction
 from contextlib import ExitStack
@@ -25,6 +26,8 @@ from urllib.parse import urlencode
 
 import questionary as qn
 from typing_extensions import TypedDict
+
+from milatools.cli.vscode_utils import copy_vscode_extensions_to_remote
 
 from ..version import version as mversion
 from .init_command import (
@@ -39,12 +42,16 @@ from .local import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (
+    CLUSTERS,
+    Cluster,
     CommandNotFoundError,
     MilatoolsUserError,
     SSHConnectionError,
     T,
+    get_fully_qualified_hostname_of_compute_node,
     get_fully_qualified_name,
-    qualified,
+    make_process,
+    no_internet_on_compute_nodes,
     randname,
     running_inside_WSL,
     with_control_file,
@@ -52,6 +59,7 @@ from .utils import (
 
 if typing.TYPE_CHECKING:
     from typing_extensions import Unpack
+
 
 logger = get_logger(__name__)
 
@@ -116,7 +124,6 @@ def mila():
         version=f"milatools v{mversion}",
         help="Milatools version",
     )
-
     subparsers = parser.add_subparsers(required=True, dest="<command>")
 
     # ----- mila docs ------
@@ -180,6 +187,12 @@ def mila():
     )
     code_parser.add_argument(
         "PATH", help="Path to open on the remote machine", type=str
+    )
+    code_parser.add_argument(
+        "--cluster",
+        choices=CLUSTERS,
+        default="mila",
+        help="Which cluster to connect to.",
     )
     code_parser.add_argument(
         "--alloc",
@@ -448,6 +461,7 @@ def code(
     job: str | None,
     node: str | None,
     alloc: Sequence[str],
+    cluster: Cluster = "mila",
 ):
     """Open a remote VSCode session on a compute node.
 
@@ -461,36 +475,89 @@ def code(
         alloc: Extra options to pass to slurm
     """
     here = Local()
-    remote = Remote("mila")
+    remote = Remote(cluster)
+
+    if cluster != "mila" and job is None and node is None:
+        if not any("--account" in flag for flag in alloc):
+            warnings.warn(
+                T.orange(
+                    "Warning: When using the DRAC clusters, you usually need to "
+                    "specify the account to use when submitting a job. You can specify "
+                    "this in the job resources with `--alloc`, like so: "
+                    "`--alloc --account=<account_to_use>`, for example:\n"
+                    f"mila code {path} --cluster {cluster} --alloc "
+                    f"--account=your-account-here"
+                )
+            )
 
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-    try:
-        check_disk_quota(remote)
-    except MilatoolsUserError:
-        raise
-    except Exception as exc:
-        logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
+    if remote.hostname != "graham":  # graham doesn't use lustre for $HOME
+        try:
+            check_disk_quota(remote)
+        except MilatoolsUserError:
+            raise
+        except Exception as exc:
+            logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
-    cnode = _find_allocation(
-        remote, job_name="mila-code", job=job, node=node, alloc=alloc
-    )
-    if persist:
-        cnode = cnode.persist()
-    data, proc = cnode.ensure_allocation()
+    vscode_extensions_folder = Path.home() / ".vscode/extensions"
+    if vscode_extensions_folder.exists() and no_internet_on_compute_nodes(cluster):
+        # Sync the VsCode extensions from the local machine over to the target cluster.
+        print(
+            T.bold_cyan(
+                f"Copying VSCode extensions from local machine to {cluster} in the "
+                f"background..."
+            )
+        )
+        # Async:
+        copy_vscode_extensions_process = make_process(
+            copy_vscode_extensions_to_remote,
+            cluster,
+            vscode_extensions_folder,
+        )
+        copy_vscode_extensions_process.start()
 
-    node_name = data["node_name"]
+        # Sync:
+        # copy_vscode_extensions_to_remote(
+        #     cluster,
+        #     local_vscode_extensions_dir=vscode_extensions_folder,
+        #     remote=remote,
+        # )
+
+    if node is None:
+        cnode = _find_allocation(
+            remote,
+            job_name="mila-code",
+            job=job,
+            node=node,
+            alloc=alloc,
+            cluster=cluster,
+        )
+        if persist:
+            cnode = cnode.persist()
+
+        data, proc = cnode.ensure_allocation()
+
+        node_name = data["node_name"]
+    else:
+        node_name = node
+        proc = None
+        data = None
 
     if not path.startswith("/"):
         # Get $HOME because we have to give the full path to code
         home = remote.home()
-        path = "/".join([home, path])
+        path = home if path == "." else f"{home}/{path}"
 
     command_path = shutil.which(command)
     if not command_path:
         raise CommandNotFoundError(command)
-    qualified_node_name = qualified(node_name)
+
+    # NOTE: Since we have the config entries for the DRAC compute nodes, there is no
+    # need to use the fully qualified hostname here.
+    if cluster == "mila":
+        node_name = get_fully_qualified_hostname_of_compute_node(node_name)
 
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open VSCode without
@@ -504,7 +571,7 @@ def code(
                     "code",
                     "-nw",
                     "--remote",
-                    f"ssh-remote+{qualified_node_name}",
+                    f"ssh-remote+{node_name}",
                     path,
                 )
             else:
@@ -512,7 +579,7 @@ def code(
                     command_path,
                     "-nw",
                     "--remote",
-                    f"ssh-remote+{qualified_node_name}",
+                    f"ssh-remote+{node_name}",
                     path,
                 )
             print(
@@ -532,6 +599,7 @@ def code(
         print("To reconnect to this node:")
         print(T.bold(f"  mila code {path} --node {node_name}"))
         print("To kill this allocation:")
+        assert data is not None
         assert "jobid" in data
         print(T.bold(f"  ssh mila scancel {data['jobid']}"))
 
@@ -881,6 +949,7 @@ def _standard_server(
             node=node,
             job=job,
             alloc=alloc,
+            cluster="mila",
         )
 
         patterns = {
@@ -949,7 +1018,7 @@ def _standard_server(
 
     local_proc, local_port = _forward(
         local=Local(),
-        node=qualified(node_name),
+        node=get_fully_qualified_hostname_of_compute_node(node_name, cluster="mila"),
         to_forward=to_forward,
         options=options,
         port=port,
@@ -991,7 +1060,7 @@ def _get_disk_quota_usage(
     # uid 1471600598 is using default file quota setting
     #
     home_disk_quota_output = remote.get_output(
-        "lfs quota -u $USER /home/mila", hide=not print_command_output
+        "lfs quota -u $USER $HOME", hide=not print_command_output
     )
     lines = home_disk_quota_output.splitlines()
     (
@@ -1072,13 +1141,14 @@ def _find_allocation(
     node: str | None,
     job: str | None,
     alloc: Sequence[str],
+    cluster: Cluster = "mila",
     job_name: str = "mila-tools",
 ):
     if (node is not None) + (job is not None) + bool(alloc) > 1:
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
     if node is not None:
-        node_name = qualified(node)
+        node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
         return Remote(node_name)
 
     elif job is not None:
@@ -1090,6 +1160,7 @@ def _find_allocation(
         return SlurmRemote(
             connection=remote.connection,
             alloc=alloc,
+            hostname=remote.hostname,
         )
 
 
