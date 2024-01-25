@@ -18,7 +18,6 @@ import traceback
 import typing
 import warnings
 import webbrowser
-import logging
 from argparse import ArgumentParser, _HelpAction
 from collections.abc import Sequence
 from contextlib import ExitStack
