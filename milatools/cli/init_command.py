@@ -419,6 +419,12 @@ def create_ssh_keypair(
     local: Local | None = None,
     passphrase: str | None = "",
 ) -> None:
+    """Creates a public/private key pair at the given path using ssh-keygen.
+
+    If passphrase is `None`, ssh-keygen will prompt the user for a passphrase.
+    Otherwise, if passphrase is an empty string, no passphrase will be used (default).
+    If a string is passed, it is passed to ssh-keygen and used as the passphrase.
+    """
     local = local or Local()
     if " " in str(ssh_private_key_path):
         warnings.warn(
