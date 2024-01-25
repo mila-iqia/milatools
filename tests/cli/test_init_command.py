@@ -730,15 +730,27 @@ class TestSetupSshFile:
 # takes a little longer in the CI runner (Windows in particular)
 @pytest.mark.timeout(20)
 @pytest.mark.parametrize("passphrase", ["", "foo"])
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "bob",
+        "dir with spaces/somefile",
+        "dir_with_'single_quotes'/somefile",
+        'dir_with_"doublequotes"/somefile',
+        pytest.param(
+            "windows_style_dir\\bob", marks=pytest.mark.skipif(sys.platform != "win32")
+        ),
+    ],
+)
 def test_create_ssh_keypair(
-    mocker: pytest_mock.MockerFixture, tmp_path: Path, passphrase: str
+    mocker: pytest_mock.MockerFixture, tmp_path: Path, filename: str, passphrase: str
 ):
     # Wrap the subprocess.run call (but also actually execute the commands).
     subprocess_run = mocker.patch("subprocess.run", wraps=subprocess.run)
 
     fake_ssh_folder = tmp_path / "fake_ssh"
     fake_ssh_folder.mkdir(mode=0o700)
-    ssh_private_key_path = fake_ssh_folder / "bob"
+    ssh_private_key_path = fake_ssh_folder / filename
 
     create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, passphrase=passphrase)
 
@@ -756,8 +768,20 @@ def test_create_ssh_keypair(
     ("passphrase", "expected"),
     [("", False), ("bobobo", True), ("\n", True), (" ", True)],
 )
-def test_has_passphrase(tmp_path: Path, passphrase: str, expected: bool):
-    ssh_private_key_path = tmp_path / "bob"
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "bob",
+        "dir with spaces/somefile",
+        "dir_with_'single_quotes'/somefile",
+        'dir_with_"doublequotes"/somefile',
+        pytest.param(
+            "windows_style_dir\\bob", marks=pytest.mark.skipif(sys.platform != "win32")
+        ),
+    ],
+)
+def test_has_passphrase(tmp_path: Path, passphrase: str, filename: str, expected: bool):
+    ssh_private_key_path = tmp_path / filename
 
     create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, passphrase=passphrase)
 

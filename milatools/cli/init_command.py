@@ -4,6 +4,7 @@ import copy
 import difflib
 import functools
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -294,8 +295,9 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     # TODO: Potentially use the public key from the SSH config file instead of
     # the default. It's also possible that ssh-copy-id selects the key from the
     # config file, I'm not sure.
-    # ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
-
+    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
+    assert ssh_public_key_path.exists()
     if check_passwordless(cluster):
         logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
         return True
@@ -309,19 +311,23 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
 
     print("Please enter your password when prompted.")
     if sys.platform == "win32":
-        # todo: the path to the key is hard-coded here.
+        # NOTE: This is to remove extra '^M' character sbeing added at the end of
+        # the file on the remote!
+        public_key_contents = ssh_public_key_path.read_text().replace("\r\n", "\n")
         command = (
-            "powershell.exe",
-            "type",
-            "$env:USERPROFILE\\.ssh\\id_rsa.pub",
-            "|",
             "ssh",
             "-o",
             "StrictHostKeyChecking=no",
             cluster,
-            '"cat >> ~/.ssh/authorized_keys"',
+            "cat >> ~/.ssh/authorized_keys",
         )
-        here.run(*command, check=True)
+        display(command)
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", newline="\n") as f:
+            print(public_key_contents, end="", file=f)
+            f.seek(0)
+            subprocess.run(command, check=True, universal_newlines=False, stdin=f)
     else:
         here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
 
@@ -415,11 +421,26 @@ def create_ssh_keypair(
     passphrase: str | None = "",
 ) -> None:
     local = local or Local()
-    command = ["ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa"]
+    # TODO: Make sure that this doesn't cause issues, for example if there are spaces
+    # in the path.
+    if " " in str(ssh_private_key_path):
+        warnings.warn(
+            T.bold_orange(
+                "There is a space in the path to the private key file: "
+                f"{ssh_private_key_path}\n"
+                "This is definitely going to cause issues!"
+            )
+        )
+    command = [
+        "ssh-keygen",
+        "-f",
+        shlex.quote(ssh_private_key_path.as_posix()),
+        "-t",
+        "rsa",
+    ]
     if passphrase is not None:
-        command.append(f"-N='{passphrase}'")
-
-    display(command, use_shjoin=False)
+        command.extend(["-N", f"{passphrase}"])
+    display(command)
     subprocess.run(command, check=True)
 
 
