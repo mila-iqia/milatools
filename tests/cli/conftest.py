@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import Mock
 
 import paramiko.ssh_exception

@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import re
 import typing
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Generic, Sequence, TypeVar
+from typing import Generic, TypeVar
 
 import invoke
 import questionary as qn

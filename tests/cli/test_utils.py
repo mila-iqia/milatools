@@ -68,7 +68,7 @@ def test_hostname():
         ("beluga", cnode, cnode)
         for prefix in ["nc", "ng"]
         for cnode in [f"{prefix}12345"]
-    ]
+    ],
     # NOTE: Not including niagara for now, since DRAC users don't automatically get
     # access to it (plus, it doesn't have GPUs).
     # + [

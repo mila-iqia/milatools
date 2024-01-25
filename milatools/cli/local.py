@@ -42,7 +42,7 @@ class Local:
                 stdout=stdout,
                 stderr=stderr,
                 capture_output=capture_output,
-                universal_newlines=True,
+                text=True,
                 timeout=timeout,
                 check=check,
             )

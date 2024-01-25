@@ -5,10 +5,9 @@ import json
 import shutil
 import tarfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import pytest
-from typing_extensions import Literal, get_args
 
 from milatools.cli.remote import Remote
 from milatools.cli.vscode_utils import (

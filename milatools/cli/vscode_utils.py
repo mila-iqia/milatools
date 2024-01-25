@@ -5,9 +5,9 @@ import shutil
 import subprocess
 import sys
 import tarfile
+from collections.abc import Iterable
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Iterable
 
 import tqdm
 

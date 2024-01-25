@@ -18,10 +18,11 @@ import typing
 import warnings
 import webbrowser
 from argparse import ArgumentParser, _HelpAction
+from collections.abc import Sequence
 from contextlib import ExitStack
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 from urllib.parse import urlencode
 
 import questionary as qn
@@ -1073,9 +1074,7 @@ def _get_disk_quota_usage(
         _quota2,
         limit_files,
         _grace2,
-    ) = (
-        lines[2].strip().split()
-    )
+    ) = lines[2].strip().split()
 
     used_gb = float(int(used_kbytes.strip()) / (1024) ** 2)
     max_gb = float(int(limit_kbytes.strip()) / (1024) ** 2)

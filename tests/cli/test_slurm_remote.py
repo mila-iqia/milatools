@@ -90,7 +90,7 @@ def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
     login_node._run("squeue --me", echo=True, in_stream=False)
 
 
-@functools.lru_cache()
+@functools.lru_cache
 def get_slurm_account(cluster: str) -> str:
     """Gets the SLURM account of the user using sacctmgr on the slurm cluster.
 

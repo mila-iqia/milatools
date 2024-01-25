@@ -36,25 +36,15 @@ repos:
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     # Ruff version.
-    rev: "v0.0.261"
+    rev: v0.1.14
     hooks:
+      # Run the linter.
       - id: ruff
-        args: ["--line-length", "88", "--fix"]
+        args: ['--line-length', '88', "--select", "I,UP", '--fix']
         require_serial: true
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-        name: isort (python)
-
-  # python code formatting
-  - repo: https://github.com/psf/black
-    rev: 22.12.0
-    hooks:
-      - id: black
-        args: [--line-length, "88"]
-        require_serial: true
+      # Run the formatter.
+      - id: ruff-format
+        args: ['--line-length', '88']
 
   # python docstring formatting
   - repo: https://github.com/myint/docformatter

@@ -12,16 +12,17 @@ import subprocess
 import sys
 import typing
 import warnings
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterable, Union
+from typing import Any, Literal, TypeGuard, Union, get_args
 
 import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
-from typing_extensions import Literal, ParamSpec, TypeGuard, get_args
+from typing_extensions import ParamSpec
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
@@ -275,7 +276,7 @@ def get_fully_qualified_name() -> str:
         return socket.getfqdn()
 
 
-@functools.lru_cache()
+@functools.lru_cache
 def running_inside_WSL() -> bool:
     return sys.platform == "linux" and bool(shutil.which("powershell.exe"))
 
