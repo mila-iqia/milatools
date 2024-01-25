@@ -131,7 +131,7 @@ class CommandNotFoundError(MilatoolsUserError):
 
 
 class SSHConnectionError(paramiko.SSHException):
-    def __init__(self, node_hostname: str, error: paramiko.SSHException):
+    def __init__(self, node_hostname: str, error: Exception):
         super().__init__()
         self.node_hostname = node_hostname
         self.error = error
