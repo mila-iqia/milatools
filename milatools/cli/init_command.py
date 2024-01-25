@@ -4,7 +4,6 @@ import copy
 import difflib
 import functools
 import json
-import shlex
 import shutil
 import subprocess
 import sys
@@ -16,7 +15,7 @@ from typing import Any
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 
-from .local import Local, check_passwordless
+from .local import Local, check_passwordless, display
 from .remote import Remote
 from .utils import SSHConfig, T, running_inside_WSL, yn
 from .vscode_utils import (
@@ -410,11 +409,42 @@ def get_windows_home_path_in_wsl() -> Path:
     return Path(f"/mnt/c/Users/{windows_username}")
 
 
-def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
-    local.run(
-        *shlex.split(
-            f'ssh-keygen -f {shlex.quote(str(ssh_private_key_path))} -t rsa -N=""'
+def create_ssh_keypair(
+    ssh_private_key_path: Path,
+    local: Local | None = None,
+    passphrase: str | None = "",
+) -> None:
+    local = local or Local()
+    command = ["ssh-keygen", "-f", f"{ssh_private_key_path}", "-t", "rsa"]
+    if passphrase:
+        command.append(f"-N='{passphrase}'")
+
+    display(command)
+    subprocess.run(command, check=True)
+
+
+def has_passphrase(ssh_private_key_path: Path) -> bool:
+    """Returns whether the SSH private key has a passphrase or not."""
+    assert ssh_private_key_path.exists()
+    result = subprocess.run(
+        args=(
+            "ssh-keygen",
+            "-y",
+            "-P=''",
+            "-f",
+            str(ssh_private_key_path),
         ),
+        capture_output=True,
+        universal_newlines=True,
+    )
+    if result.returncode == 0:
+        if "ssh-rsa" in result.stdout:
+            return False
+    elif "incorrect passphrase supplied to decrypt private key" in result.stderr:
+        return True
+    raise NotImplementedError(
+        f"TODO: Unable to tell if the key at {ssh_private_key_path} has a passphrase "
+        f"or not! (result={result})"
     )
 
 
