@@ -415,7 +415,7 @@ def create_ssh_keypair(
     passphrase: str | None = "",
 ) -> None:
     local = local or Local()
-    command = ["ssh-keygen", "-f", f"{ssh_private_key_path}", "-t", "rsa"]
+    command = ["ssh-keygen", "-f", str(ssh_private_key_path), "-t", "rsa"]
     if passphrase is not None:
         command.append(f"-N='{passphrase}'")
 
