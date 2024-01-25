@@ -18,6 +18,7 @@ import traceback
 import typing
 import warnings
 import webbrowser
+import logging
 from argparse import ArgumentParser, _HelpAction
 from collections.abc import Sequence
 from contextlib import ExitStack
@@ -384,14 +385,27 @@ def mila():
 
 
 def setup_logging(verbose: int) -> None:
-    logging.basicConfig(
-        level=logging.WARNING
+    global_loglevel = (
+        logging.CRITICAL
+        if verbose == 0
+        else logging.WARNING
+        if verbose == 1
+        else logging.INFO
+        if verbose == 2
+        else logging.DEBUG
+    )
+    package_loglevel = (
+        logging.WARNING
         if verbose == 0
         else logging.INFO
         if verbose == 1
-        else logging.DEBUG,
+        else logging.DEBUG
+    )
+    logging.basicConfig(
+        level=global_loglevel,
         handlers=[rich.logging.RichHandler(markup=True, rich_tracebacks=True)],
     )
+    logger.setLevel(package_loglevel)
 
 
 def _convert_uppercase_keys_to_lowercase(args_dict: dict[str, Any]) -> dict[str, Any]:
