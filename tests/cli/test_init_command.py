@@ -1121,6 +1121,13 @@ def test_setup_passwordless_ssh_access_to_cluster(
     backup_authorized_keys_file = backup_ssh_dir / "authorized_keys"
     assert backup_authorized_keys_file.exists()
 
+    ssh_private_key_path = ssh_dir / "id_rsa"
+    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
+    if not ssh_public_key_path.exists():
+        create_ssh_keypair(ssh_private_key_path=ssh_private_key_path)
+    assert ssh_public_key_path.exists()
+    assert not has_passphrase(ssh_private_key_path)
+
     if not passwordless_to_cluster_is_already_setup:
         if authorized_keys_file.exists():
             logger.warning(

@@ -428,10 +428,12 @@ def create_ssh_keypair(
     local = local or Local()
     if " " in str(ssh_private_key_path):
         warnings.warn(
-            T.bold_orange(
-                "There is a space in the path to the private key file: "
-                f"{ssh_private_key_path}\n"
-                "This is definitely going to cause issues!"
+            UserWarning(
+                T.bold_orange(
+                    "There is a space in the path to the private key file: "
+                    f"{ssh_private_key_path}\n"
+                    "This is probably going to cause issues!"
+                )
             )
         )
     command = [
