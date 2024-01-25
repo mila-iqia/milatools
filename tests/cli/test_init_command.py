@@ -729,7 +729,10 @@ class TestSetupSshFile:
 
 # takes a little longer in the CI runner (Windows in particular)
 @pytest.mark.timeout(10)
-def test_create_ssh_keypair(mocker: pytest_mock.MockerFixture, tmp_path: Path):
+@pytest.mark.parametrize("passphrase", ["", "foo"])
+def test_create_ssh_keypair(
+    mocker: pytest_mock.MockerFixture, tmp_path: Path, passphrase: str
+):
     # Wrap the subprocess.run call (but also actually execute the commands).
     subprocess_run = mocker.patch("subprocess.run", wraps=subprocess.run)
 
@@ -737,7 +740,7 @@ def test_create_ssh_keypair(mocker: pytest_mock.MockerFixture, tmp_path: Path):
     fake_ssh_folder.mkdir(mode=0o700)
     ssh_private_key_path = fake_ssh_folder / "bob"
 
-    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path)
+    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, passphrase=passphrase)
 
     subprocess_run.assert_called_once()
     assert ssh_private_key_path.exists()
@@ -747,11 +750,6 @@ def test_create_ssh_keypair(mocker: pytest_mock.MockerFixture, tmp_path: Path):
     assert ssh_public_key_path.exists()
     if not on_windows:
         assert ssh_public_key_path.stat().st_mode & 0o777 == 0o644
-
-    private_key_contents = ssh_private_key_path.read_text()
-    private_key_lines = private_key_contents.splitlines()
-    assert len(private_key_lines) == 39
-    assert not has_passphrase(ssh_private_key_path)
 
 
 @pytest.mark.parametrize(
@@ -764,13 +762,6 @@ def test_has_passphrase(tmp_path: Path, passphrase: str, expected: bool):
     create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, passphrase=passphrase)
 
     assert ssh_private_key_path.exists()
-    if not on_windows:
-        assert ssh_private_key_path.stat().st_mode & 0o777 == 0o600
-    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
-    assert ssh_public_key_path.exists()
-    if not on_windows:
-        assert ssh_public_key_path.stat().st_mode & 0o777 == 0o644
-
     private_key_contents = ssh_private_key_path.read_text()
     private_key_lines = private_key_contents.splitlines()
     assert len(private_key_lines) == 39
