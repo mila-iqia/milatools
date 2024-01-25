@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import getpass
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from unittest.mock import Mock
 
+import fabric
 import pytest
 import pytest_mock
 import questionary
@@ -34,7 +36,7 @@ from milatools.cli.init_command import (
     setup_windows_ssh_config_from_wsl,
 )
 from milatools.cli.local import Local, check_passwordless
-from milatools.cli.utils import SSHConfig, running_inside_WSL
+from milatools.cli.utils import SSHConfig, T, running_inside_WSL
 
 from .common import (
     in_github_CI,
@@ -1291,3 +1293,75 @@ def test_setup_passwordless_ssh_access(
     for drac_cluster in drac_clusters_in_ssh_config:
         mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(drac_cluster)
     assert result is True
+
+
+@pytest.fixture()
+def cluster(request: pytest.FixtureRequest) -> str:
+    cluster_name: str | None = getattr(
+        request, "param", os.environ.get("SLURM_CLUSTER", None)
+    )
+    if not cluster_name:
+        pytest.skip(reason="Need a real slurm cluster to be specified")
+    return cluster_name
+
+
+@pytest.fixture()
+def authorized_keys_backup(cluster: str):
+    """Fixture used to backup the authorized_keys file on the remote and restore it
+    after tests."""
+    connect_kwargs = {}
+    backup_authorized_keys_path = "~/.ssh/authorized_keys.backup"
+    if not check_passwordless(cluster):
+        if in_github_CI:
+            pytest.skip(
+                f"Can't run this test because passwordless SSH access to {cluster} is "
+                "not setup."
+            )
+        password = getpass.getpass(
+            T.red("\nEnter your password for SSH-ing to the cluster\n")
+        )
+        connect_kwargs = {"password": password}
+
+    remote = fabric.Connection(cluster, connect_kwargs=connect_kwargs)
+    remote.run(
+        f"cp ~/.ssh/authorized_keys {backup_authorized_keys_path}",
+        echo=True,
+        echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
+        in_stream=False,
+    )
+    try:
+        yield backup_authorized_keys_path
+    finally:
+        remote.run(
+            "cp ~/.ssh/authorized_keys.backup ~/.ssh/authorized_keys",
+            echo=True,
+            echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
+            in_stream=False,
+        )
+
+
+@pytest.mark.timeout(None)
+@pytest.mark.skipif(
+    in_github_CI, reason="Can't run this in the github CI since it asks for a password."
+)
+@pytest.mark.skipif(
+    "SLURM_CLUSTER" not in os.environ, reason="Only runs with a real cluster."
+)
+def test_setup_passwordless_ssh_access_to_real_cluster(
+    cluster: str,
+    authorized_keys_backup: str,
+):
+    if check_passwordless(cluster):
+        logger.warning(
+            f"Temporarily removing the ~/.ssh/authorized_keys file on {cluster} "
+            f"(backed up at {cluster}:{authorized_keys_backup})"
+        )
+        fabric.Connection(cluster).run(
+            "rm ~/.ssh/authorized_keys",
+            echo=True,
+            echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
+            in_stream=False,
+        )
+    assert not check_passwordless(cluster)
+    setup_passwordless_ssh_access_to_cluster(cluster)
+    assert check_passwordless(cluster)
