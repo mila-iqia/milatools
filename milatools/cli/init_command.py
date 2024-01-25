@@ -426,20 +426,10 @@ def create_ssh_keypair(
     If a string is passed, it is passed to ssh-keygen and used as the passphrase.
     """
     local = local or Local()
-    if " " in str(ssh_private_key_path):
-        warnings.warn(
-            UserWarning(
-                T.bold_orange(
-                    "There is a space in the path to the private key file: "
-                    f"{ssh_private_key_path}\n"
-                    "This is probably going to cause issues!"
-                )
-            )
-        )
     command = [
         "ssh-keygen",
         "-f",
-        ssh_private_key_path.as_posix(),
+        str(ssh_private_key_path.expanduser()),
         "-t",
         "rsa",
     ]
