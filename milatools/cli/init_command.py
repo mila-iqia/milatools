@@ -419,7 +419,7 @@ def create_ssh_keypair(
     if passphrase is not None:
         command.append(f"-N='{passphrase}'")
 
-    display(command)
+    display(command, use_shjoin=False)
     subprocess.run(command, check=True)
 
 

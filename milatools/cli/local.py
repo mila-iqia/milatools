@@ -66,8 +66,14 @@ class Local:
         return check_passwordless(host)
 
 
-def display(split_command: list[str] | tuple[str, ...]) -> None:
-    print(T.bold_green("(local) $ ", shjoin(split_command)))
+def display(
+    split_command: list[str] | tuple[str, ...], use_shjoin: bool = True
+) -> None:
+    if use_shjoin:
+        command_string = shjoin(split_command)
+    else:
+        command_string = " ".join(split_command)
+    print(T.bold_green("(local) $ ", command_string))
 
 
 def check_passwordless(host: str) -> bool:
