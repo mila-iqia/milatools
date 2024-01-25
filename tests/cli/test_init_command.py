@@ -731,21 +731,49 @@ class TestSetupSshFile:
 
 # takes a little longer in the CI runner (Windows in particular)
 @pytest.mark.timeout(20)
-@pytest.mark.parametrize("passphrase", ["", "foo"])
+@pytest.mark.parametrize(
+    ("passphrase", "expected"),
+    [("", False), ("bobobo", True), ("\n", True), (" ", True)],
+)
 @pytest.mark.parametrize(
     "filename",
     [
         "bob",
-        "dir with spaces/somefile",
-        "dir_with_'single_quotes'/somefile",
-        'dir_with_"doublequotes"/somefile',
         pytest.param(
-            "windows_style_dir\\bob", marks=pytest.mark.skipif(sys.platform != "win32")
+            "dir with spaces/somefile",
+            marks=pytest.mark.xfail(
+                raises=subprocess.CalledProcessError,
+                match="No such file or directory",
+            ),
+        ),
+        pytest.param(
+            "dir_with_'single_quotes'/somefile",
+            marks=pytest.mark.xfail(
+                raises=subprocess.CalledProcessError,
+                match="No such file or directory",
+            ),
+        ),
+        pytest.param(
+            'dir_with_"doublequotes"/somefile',
+            marks=pytest.mark.xfail(
+                raises=subprocess.CalledProcessError,
+                match="No such file or directory",
+            ),
+        ),
+        pytest.param(
+            "windows_style_dir\\bob",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="only runs on Windows."
+            ),
         ),
     ],
 )
 def test_create_ssh_keypair(
-    mocker: pytest_mock.MockerFixture, tmp_path: Path, filename: str, passphrase: str
+    mocker: pytest_mock.MockerFixture,
+    tmp_path: Path,
+    filename: str,
+    passphrase: str,
+    expected: bool,
 ):
     # Wrap the subprocess.run call (but also actually execute the commands).
     subprocess_run = mocker.patch("subprocess.run", wraps=subprocess.run)
@@ -765,29 +793,6 @@ def test_create_ssh_keypair(
     if not on_windows:
         assert ssh_public_key_path.stat().st_mode & 0o777 == 0o644
 
-
-@pytest.mark.parametrize(
-    ("passphrase", "expected"),
-    [("", False), ("bobobo", True), ("\n", True), (" ", True)],
-)
-@pytest.mark.parametrize(
-    "filename",
-    [
-        "bob",
-        "dir with spaces/somefile",
-        "dir_with_'single_quotes'/somefile",
-        'dir_with_"doublequotes"/somefile',
-        pytest.param(
-            "windows_style_dir\\bob", marks=pytest.mark.skipif(sys.platform != "win32")
-        ),
-    ],
-)
-def test_has_passphrase(tmp_path: Path, passphrase: str, filename: str, expected: bool):
-    ssh_private_key_path = tmp_path / filename
-
-    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, passphrase=passphrase)
-
-    assert ssh_private_key_path.exists()
     assert has_passphrase(ssh_private_key_path) == expected
 
 

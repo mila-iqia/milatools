@@ -4,7 +4,6 @@ import copy
 import difflib
 import functools
 import json
-import shlex
 import shutil
 import subprocess
 import sys
@@ -421,8 +420,6 @@ def create_ssh_keypair(
     passphrase: str | None = "",
 ) -> None:
     local = local or Local()
-    # TODO: Make sure that this doesn't cause issues, for example if there are spaces
-    # in the path.
     if " " in str(ssh_private_key_path):
         warnings.warn(
             T.bold_orange(
@@ -434,13 +431,13 @@ def create_ssh_keypair(
     command = [
         "ssh-keygen",
         "-f",
-        shlex.quote(ssh_private_key_path.as_posix()),
+        ssh_private_key_path.as_posix(),
         "-t",
         "rsa",
     ]
     if passphrase is not None:
-        command.extend(["-N", f"{passphrase}"])
-    display(command)
+        command.extend([f"-N='{passphrase}'"])
+    display(" ".join(command))
     subprocess.run(command, check=True)
 
 
@@ -458,6 +455,7 @@ def has_passphrase(ssh_private_key_path: Path) -> bool:
         capture_output=True,
         universal_newlines=True,
     )
+    logger.debug(f"Result of ssh-keygen: {result}")
     if result.returncode == 0:
         if "ssh-rsa" in result.stdout:
             return False

@@ -158,7 +158,7 @@ def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
 
 
-def askpath(prompt, remote):
+def askpath(prompt: str, remote: Remote) -> str:
     while True:
         pth = qn.text(prompt).unsafe_ask()
         try:
