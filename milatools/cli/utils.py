@@ -15,14 +15,14 @@ import warnings
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Literal, TypeGuard, Union, get_args
+from typing import Any, Literal, Union, get_args
 
 import blessed
 import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
-from typing_extensions import ParamSpec
+from typing_extensions import ParamSpec, TypeGuard
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
