@@ -310,8 +310,8 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
 
     print("Please enter your password when prompted.")
     if sys.platform == "win32":
-        # NOTE: This is to remove extra '^M' character sbeing added at the end of
-        # the file on the remote!
+        # NOTE: This is to remove extra '^M' characters that would be added at the end
+        # of the file on the remote!
         public_key_contents = ssh_public_key_path.read_text().replace("\r\n", "\n")
         command = (
             "ssh",
