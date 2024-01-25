@@ -1211,6 +1211,7 @@ def test_setup_passwordless_ssh_access(
             f"Temporarily deleting the ssh dir (backed up at {backup_ssh_dir})"
         )
         shutil.rmtree(ssh_dir)
+    ssh_dir.mkdir(mode=0o700, exist_ok=False)
 
     if not public_key_exists:
         # There should be no ssh keys in the ssh dir before calling the function.
