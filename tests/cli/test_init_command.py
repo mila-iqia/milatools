@@ -728,7 +728,7 @@ class TestSetupSshFile:
 
 
 # takes a little longer in the CI runner (Windows in particular)
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(20)
 @pytest.mark.parametrize("passphrase", ["", "foo"])
 def test_create_ssh_keypair(
     mocker: pytest_mock.MockerFixture, tmp_path: Path, passphrase: str
