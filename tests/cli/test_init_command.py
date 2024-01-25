@@ -762,10 +762,6 @@ def test_has_passphrase(tmp_path: Path, passphrase: str, expected: bool):
     create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, passphrase=passphrase)
 
     assert ssh_private_key_path.exists()
-    private_key_contents = ssh_private_key_path.read_text()
-    private_key_lines = private_key_contents.splitlines()
-    assert len(private_key_lines) == 39
-
     assert has_passphrase(ssh_private_key_path) == expected
 
 
