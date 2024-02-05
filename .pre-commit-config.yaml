@@ -28,12 +28,18 @@ repos:
       - id: check-added-large-files
         require_serial: true
 
+  - repo: https://github.com/python-poetry/poetry
+    rev: 1.7.0
+    hooks:
+      - id: poetry-check
+        require_serial: true
+
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     # Ruff version.
-    rev: 'v0.0.261'
+    rev: "v0.0.261"
     hooks:
       - id: ruff
-        args: ['--line-length', '88', '--fix']
+        args: ["--line-length", "88", "--fix"]
         require_serial: true
 
   - repo: https://github.com/pycqa/isort
@@ -74,7 +80,6 @@ repos:
   #         # - mdformat-toc
   #         # - mdformat-black
   #       require_serial: true
-
 
   # word spelling linter
   - repo: https://github.com/codespell-project/codespell
