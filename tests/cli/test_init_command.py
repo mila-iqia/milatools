@@ -739,18 +739,9 @@ class TestSetupSshFile:
     "filename",
     [
         "bob",
-        pytest.param(
-            "dir with spaces/somefile",
-            marks=pytest.mark.xfail(reason="Might cause issues"),
-        ),
-        pytest.param(
-            "dir_with_'single_quotes'/somefile",
-            marks=pytest.mark.xfail(reason="Might cause issues"),
-        ),
-        pytest.param(
-            'dir_with_"doublequotes"/somefile',
-            marks=pytest.mark.xfail(reason="Might cause issues"),
-        ),
+        "dir with spaces/somefile",
+        "dir_with_'single_quotes'/somefile",
+        'dir_with_"doublequotes"/somefile',
         pytest.param(
             "windows_style_dir\\bob",
             marks=pytest.mark.skipif(
