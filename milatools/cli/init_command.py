@@ -434,7 +434,7 @@ def create_ssh_keypair(
         "rsa",
     ]
     if passphrase is not None:
-        command.extend([f"-N='{passphrase}'"])
+        command.extend(["-N", passphrase])
     display(" ".join(command))
     subprocess.run(command, check=True)
 
