@@ -7,8 +7,8 @@ import time
 import typing
 import unittest
 import unittest.mock
+from collections.abc import Callable, Generator, Iterable
 from pathlib import Path
-from typing import Callable, Generator, Iterable
 from unittest.mock import Mock
 
 import invoke
@@ -283,10 +283,7 @@ def test_get_output(
     assert len(mock_connection.method_calls) == 1
     mock_connection.run.assert_called_once()
 
-    if sys.version_info < (3, 8):
-        assert mock_connection.run.mock_calls[0][1] == (command,)
-    else:
-        assert mock_connection.run.mock_calls[0].args[0] == command
+    assert mock_connection.run.mock_calls[0].args[0] == command
     mock_result.stdout.strip.assert_called_once_with()
 
 
@@ -398,10 +395,7 @@ def test_puttext(remote: Remote, tmp_path: Path):
     some_text = "foo"
     _result = remote.puttext(some_text, str(dest))
     remote.connection.run.assert_called_once()
-    if sys.version_info < (3, 8):
-        assert remote.connection.run.mock_calls[0][1] == (f"mkdir -p {dest_dir}",)
-    else:
-        assert remote.connection.run.mock_calls[0].args[0] == f"mkdir -p {dest_dir}"
+    assert remote.connection.run.mock_calls[0].args[0] == f"mkdir -p {dest_dir}"
     # The first argument of `put` will be the name of a temporary file.
     remote.connection.put.assert_called_once_with(unittest.mock.ANY, str(dest))
     assert dest.read_text() == some_text
@@ -410,10 +404,7 @@ def test_puttext(remote: Remote, tmp_path: Path):
 def test_home(remote: Remote):
     home_dir = remote.home()
     remote.connection.run.assert_called_once()
-    if sys.version_info < (3, 8):
-        assert remote.connection.run.mock_calls[0][1] == ("echo $HOME",)
-    else:
-        assert remote.connection.run.mock_calls[0].args[0] == "echo $HOME"
+    assert remote.connection.run.mock_calls[0].args[0] == "echo $HOME"
     remote.connection.local.assert_not_called()
     if remote.hostname == "mila":
         assert home_dir.startswith("/home/mila/")

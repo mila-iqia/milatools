@@ -9,7 +9,7 @@ repository = "https://github.com/mila-iqia/milatools"
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8"
 blessed = "^1.18.1"
 sshconf = "^0.2.2"
 questionary = "^1.10.0"

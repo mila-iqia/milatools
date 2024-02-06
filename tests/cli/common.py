@@ -5,8 +5,9 @@ import inspect
 import os
 import sys
 import typing
+from collections.abc import Callable
 from subprocess import CompletedProcess
-from typing import Any, Callable
+from typing import Any
 
 import fabric
 import paramiko.ssh_exception
@@ -15,7 +16,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
 if typing.TYPE_CHECKING:
-    from typing_extensions import TypeGuard
+    from typing import TypeGuard
 
 in_github_CI = all(var in os.environ for var in ["CI", "GITHUB_ACTION", "GITHUB_ENV"])
 """True if this is being run inside the GitHub CI."""

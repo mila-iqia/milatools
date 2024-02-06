@@ -4,9 +4,10 @@ import re
 import socket
 import tempfile
 import time
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Callable, Iterable, Sequence, TextIO, overload
+from typing import Literal, TextIO, overload
 
 import fabric
 import fabric.transfer
@@ -14,7 +15,7 @@ import invoke
 import paramiko
 import questionary as qn
 from fabric import Connection
-from typing_extensions import Literal, Self, TypedDict, deprecated
+from typing_extensions import Self, TypedDict, deprecated
 
 from .utils import SSHConnectionError, T, control_file_var, here, shjoin
 

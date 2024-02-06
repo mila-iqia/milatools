@@ -23,7 +23,7 @@ jobs:
       max-parallel: 4
       matrix:
         platform: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
     env:
       PLATFORM: ${{ matrix.platform }}
     steps:
@@ -82,7 +82,7 @@ jobs:
         # TODO: We should ideally also run this with Windows/Mac clients and a Linux
         # server. Unsure how to set that up with GitHub Actions though.
         platform: [ubuntu-latest]
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
 
     # For the action to work, you have to supply a mysql
     # service as defined below.
