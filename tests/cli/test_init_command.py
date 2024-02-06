@@ -741,7 +741,15 @@ class TestSetupSshFile:
         "bob",
         "dir with spaces/somefile",
         "dir_with_'single_quotes'/somefile",
-        'dir_with_"doublequotes"/somefile',
+        pytest.param(
+            'dir_with_"doublequotes"/somefile',
+            marks=pytest.mark.xfail(
+                sys.platform == "win32",
+                strict=True,
+                raises=OSError,
+                reason="Doesn't work on Windows.",
+            ),
+        ),
         pytest.param(
             "windows_style_dir\\bob",
             marks=pytest.mark.skipif(
