@@ -3,14 +3,12 @@ ignore:
 
 coverage:
   status:
-    project: false
-    # todo: turn on project coverage status checks eventually
-    # project:
-    #   default:
-    #     target: auto
-    #     threshold: 1%
-    #     paths:
-    #       - "milatools"
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        paths:
+          - "milatools"
     patch:
       default:
         target: auto
