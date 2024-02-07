@@ -383,6 +383,10 @@ def mila():
     return function(**args_dict)
 
 
+def test_uncovered_code():
+    ...
+
+
 def setup_logging(verbose: int) -> None:
     global_loglevel = (
         logging.CRITICAL
