@@ -1,0 +1,21 @@
+ignore:
+  - "tests/**/*"
+
+coverage:
+  status:
+    project: false
+    # todo: turn on project coverage status checks eventually
+    # project:
+    #   default:
+    #     target: auto
+    #     threshold: 1%
+    #     paths:
+    #       - "milatools"
+    patch:
+      default:
+        target: auto
+        threshold: 0%
+        base: auto
+
+github_checks:
+  annotations: true
