@@ -5,6 +5,7 @@ Cluster documentation: https://docs.mila.quebec/
 from __future__ import annotations
 
 import argparse
+import logging
 import operator
 import os
 import re
@@ -26,6 +27,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import questionary as qn
+import rich.logging
 from typing_extensions import TypedDict
 
 from milatools.cli.vscode_utils import copy_vscode_extensions_to_remote
@@ -120,10 +122,12 @@ def mila():
     parser = ArgumentParser(prog="mila", description=__doc__, add_help=True)
     parser.add_argument(
         "--version",
-        "-v",
         action="version",
         version=f"milatools v{mversion}",
         help="Milatools version",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="count", default=0, help="Enable verbose logging."
     )
     subparsers = parser.add_subparsers(required=True, dest="<command>")
 
@@ -368,13 +372,40 @@ def mila():
 
     args = parser.parse_args()
     args_dict = vars(args)
+    verbose: int = args_dict.pop("verbose")
     function = args_dict.pop("function")
     _ = args_dict.pop("<command>")
     _ = args_dict.pop("<serve_subcommand>", None)
+    setup_logging(verbose)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
     assert callable(function)
     return function(**args_dict)
+
+
+def setup_logging(verbose: int) -> None:
+    global_loglevel = (
+        logging.CRITICAL
+        if verbose == 0
+        else logging.WARNING
+        if verbose == 1
+        else logging.INFO
+        if verbose == 2
+        else logging.DEBUG
+    )
+    package_loglevel = (
+        logging.WARNING
+        if verbose == 0
+        else logging.INFO
+        if verbose == 1
+        else logging.DEBUG
+    )
+    logging.basicConfig(
+        level=global_loglevel,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[rich.logging.RichHandler(markup=True, rich_tracebacks=True)],
+    )
+    get_logger("milatools").setLevel(package_loglevel)
 
 
 def _convert_uppercase_keys_to_lowercase(args_dict: dict[str, Any]) -> dict[str, Any]:

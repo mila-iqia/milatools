@@ -446,13 +446,13 @@ def setup_vscode_settings():
         )
     except Exception as err:
         logger.warning(
-            T.orange(
+            (
                 f"Unable to setup VsCode settings file at {vscode_settings_json_path} "
-                f"for remote development.\n"
-                f"Skipping and leaving the settings unchanged."
+                f"for remote development. Skipping and leaving the settings unchanged. "
+                f"(Use 'mila -vvv init' to see the full error stacktrace.)"
             ),
-            exc_info=err,
         )
+        logger.debug(f"Error: {err}", exc_info=err)
 
 
 def _update_vscode_settings_json(

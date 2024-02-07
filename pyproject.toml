@@ -16,6 +16,7 @@ questionary = "^1.10.0"
 typing-extensions = "^4.7.1"
 fabric = "^3.2.2"
 tqdm = "^4.66.1"
+rich = "^13.7.0"
 
 [tool.poetry.dev-dependencies]
 black = ">= 21.8b0"
@@ -38,10 +39,8 @@ fabric = {extras = ["testing"], version = "^3.2.2"}
 pytest-mock = "^3.11.1"
 pytest-socket = "^0.6.0"
 pytest-cov = "^4.1.0"
+pytest-timeout = "^2.2.0"
 
-
-[tool.poetry.group.test.dependencies]
-pytest-timeout = "^2.1.0"
 
 [tool.isort]
 multi_line_output = 3
