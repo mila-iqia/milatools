@@ -291,9 +291,8 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     here = Local()
     # Check that it is possible to connect without using a password.
     print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
-    # TODO: Potentially use the public key from the SSH config file instead of
-    # the default. It's also possible that ssh-copy-id selects the key from the
-    # config file, I'm not sure.
+    # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
+    # the default.
     ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
@@ -435,7 +434,7 @@ def create_ssh_keypair(
     ]
     if passphrase is not None:
         command.extend(["-N", passphrase])
-    display(" ".join(command))
+    display(command)
     subprocess.run(command, check=True)
 
 
