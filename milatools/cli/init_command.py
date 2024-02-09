@@ -325,7 +325,7 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
         with tempfile.NamedTemporaryFile("w", newline="\n") as f:
             print(public_key_contents, end="", file=f)
             f.seek(0)
-            subprocess.run(command, check=True, universal_newlines=False, stdin=f)
+            subprocess.run(command, check=True, text=False, stdin=f)
     else:
         here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
 
@@ -450,7 +450,7 @@ def has_passphrase(ssh_private_key_path: Path) -> bool:
             str(ssh_private_key_path),
         ),
         capture_output=True,
-        universal_newlines=True,
+        text=True,
     )
     logger.debug(f"Result of ssh-keygen: {result}")
     if result.returncode == 0:
