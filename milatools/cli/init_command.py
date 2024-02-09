@@ -454,8 +454,7 @@ def has_passphrase(ssh_private_key_path: Path) -> bool:
     )
     logger.debug(f"Result of ssh-keygen: {result}")
     if result.returncode == 0:
-        if "ssh-rsa" in result.stdout:
-            return False
+        return False
     elif "incorrect passphrase supplied to decrypt private key" in result.stderr:
         return True
     raise NotImplementedError(
