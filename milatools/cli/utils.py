@@ -131,7 +131,7 @@ class CommandNotFoundError(MilatoolsUserError):
 
 
 class SSHConnectionError(paramiko.SSHException):
-    def __init__(self, node_hostname: str, error: paramiko.SSHException):
+    def __init__(self, node_hostname: str, error: Exception):
         super().__init__()
         self.node_hostname = node_hostname
         self.error = error
@@ -158,7 +158,7 @@ def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
 
 
-def askpath(prompt, remote):
+def askpath(prompt: str, remote: Remote) -> str:
     while True:
         pth = qn.text(prompt).unsafe_ask()
         try:

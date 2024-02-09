@@ -119,8 +119,9 @@ class Remote:
                     # assert isinstance(connection.transport, paramiko.Transport)
                     transport: paramiko.Transport = connection.transport  # type: ignore
                     transport.set_keepalive(keepalive)
-        except paramiko.SSHException as err:
+        except (paramiko.SSHException, socket.gaierror) as err:
             raise SSHConnectionError(node_hostname=self.hostname, error=err)
+
         self.connection = connection
         self.transforms = transforms
 

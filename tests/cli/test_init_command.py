@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import getpass
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from unittest.mock import Mock
 
+import fabric
 import pytest
 import pytest_mock
 import questionary
@@ -26,6 +28,7 @@ from milatools.cli.init_command import (
     _setup_ssh_config_file,
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
+    has_passphrase,
     setup_passwordless_ssh_access,
     setup_passwordless_ssh_access_to_cluster,
     setup_ssh_config,
@@ -33,7 +36,7 @@ from milatools.cli.init_command import (
     setup_windows_ssh_config_from_wsl,
 )
 from milatools.cli.local import Local, check_passwordless
-from milatools.cli.utils import SSHConfig, running_inside_WSL
+from milatools.cli.utils import SSHConfig, T, running_inside_WSL
 
 from .common import (
     in_github_CI,
@@ -727,20 +730,52 @@ class TestSetupSshFile:
 
 
 # takes a little longer in the CI runner (Windows in particular)
-@pytest.mark.timeout(10)
-def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    here = Local()
-    mock_run = Mock(
-        wraps=subprocess.run,
-    )
-    monkeypatch.setattr(subprocess, "run", mock_run)
+@pytest.mark.timeout(20)
+@pytest.mark.parametrize(
+    ("passphrase", "expected"),
+    [("", False), ("bobobo", True), ("\n", True), (" ", True)],
+)
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "bob",
+        "dir with spaces/somefile",
+        "dir_with_'single_quotes'/somefile",
+        pytest.param(
+            'dir_with_"doublequotes"/somefile',
+            marks=pytest.mark.xfail(
+                sys.platform == "win32",
+                strict=True,
+                raises=OSError,
+                reason="Doesn't work on Windows.",
+            ),
+        ),
+        pytest.param(
+            "windows_style_dir\\bob",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="only runs on Windows."
+            ),
+        ),
+    ],
+)
+def test_create_ssh_keypair(
+    mocker: pytest_mock.MockerFixture,
+    tmp_path: Path,
+    filename: str,
+    passphrase: str,
+    expected: bool,
+):
+    # Wrap the subprocess.run call (but also actually execute the commands).
+    subprocess_run = mocker.patch("subprocess.run", wraps=subprocess.run)
+
     fake_ssh_folder = tmp_path / "fake_ssh"
     fake_ssh_folder.mkdir(mode=0o700)
-    ssh_private_key_path = fake_ssh_folder / "bob"
+    ssh_private_key_path = fake_ssh_folder / filename
+    ssh_private_key_path.parent.mkdir(mode=0o700, exist_ok=True, parents=True)
 
-    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, local=here)
+    create_ssh_keypair(ssh_private_key_path=ssh_private_key_path, passphrase=passphrase)
 
-    mock_run.assert_called_once()
+    subprocess_run.assert_called_once()
     assert ssh_private_key_path.exists()
     if not on_windows:
         assert ssh_private_key_path.stat().st_mode & 0o777 == 0o600
@@ -748,6 +783,8 @@ def test_create_ssh_keypair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     assert ssh_public_key_path.exists()
     if not on_windows:
         assert ssh_public_key_path.stat().st_mode & 0o777 == 0o644
+
+    assert has_passphrase(ssh_private_key_path) == expected
 
 
 @pytest.fixture
@@ -1075,6 +1112,13 @@ def test_setup_passwordless_ssh_access_to_cluster(
     backup_authorized_keys_file = backup_ssh_dir / "authorized_keys"
     assert backup_authorized_keys_file.exists()
 
+    ssh_private_key_path = ssh_dir / "id_rsa"
+    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
+    if not ssh_public_key_path.exists():
+        create_ssh_keypair(ssh_private_key_path=ssh_private_key_path)
+    assert ssh_public_key_path.exists()
+    assert not has_passphrase(ssh_private_key_path)
+
     if not passwordless_to_cluster_is_already_setup:
         if authorized_keys_file.exists():
             logger.warning(
@@ -1166,6 +1210,7 @@ def test_setup_passwordless_ssh_access(
             f"Temporarily deleting the ssh dir (backed up at {backup_ssh_dir})"
         )
         shutil.rmtree(ssh_dir)
+    ssh_dir.mkdir(mode=0o700, exist_ok=False)
 
     if not public_key_exists:
         # There should be no ssh keys in the ssh dir before calling the function.
@@ -1252,3 +1297,75 @@ def test_setup_passwordless_ssh_access(
     for drac_cluster in drac_clusters_in_ssh_config:
         mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(drac_cluster)
     assert result is True
+
+
+@pytest.fixture()
+def cluster(request: pytest.FixtureRequest) -> str:
+    cluster_name: str | None = getattr(
+        request, "param", os.environ.get("SLURM_CLUSTER", None)
+    )
+    if not cluster_name:
+        pytest.skip(reason="Need a real slurm cluster to be specified")
+    return cluster_name
+
+
+@pytest.fixture()
+def authorized_keys_backup(cluster: str):
+    """Fixture used to backup the authorized_keys file on the remote and restore it
+    after tests."""
+    connect_kwargs = {}
+    backup_authorized_keys_path = "~/.ssh/authorized_keys.backup"
+    if not check_passwordless(cluster):
+        if in_github_CI:
+            pytest.skip(
+                f"Can't run this test because passwordless SSH access to {cluster} is "
+                "not setup."
+            )
+        password = getpass.getpass(
+            T.red("\nEnter your password for SSH-ing to the cluster\n")
+        )
+        connect_kwargs = {"password": password}
+
+    remote = fabric.Connection(cluster, connect_kwargs=connect_kwargs)
+    remote.run(
+        f"cp ~/.ssh/authorized_keys {backup_authorized_keys_path}",
+        echo=True,
+        echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
+        in_stream=False,
+    )
+    try:
+        yield backup_authorized_keys_path
+    finally:
+        remote.run(
+            "cp ~/.ssh/authorized_keys.backup ~/.ssh/authorized_keys",
+            echo=True,
+            echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
+            in_stream=False,
+        )
+
+
+@pytest.mark.timeout(None)
+@pytest.mark.skipif(
+    in_github_CI, reason="Can't run this in the github CI since it asks for a password."
+)
+@pytest.mark.skipif(
+    "SLURM_CLUSTER" not in os.environ, reason="Only runs with a real cluster."
+)
+def test_setup_passwordless_ssh_access_to_real_cluster(
+    cluster: str,
+    authorized_keys_backup: str,
+):
+    if check_passwordless(cluster):
+        logger.warning(
+            f"Temporarily removing the ~/.ssh/authorized_keys file on {cluster} "
+            f"(backed up at {cluster}:{authorized_keys_backup})"
+        )
+        fabric.Connection(cluster).run(
+            "rm ~/.ssh/authorized_keys",
+            echo=True,
+            echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
+            in_stream=False,
+        )
+    assert not check_passwordless(cluster)
+    setup_passwordless_ssh_access_to_cluster(cluster)
+    assert check_passwordless(cluster)

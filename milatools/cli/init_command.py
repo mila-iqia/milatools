@@ -4,7 +4,6 @@ import copy
 import difflib
 import functools
 import json
-import shlex
 import shutil
 import subprocess
 import sys
@@ -16,7 +15,7 @@ from typing import Any
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 
-from .local import Local, check_passwordless
+from .local import Local, check_passwordless, display
 from .remote import Remote
 from .utils import SSHConfig, T, running_inside_WSL, yn
 from .vscode_utils import (
@@ -292,11 +291,11 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     here = Local()
     # Check that it is possible to connect without using a password.
     print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
-    # TODO: Potentially use the public key from the SSH config file instead of
-    # the default. It's also possible that ssh-copy-id selects the key from the
-    # config file, I'm not sure.
-    # ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
-
+    # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
+    # the default.
+    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
+    assert ssh_public_key_path.exists()
     if check_passwordless(cluster):
         logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
         return True
@@ -310,19 +309,23 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
 
     print("Please enter your password when prompted.")
     if sys.platform == "win32":
-        # todo: the path to the key is hard-coded here.
+        # NOTE: This is to remove extra '^M' characters that would be added at the end
+        # of the file on the remote!
+        public_key_contents = ssh_public_key_path.read_text().replace("\r\n", "\n")
         command = (
-            "powershell.exe",
-            "type",
-            "$env:USERPROFILE\\.ssh\\id_rsa.pub",
-            "|",
             "ssh",
             "-o",
             "StrictHostKeyChecking=no",
             cluster,
-            '"cat >> ~/.ssh/authorized_keys"',
+            "cat >> ~/.ssh/authorized_keys",
         )
-        here.run(*command, check=True)
+        display(command)
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", newline="\n") as f:
+            print(public_key_contents, end="", file=f)
+            f.seek(0)
+            subprocess.run(command, check=True, text=False, stdin=f)
     else:
         here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
 
@@ -410,11 +413,53 @@ def get_windows_home_path_in_wsl() -> Path:
     return Path(f"/mnt/c/Users/{windows_username}")
 
 
-def create_ssh_keypair(ssh_private_key_path: Path, local: Local) -> None:
-    local.run(
-        *shlex.split(
-            f'ssh-keygen -f {shlex.quote(str(ssh_private_key_path))} -t rsa -N=""'
+def create_ssh_keypair(
+    ssh_private_key_path: Path,
+    local: Local | None = None,
+    passphrase: str | None = "",
+) -> None:
+    """Creates a public/private key pair at the given path using ssh-keygen.
+
+    If passphrase is `None`, ssh-keygen will prompt the user for a passphrase.
+    Otherwise, if passphrase is an empty string, no passphrase will be used (default).
+    If a string is passed, it is passed to ssh-keygen and used as the passphrase.
+    """
+    local = local or Local()
+    command = [
+        "ssh-keygen",
+        "-f",
+        str(ssh_private_key_path.expanduser()),
+        "-t",
+        "rsa",
+    ]
+    if passphrase is not None:
+        command.extend(["-N", passphrase])
+    display(command)
+    subprocess.run(command, check=True)
+
+
+def has_passphrase(ssh_private_key_path: Path) -> bool:
+    """Returns whether the SSH private key has a passphrase or not."""
+    assert ssh_private_key_path.exists()
+    result = subprocess.run(
+        args=(
+            "ssh-keygen",
+            "-y",
+            "-P=''",
+            "-f",
+            str(ssh_private_key_path),
         ),
+        capture_output=True,
+        text=True,
+    )
+    logger.debug(f"Result of ssh-keygen: {result}")
+    if result.returncode == 0:
+        return False
+    elif "incorrect passphrase supplied to decrypt private key" in result.stderr:
+        return True
+    raise NotImplementedError(
+        f"TODO: Unable to tell if the key at {ssh_private_key_path} has a passphrase "
+        f"or not! (result={result})"
     )
 
 
