@@ -34,6 +34,7 @@ jobs:
       run: |
         poetry install
         poetry self add "poetry-dynamic-versioning[plugin]"
+        poetry dynamic-versioning enable
 
     - name: Publish package
       env:
