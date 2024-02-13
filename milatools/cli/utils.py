@@ -149,8 +149,12 @@ class SSHConnectionError(paramiko.SSHException):
             + "\n\t"
             + "-Retry connecting with mila"
             + "\n\t"
-            + f"-Try to exclude the node with -x {self.node_hostname} "
-            "parameter"
+            + f"-Try to exclude the node with -x {self.node_hostname} parameter\n"
+            + "\n"
+            + "You might want to also include this detailed error message:\n"
+            + "\n```\n"
+            + str(self.error)
+            + "\n```\n"
         )
 
 

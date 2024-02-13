@@ -10,12 +10,17 @@ from fabric.connection import Connection
 
 from milatools.cli.remote import Remote
 
-from .common import REQUIRES_S_FLAG_REASON
+from .common import REQUIRES_S_FLAG_REASON, in_github_CI
 
-in_github_ci = "PLATFORM" in os.environ
+SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila" if not in_github_CI else None)
+"""The name of the slurm cluster to use for tests.
+
+When running the tests on a dev machine, this defaults to the Mila cluster. Set to
+`None` when running on the github CI.
+"""
 
 
-@pytest.fixture(autouse=in_github_ci)
+@pytest.fixture(autouse=in_github_CI)
 def skip_if_s_flag_passed_during_ci_run_and_test_doesnt_require_it(
     request: pytest.FixtureRequest, pytestconfig: pytest.Config
 ):
@@ -126,3 +131,40 @@ def mock_connection(
 def remote(mock_connection: Connection):
     assert isinstance(mock_connection.host, str)
     return Remote(hostname=mock_connection.host, connection=mock_connection)
+
+
+@pytest.fixture()
+def login_node(cluster: str) -> Remote:
+    """Fixture that gives a Remote connected to the login node of the slurm cluster.
+
+    NOTE: Making this a function-scoped fixture because the Connection object is of the
+    Remote is used when creating the SlurmRemotes.
+    """
+
+    return Remote(
+        cluster,
+        # TODO: Seems like using this `banner_timeout` fixes the
+        # 'Error reading SSH protocol banner' issues I'm getting otherwise.
+        # Perhaps we would also need to add this argument to Connection when creating in
+        # the `Remote` constructor?
+        connection=Connection(cluster, connect_kwargs={"banner_timeout": 200}),
+    )
+
+
+@pytest.fixture(scope="session", params=[SLURM_CLUSTER])
+def cluster(request: pytest.FixtureRequest) -> str:
+    """Fixture that gives the hostname of the slurm cluster to use for tests.
+
+    NOTE: The `cluster` can also be parametrized indirectly by tests, for example:
+
+    ```python
+    @pytest.mark.parametrize("cluster", ["mila", "some_cluster"], indirect=True)
+    def test_something(remote: Remote):
+        ...  # here the remote is connected to the cluster specified above!
+    ```
+    """
+    slurm_cluster_hostname = request.param
+
+    if not slurm_cluster_hostname:
+        pytest.skip("Requires ssh access to a SLURM cluster.")
+    return slurm_cluster_hostname

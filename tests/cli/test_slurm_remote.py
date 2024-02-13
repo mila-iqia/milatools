@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import datetime
 import functools
-import os
 import time
 from logging import getLogger as get_logger
 
@@ -16,10 +15,10 @@ import fabric.runners
 import pytest
 
 from milatools.cli.remote import Remote, SlurmRemote
+from tests.cli.conftest import SLURM_CLUSTER
 
 logger = get_logger(__name__)
 
-SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER")
 JOB_NAME = "milatools_test"
 WCKEY = "milatools_test"
 MAX_JOB_DURATION = datetime.timedelta(seconds=10)
@@ -39,25 +38,6 @@ requires_access_to_slurm_cluster = pytest.mark.skipif(
 CLUSTERS = ["mila", "narval", "cedar", "beluga", "graham"]
 
 
-@pytest.fixture(scope="session", params=[SLURM_CLUSTER])
-def cluster(request: pytest.FixtureRequest) -> str:
-    """Fixture that gives the hostname of the slurm cluster to use for tests.
-
-    NOTE: The `cluster` can also be parametrized indirectly by tests, for example:
-
-    ```python
-    @pytest.mark.parametrize("cluster", ["mila", "some_cluster"], indirect=True)
-    def test_something(remote: Remote):
-        ...  # here the remote is connected to the cluster specified above!
-    ```
-    """
-    slurm_cluster_hostname = request.param
-
-    if not slurm_cluster_hostname:
-        pytest.skip("Requires ssh access to a SLURM cluster.")
-    return slurm_cluster_hostname
-
-
 def can_run_on_all_clusters():
     """Makes a given test run on all the clusters in `CLUSTERS`, *for real*!
 
@@ -65,16 +45,6 @@ def can_run_on_all_clusters():
     enabling it sometimes to test stuff on DRAC clusters.
     """
     return pytest.mark.parametrize("cluster", CLUSTERS, indirect=True)
-
-
-@pytest.fixture()
-def login_node(cluster: str) -> Remote:
-    """Fixture that gives a Remote connected to the login node of the slurm cluster.
-
-    NOTE: Making this a function-scoped fixture because the Connection object is of the
-    Remote is used when creating the SlurmRemotes.
-    """
-    return Remote(cluster)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -124,6 +94,17 @@ def get_slurm_account(cluster: str) -> str:
     account = sorted(accounts)[0]
     logger.info(f"Using account {account} to launch jobs in tests.")
     return account
+
+
+def get_recent_jobs_info_dicts(
+    login_node: Remote,
+    since=datetime.timedelta(minutes=5),
+    fields=("JobID", "JobName", "Node", "State"),
+) -> list[dict[str, str]]:
+    return [
+        dict(zip(fields, line))
+        for line in get_recent_jobs_info(login_node, since=since, fields=fields)
+    ]
 
 
 def get_recent_jobs_info(

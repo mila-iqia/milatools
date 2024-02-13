@@ -618,6 +618,8 @@ def code(
                 "The editor was closed. Reopen it with <Enter>"
                 " or terminate the process with <Ctrl+C>"
             )
+            if "pytest" in sys.modules:
+                break
             input()
 
     except KeyboardInterrupt:
@@ -1075,7 +1077,7 @@ def _standard_server(
 
 
 def _get_disk_quota_usage(
-    remote: Remote, print_command_output: bool = True
+    remote: Remote, print_command_output: bool = False
 ) -> tuple[tuple[float, float], tuple[int, int]]:
     """Checks the disk quota on the $HOME filesystem on the mila cluster.
 
@@ -1084,17 +1086,28 @@ def _get_disk_quota_usage(
 
     # NOTE: This is what the output of the command looks like on the Mila cluster:
     #
-    # $ lfs quota -u $USER /home/mila
     # Disk quotas for usr normandf (uid 1471600598):
-    #     Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace
-    #     /home/mila 101440844       0 104857600       -  936140       0 1048576       -
+    #      Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace
+    # /home/mila/n/normandf
+    #                 95747836       0 104857600       -  908722       0 1048576       -
     # uid 1471600598 is using default block quota setting
     # uid 1471600598 is using default file quota setting
+
     #
     home_disk_quota_output = remote.get_output(
         "lfs quota -u $USER $HOME", hide=not print_command_output
     )
     lines = home_disk_quota_output.splitlines()
+    if len(lines) == 4:
+        # output fits on one line.
+        content_line = lines[2]
+    else:
+        assert len(lines) == 6, lines
+        assert len(lines[2].split()) == 1
+        assert len(lines[3].split()) == 8
+        content_line = lines[2] + lines[3]
+    parts = content_line.strip().split()
+    assert len(parts) == 9, parts
     (
         _filesystem,
         used_kbytes,
@@ -1105,10 +1118,10 @@ def _get_disk_quota_usage(
         _quota2,
         limit_files,
         _grace2,
-    ) = lines[2].strip().split()
+    ) = parts
 
-    used_gb = float(int(used_kbytes.strip()) / (1024) ** 2)
-    max_gb = float(int(limit_kbytes.strip()) / (1024) ** 2)
+    used_gb = int(used_kbytes.strip()) / (1024**2)
+    max_gb = int(limit_kbytes.strip()) / (1024**2)
     used_files = int(files.strip())
     max_files = int(limit_files.strip())
     return (used_gb, max_gb), (used_files, max_files)
