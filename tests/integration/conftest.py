@@ -74,18 +74,13 @@ def get_slurm_account(cluster: str) -> str:
     rrg-someprofessor_gpu
     ```
     """
-    # note: recreating the Connection here because this will be called for every test
-    # and we use functools.cache to cache the result, so the input has to be a simpler
-    # value like a string.
-    result = fabric.Connection(
-        cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
-    ).run(
-        "sacctmgr --noheader show associations where user=$USER format=Account%50",
-        echo=True,
-        in_stream=False,
+    logger.info(
+        f"Fetching the list of SLURM accounts available on the {cluster} cluster."
     )
-    assert isinstance(result, fabric.runners.Result)
-    accounts: list[str] = [line.strip() for line in result.stdout.splitlines()]
+    result = Remote(cluster).run(
+        "sacctmgr --noheader show associations where user=$USER format=Account%50"
+    )
+    accounts = [line.strip() for line in result.stdout.splitlines()]
     assert accounts
     logger.info(f"Accounts on the slurm cluster {cluster}: {accounts}")
     account = sorted(accounts)[0]
