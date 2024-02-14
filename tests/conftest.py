@@ -143,11 +143,7 @@ def login_node(cluster: str) -> Remote:
 
     return Remote(
         cluster,
-        # TODO: Seems like using this `banner_timeout` fixes the
-        # 'Error reading SSH protocol banner' issues I'm getting otherwise.
-        # Perhaps we would also need to add this argument to Connection when creating in
-        # the `Remote` constructor?
-        connection=Connection(cluster, connect_kwargs={"banner_timeout": 200}),
+        connection=Connection(cluster, connect_kwargs={"banner_timeout": 60}),
     )
 
 

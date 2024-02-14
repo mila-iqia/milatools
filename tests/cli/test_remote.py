@@ -41,7 +41,7 @@ def test_init(
     r = Remote(host, keepalive=keepalive)
     # The Remote should have created a Connection instance (which happens to be
     # the mock_connection we made above).
-    MockConnection.assert_called_once_with(host, connect_kwargs={"banner_timeout": 200})
+    MockConnection.assert_called_once_with(host, connect_kwargs={"banner_timeout": 60})
     assert r.connection is mock_connection
 
     # The connection's Transport is opened if a non-zero value is passed for `keepalive`

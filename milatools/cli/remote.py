@@ -111,9 +111,10 @@ class Remote:
         self.hostname = hostname
         try:
             if connection is None:
-                connection = Connection(
-                    hostname, connect_kwargs={"banner_timeout": 200}
-                )
+                # NOTE: This `banner_timeout`argument seems to fix some
+                # 'Error reading SSH protocol banner' issues I'm getting otherwise.
+
+                connection = Connection(hostname, connect_kwargs={"banner_timeout": 60})
                 if keepalive:
                     connection.open()
                     # NOTE: this transport gets mocked in tests, so we use a "soft"

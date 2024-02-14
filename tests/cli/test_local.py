@@ -115,6 +115,8 @@ def test_popen(
     [
         ("localhost", passwordless_ssh_connection_to_localhost_is_setup),
         ("blablabob@localhost", False),
+        skip_param_if_on_github_ci("mila", True),
+        skip_param_if_on_github_ci("bobobobobobo@mila", False),
         skip_param_if_on_github_ci("narval", True),
         skip_param_if_on_github_ci("blablabob@narval", False),
         skip_param_if_on_github_ci("beluga", True),
@@ -124,4 +126,6 @@ def test_popen(
     ],
 )
 def test_check_passwordless(hostname: str, expected: bool):
+    # TODO: Maybe also test how `check_passwordless` behaves when using a key with a
+    # passphrase.
     assert check_passwordless(hostname) == expected

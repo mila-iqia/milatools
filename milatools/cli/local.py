@@ -76,7 +76,9 @@ def display(split_command: list[str] | tuple[str, ...] | str) -> None:
 
 def check_passwordless(host: str) -> bool:
     try:
-        with fabric.Connection(host) as connection:
+        with fabric.Connection(
+            host, connect_kwargs={"allow_agent": False, "banner_timeout": 60}
+        ) as connection:
             results: fabric.runners.Result = connection.run(
                 "echo OK",
                 in_stream=False,
