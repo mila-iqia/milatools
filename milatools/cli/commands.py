@@ -525,13 +525,12 @@ def code(
     if command is None:
         command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
-    if remote.hostname != "graham":  # graham doesn't use lustre for $HOME
-        try:
-            check_disk_quota(remote)
-        except MilatoolsUserError:
-            raise
-        except Exception as exc:
-            logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
+    try:
+        check_disk_quota(remote)
+    except MilatoolsUserError:
+        raise
+    except Exception as exc:
+        logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
     vscode_extensions_folder = Path.home() / ".vscode/extensions"
     if vscode_extensions_folder.exists() and no_internet_on_compute_nodes(cluster):
@@ -1076,13 +1075,57 @@ def _standard_server(
         proc.kill()
 
 
-def _get_disk_quota_usage(
-    remote: Remote, print_command_output: bool = False
+def _parse_lfs_quota_output(
+    lfs_quota_output: str,
 ) -> tuple[tuple[float, float], tuple[int, int]]:
-    """Checks the disk quota on the $HOME filesystem on the mila cluster.
+    """Parses space and # of files (usage, limit) from the  output of `lfs quota`."""
+    lines = lfs_quota_output.splitlines()
 
-    Returns whether the quota is exceeded, in terms of storage space or number of files.
-    """
+    header_line: str | None = None
+    header_line_index: int | None = None
+    for index, line in enumerate(lines):
+        if (
+            len(line_parts := line.strip().split()) == 9
+            and line_parts[0].lower() == "filesystem"
+        ):
+            header_line = line
+            header_line_index = index
+            break
+    assert header_line
+    assert header_line_index
+
+    values_line_parts: list[str] = []
+    # The next line may overflow to two (or maybe even more?) lines if the name of the
+    # $HOME dir is too long.
+    for content_line in lines[header_line_index + 1 :]:
+        additional_values = content_line.strip().split()
+        assert len(values_line_parts) < 9
+        values_line_parts.extend(additional_values)
+        if len(values_line_parts) == 9:
+            break
+
+    assert len(values_line_parts) == 9, values_line_parts
+    (
+        _filesystem,
+        used_kbytes,
+        _quota_kbytes,
+        limit_kbytes,
+        _grace_kbytes,
+        files,
+        _quota_files,
+        limit_files,
+        _grace_files,
+    ) = values_line_parts
+
+    used_gb = int(used_kbytes.strip()) / (1024**2)
+    max_gb = int(limit_kbytes.strip()) / (1024**2)
+    used_files = int(files.strip())
+    max_files = int(limit_files.strip())
+    return (used_gb, max_gb), (used_files, max_files)
+
+
+def check_disk_quota(remote: Remote) -> None:
+    cluster = remote.hostname
 
     # NOTE: This is what the output of the command looks like on the Mila cluster:
     #
@@ -1093,48 +1136,22 @@ def _get_disk_quota_usage(
     # uid 1471600598 is using default block quota setting
     # uid 1471600598 is using default file quota setting
 
-    #
-    home_disk_quota_output = remote.get_output(
-        "lfs quota -u $USER $HOME", hide=not print_command_output
-    )
-    lines = home_disk_quota_output.splitlines()
-    if len(lines) == 4:
-        # output fits on one line.
-        content_line = lines[2]
-    else:
-        assert len(lines) == 6, lines
-        assert len(lines[2].split()) == 1
-        assert len(lines[3].split()) == 8
-        content_line = lines[2] + lines[3]
-    parts = content_line.strip().split()
-    assert len(parts) == 9, parts
-    (
-        _filesystem,
-        used_kbytes,
-        _quota1,
-        limit_kbytes,
-        _grace1,
-        files,
-        _quota2,
-        limit_files,
-        _grace2,
-    ) = parts
+    # Need to assert this, otherwise .get_output calls .run which would spawn a job!
+    assert not isinstance(remote, SlurmRemote)
+    if not remote.get_output("which lfs"):
+        logger.debug("Cluster doesn't have the lfs command. Skipping check.")
+        return
 
-    used_gb = int(used_kbytes.strip()) / (1024**2)
-    max_gb = int(limit_kbytes.strip()) / (1024**2)
-    used_files = int(files.strip())
-    max_files = int(limit_files.strip())
-    return (used_gb, max_gb), (used_files, max_files)
-
-
-def check_disk_quota(remote: Remote) -> None:
-    cluster = (
-        "mila"  # todo: if we run this on CC, then we should use `diskusage_report`
-    )
-    # todo: Check the disk-quota of other filesystems if needed.
-    filesystem = "$HOME"
     logger.debug("Checking disk quota on $HOME...")
-    (used_gb, max_gb), (used_files, max_files) = _get_disk_quota_usage(remote)
+
+    home_disk_quota_output = remote.get_output("lfs quota -u $USER $HOME", hide=True)
+    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
+        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
+        return
+
+    (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
+        home_disk_quota_output
+    )
     logger.debug(
         f"Disk usage: {used_gb:.1f} / {max_gb} GiB and {used_files} / {max_files} files"
     )
@@ -1157,7 +1174,7 @@ def check_disk_quota(remote: Remote) -> None:
     if used_gb >= max_gb or used_files >= max_files:
         raise MilatoolsUserError(
             T.red(
-                f"ERROR: Your disk quota on the {filesystem} filesystem is exceeded! "
+                f"ERROR: Your disk quota on the $HOME filesystem is exceeded! "
                 f"({reason}).\n"
                 f"To fix this, login to the cluster with `ssh {cluster}` and free up "
                 f"some space, either by deleting files, or by moving them to a "
@@ -1166,17 +1183,13 @@ def check_disk_quota(remote: Remote) -> None:
         )
     if max(size_ratio, files_ratio) > 0.9:
         warning_message = (
-            f"WARNING: You are getting pretty close to your disk quota on the $HOME "
+            f"You are getting pretty close to your disk quota on the $HOME "
             f"filesystem: ({reason})\n"
             "Please consider freeing up some space in your $HOME folder, either by "
             "deleting files, or by moving them to a more suitable filesystem.\n"
             + freeing_up_space_instructions
         )
-        # TODO: Perhaps we could use the logger or the warnings package instead of just
-        # printing?
-        # logger.warning(UserWarning(warning_message))
-        # warnings.warn(UserWarning(T.yellow(warning_message)))
-        print(UserWarning(T.yellow(warning_message)))
+        logger.warning(UserWarning(warning_message))
 
 
 def _find_allocation(
