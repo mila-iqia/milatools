@@ -1138,7 +1138,7 @@ def check_disk_quota(remote: Remote) -> None:
 
     # Need to assert this, otherwise .get_output calls .run which would spawn a job!
     assert not isinstance(remote, SlurmRemote)
-    if not remote.get_output("which lfs"):
+    if not remote.get_output("which lfs", hide=True):
         logger.debug("Cluster doesn't have the lfs command. Skipping check.")
         return
 
