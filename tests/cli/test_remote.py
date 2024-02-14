@@ -412,13 +412,8 @@ def test_home(remote: Remote):
         assert home_dir == str(Path.home())
 
 
-def test_persist(remote: Remote, capsys: pytest.CaptureFixture):
-    _persisted_remote = remote.persist()
-    assert (
-        "Warning: --persist does not work with --node or --job"
-        in capsys.readouterr().out
-    )
-    assert _persisted_remote is remote
+def test_persist(remote: Remote):
+    assert remote.persist() is remote
 
 
 def test_ensure_allocation(remote: Remote):

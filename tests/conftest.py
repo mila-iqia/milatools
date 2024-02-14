@@ -10,7 +10,7 @@ from fabric.connection import Connection
 
 from milatools.cli.remote import Remote
 
-from .cli.common import REQUIRES_S_FLAG_REASON, in_github_CI
+from .cli.common import in_github_CI
 
 SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila" if not in_github_CI else None)
 """The name of the slurm cluster to use for tests.
@@ -18,24 +18,6 @@ SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila" if not in_github_CI else 
 When running the tests on a dev machine, this defaults to the Mila cluster. Set to
 `None` when running on the github CI.
 """
-
-
-@pytest.fixture(autouse=in_github_CI)
-def skip_if_s_flag_passed_during_ci_run_and_test_doesnt_require_it(
-    request: pytest.FixtureRequest, pytestconfig: pytest.Config
-):
-    capture_value = pytestconfig.getoption("-s")
-    assert capture_value in ["no", "fd"]
-    s_flag_set = capture_value == "no"
-    test_requires_s_flag = any(
-        mark.name == "skipif"
-        and mark.kwargs.get("reason", "") == REQUIRES_S_FLAG_REASON
-        for mark in request.node.iter_markers()
-    )
-    if s_flag_set and not test_requires_s_flag:
-        # NOTE: WE only run the tests that require -s when -s is passed, because
-        # otherwise we get very weird errors related to closed file descriptors!
-        pytest.skip(reason="Running with the -s flag and this test doesn't require it.")
 
 
 passwordless_ssh_connection_to_localhost_is_setup = False
@@ -119,11 +101,6 @@ def mock_connection(
     This Mock is used to check how the connection is used by `Remote` and `SlurmRemote`.
     """
     mock_connection: Mock = MockConnection.return_value
-    # mock_connection.configure_mock(
-    #     # Modify the repr so they show up nicely in the regression files and with
-    #     # consistent/reproducible names.
-    #     __repr__=lambda _: f"Connection({repr(host)})",
-    # )
     return mock_connection
 
 
