@@ -492,7 +492,7 @@ def code(
     persist: bool,
     job: str | None,
     node: str | None,
-    alloc: Sequence[str],
+    alloc: list[str],
     cluster: Cluster = "mila",
 ):
     """Open a remote VSCode session on a compute node.
@@ -715,7 +715,7 @@ def serve_list(purge: bool):
 
 
 class StandardServerArgs(TypedDict):
-    alloc: Sequence[str]
+    alloc: list[str]
     """Extra options to pass to slurm."""
 
     job: str | None
@@ -923,7 +923,7 @@ def _standard_server(
     name: str | None,
     node: str | None,
     job: str | None,
-    alloc: Sequence[str],
+    alloc: list[str],
     port_pattern=None,
     token_pattern=None,
 ):
@@ -1196,7 +1196,7 @@ def _find_allocation(
     remote: Remote,
     node: str | None,
     job: str | None,
-    alloc: Sequence[str],
+    alloc: list[str],
     cluster: Cluster = "mila",
     job_name: str = "mila-tools",
 ):

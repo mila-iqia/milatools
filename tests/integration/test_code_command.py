@@ -79,7 +79,7 @@ def test_code(
         persist=persist,
         job=None,
         node=None,
-        alloc=allocation_flags,
+        alloc=allocation_flags.split(),
         cluster=login_node.hostname,  # type: ignore
     )
 

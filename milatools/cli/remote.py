@@ -437,7 +437,7 @@ class SlurmRemote(Remote):
     def __init__(
         self,
         connection: fabric.Connection,
-        alloc: Sequence[str],
+        alloc: list[str],
         transforms: Sequence[Callable[[str], str]] = (),
         persist: bool = False,
         hostname: str = "->",
