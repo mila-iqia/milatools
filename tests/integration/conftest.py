@@ -1,5 +1,6 @@
 import datetime
 import functools
+import logging
 import os
 import time
 from logging import getLogger as get_logger
@@ -7,6 +8,7 @@ from logging import getLogger as get_logger
 import fabric
 import pytest
 
+from milatools.cli.commands import setup_logging
 from milatools.cli.remote import Remote
 from milatools.cli.utils import cluster_to_connect_kwargs
 from tests.cli.common import in_github_CI
@@ -37,12 +39,19 @@ hangs_in_github_CI = pytest.mark.skipif(
 def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
     # Note: need to recreate this because login_node is a function-scoped fixture.
     login_node = Remote(cluster)
+    logger.info(
+        f"Cancelling milatools test jobs on {cluster} before running integration tests."
+    )
     login_node.run(f"scancel -u $USER --wckey={WCKEY}")
     time.sleep(1)
     yield
+    logger.info(
+        f"Cancelling milatools test jobs on {cluster} after running integration tests."
+    )
     login_node.run(f"scancel -u $USER --wckey={WCKEY}")
     time.sleep(1)
     # Display the output of squeue just to be sure that the jobs were cancelled.
+    logger.info(f"Checking that all jobs have been cancelked on {cluster}...")
     login_node._run("squeue --me", echo=True, in_stream=False)
 
 
@@ -85,7 +94,7 @@ def get_slurm_account(cluster: str) -> str:
 
 
 @pytest.fixture()
-def allocation_flags(cluster: str, request: pytest.FixtureRequest):
+def allocation_flags(cluster: str, request: pytest.FixtureRequest) -> list[str]:
     # note: thanks to lru_cache, this is only making one ssh connection per cluster.
     account = get_slurm_account(cluster)
     allocation_options = {
@@ -104,9 +113,7 @@ def allocation_flags(cluster: str, request: pytest.FixtureRequest):
     if overrides:
         print(f"Overriding allocation options with {overrides}")
         allocation_options.update(overrides)
-    return " ".join(
-        [
-            f"--{key}={value}" if value is not None else f"--{key}"
-            for key, value in allocation_options.items()
-        ]
-    )
+    return [
+        f"--{key}={value}" if value is not None else f"--{key}"
+        for key, value in allocation_options.items()
+    ]

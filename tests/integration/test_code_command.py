@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 from datetime import timedelta
@@ -19,12 +20,38 @@ logger = get_logger(__name__)
 @pytest.mark.parametrize(
     "cluster",
     [
+        skip_param_if_on_github_ci("mila"),
+        skip_param_if_on_github_ci("narval"),
+        skip_param_if_on_github_ci("beluga"),
+        skip_param_if_on_github_ci("cedar"),
+        skip_param_if_on_github_ci("graham"),
+        skip_param_if_on_github_ci("niagara"),
+    ],
+    indirect=True,
+)
+def test_check_disk_quota(
+    login_node: Remote,
+    capsys: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture,
+):  # noqa: F811
+    with caplog.at_level(logging.DEBUG):
+        check_disk_quota(remote=login_node)
+    # Check that it doesn't raise any errors.
+    # IF the quota is nearly met, then a warning is logged.
+    # IF the quota is met, then a `MilatoolsUserError` is logged.
+
+
+@pytest.mark.parametrize(
+    "cluster",
+    [
         pytest.param(
-            SLURM_CLUSTER,
+            "localhost",
             marks=[
                 pytest.mark.skipif(
-                    not (in_github_CI and SLURM_CLUSTER is not None),
-                    reason="Only runs in the GitHub CI where localhost is a slurm cluster.",
+                    not (in_github_CI and SLURM_CLUSTER == "localhost"),
+                    reason=(
+                        "Only runs in the GitHub CI when localhost is a slurm cluster."
+                    ),
                 ),
                 # todo: remove this mark once we're able to do sbatch and salloc in the
                 # GitHub CI.
@@ -40,35 +67,12 @@ logger = get_logger(__name__)
     ],
     indirect=True,
 )
-def test_check_disk_quota(login_node: Remote):  # noqa: F811
-    check_disk_quota(remote=login_node)
-
-
-@pytest.mark.parametrize(
-    "cluster",
-    [
-        pytest.param(
-            "localhost",
-            marks=pytest.mark.skipif(
-                not (in_github_CI and SLURM_CLUSTER == "localhost"),
-                reason="Only runs in the GitHub CI when SLURM_CLUSTER is localhost.",
-            ),
-        ),
-        skip_param_if_on_github_ci("mila"),
-        skip_param_if_on_github_ci("narval"),
-        skip_param_if_on_github_ci("beluga"),
-        skip_param_if_on_github_ci("cedar"),
-        skip_param_if_on_github_ci("graham"),
-        skip_param_if_on_github_ci("niagara"),
-    ],
-    indirect=True,
-)
 @pytest.mark.parametrize("persist", [True, False])
 def test_code(
     login_node: Remote,
     persist: bool,
     capsys: pytest.CaptureFixture,
-    allocation_flags: str,
+    allocation_flags: list[str],
 ):
     home = login_node.home()
     scratch = login_node.get_output("echo $SCRATCH")
@@ -79,7 +83,7 @@ def test_code(
         persist=persist,
         job=None,
         node=None,
-        alloc=allocation_flags.split(),
+        alloc=allocation_flags,
         cluster=login_node.hostname,  # type: ignore
     )
 
@@ -88,9 +92,8 @@ def test_code(
     # executed.
     captured_output: str = capsys.readouterr().out
 
-    # Get the job id from the output just so we can more easily check stuff with sacct
-    # below.
-
+    # Get the job id from the output just so we can more easily check the command output
+    # with sacct below.
     if persist:
         m = re.search(r"Submitted batch job ([0-9]+)", captured_output)
         assert m

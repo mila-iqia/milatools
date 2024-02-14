@@ -78,7 +78,7 @@ def sleep_so_sacct_can_update():
 
 
 @requires_access_to_slurm_cluster
-def test_cluster_setup(login_node: Remote, allocation_flags: str):
+def test_cluster_setup(login_node: Remote, allocation_flags: list[str]):
     """Sanity Checks for the SLURM cluster of the CI: checks that `srun` works.
 
     NOTE: This is more-so a test to check that the slurm cluster used in the GitHub CI
@@ -87,7 +87,7 @@ def test_cluster_setup(login_node: Remote, allocation_flags: str):
 
     job_id, compute_node = (
         login_node.get_output(
-            f"srun {allocation_flags} bash -c 'echo $SLURM_JOB_ID $SLURMD_NODENAME'"
+            f"srun {' '.join(allocation_flags)} bash -c 'echo $SLURM_JOB_ID $SLURMD_NODENAME'"
         )
         .strip()
         .split()
@@ -104,7 +104,7 @@ def test_cluster_setup(login_node: Remote, allocation_flags: str):
 
 
 @pytest.fixture
-def salloc_slurm_remote(login_node: Remote, allocation_flags: str):
+def salloc_slurm_remote(login_node: Remote, allocation_flags: list[str]):
     """Fixture that creates a `SlurmRemote` that uses `salloc` (persist=False).
 
     The SlurmRemote is essentially just a Remote with an added `ensure_allocation`
@@ -113,16 +113,16 @@ def salloc_slurm_remote(login_node: Remote, allocation_flags: str):
     """
     return SlurmRemote(
         connection=login_node.connection,
-        alloc=allocation_flags.split(),
+        alloc=allocation_flags,
     )
 
 
 @pytest.fixture
-def sbatch_slurm_remote(login_node: Remote, allocation_flags: str):
+def sbatch_slurm_remote(login_node: Remote, allocation_flags: list[str]):
     """Fixture that creates a `SlurmRemote` that uses `sbatch` (persist=True)."""
     return SlurmRemote(
         connection=login_node.connection,
-        alloc=allocation_flags.split(),
+        alloc=allocation_flags,
         persist=True,
     )
 
