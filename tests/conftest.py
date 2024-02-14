@@ -9,6 +9,7 @@ import pytest
 from fabric.connection import Connection
 
 from milatools.cli.remote import Remote
+from milatools.cli.utils import cluster_to_connect_kwargs
 
 from .cli.common import in_github_CI
 
@@ -120,7 +121,9 @@ def login_node(cluster: str) -> Remote:
 
     return Remote(
         cluster,
-        connection=Connection(cluster, connect_kwargs={"banner_timeout": 60}),
+        connection=Connection(
+            cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+        ),
     )
 
 

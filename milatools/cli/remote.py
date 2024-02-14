@@ -17,7 +17,15 @@ import questionary as qn
 from fabric import Connection
 from typing_extensions import Self, TypedDict, deprecated
 
-from .utils import DRAC_CLUSTERS, SSHConnectionError, T, control_file_var, here, shjoin
+from .utils import (
+    DRAC_CLUSTERS,
+    SSHConnectionError,
+    T,
+    cluster_to_connect_kwargs,
+    control_file_var,
+    here,
+    shjoin,
+)
 
 batch_template = """#!/bin/bash
 #SBATCH --output={output_file}
@@ -111,10 +119,9 @@ class Remote:
         self.hostname = hostname
         try:
             if connection is None:
-                # NOTE: This `banner_timeout`argument seems to fix some
-                # 'Error reading SSH protocol banner' issues I'm getting otherwise.
-
-                connection = Connection(hostname, connect_kwargs={"banner_timeout": 60})
+                connection = Connection(
+                    hostname, connect_kwargs=cluster_to_connect_kwargs.get(hostname)
+                )
                 if keepalive:
                     connection.open()
                     # NOTE: this transport gets mocked in tests, so we use a "soft"

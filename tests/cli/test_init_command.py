@@ -36,7 +36,12 @@ from milatools.cli.init_command import (
     setup_windows_ssh_config_from_wsl,
 )
 from milatools.cli.local import Local, check_passwordless
-from milatools.cli.utils import SSHConfig, T, running_inside_WSL
+from milatools.cli.utils import (
+    SSHConfig,
+    T,
+    cluster_to_connect_kwargs,
+    running_inside_WSL,
+)
 
 from .common import (
     in_github_CI,
@@ -1313,7 +1318,7 @@ def cluster(request: pytest.FixtureRequest) -> str:
 def authorized_keys_backup(cluster: str):
     """Fixture used to backup the authorized_keys file on the remote and restore it
     after tests."""
-    connect_kwargs = {}
+    connect_kwargs = cluster_to_connect_kwargs.get(cluster, {})
     backup_authorized_keys_path = "~/.ssh/authorized_keys.backup"
     if not check_passwordless(cluster):
         if in_github_CI:
@@ -1360,7 +1365,9 @@ def test_setup_passwordless_ssh_access_to_real_cluster(
             f"Temporarily removing the ~/.ssh/authorized_keys file on {cluster} "
             f"(backed up at {cluster}:{authorized_keys_backup})"
         )
-        fabric.Connection(cluster).run(
+        fabric.Connection(
+            cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+        ).run(
             "rm ~/.ssh/authorized_keys",
             echo=True,
             echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),

@@ -63,6 +63,17 @@ CLUSTERS: list[Cluster] = list(
 )
 DRAC_CLUSTERS: list[Cluster] = [c for c in CLUSTERS if c != "mila"]
 
+cluster_to_connect_kwargs: dict[str, dict[str, Any]] = {
+    "mila": {
+        "banner_timeout": 60,
+    }
+}
+"""The `connect_kwargs` dict to be passed to `fabric.Connection` for each cluster.
+
+NOTE: These are passed down to `paramiko.SSHClient.connect`. See that method for all
+the possible values.
+"""
+
 
 def no_internet_on_compute_nodes(
     cluster: Cluster,

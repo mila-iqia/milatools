@@ -9,7 +9,7 @@ import fabric
 import paramiko.ssh_exception
 from typing_extensions import deprecated
 
-from .utils import CommandNotFoundError, T, shjoin
+from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs, shjoin
 
 logger = get_logger(__name__)
 
@@ -76,8 +76,12 @@ def display(split_command: list[str] | tuple[str, ...] | str) -> None:
 
 def check_passwordless(host: str) -> bool:
     try:
+        connect_kwargs_for_host = {"allow_agent": False}
+        if host in cluster_to_connect_kwargs:
+            connect_kwargs_for_host.update(cluster_to_connect_kwargs[host])
         with fabric.Connection(
-            host, connect_kwargs={"allow_agent": False, "banner_timeout": 60}
+            host,
+            connect_kwargs=connect_kwargs_for_host,
         ) as connection:
             results: fabric.runners.Result = connection.run(
                 "echo OK",

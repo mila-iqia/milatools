@@ -15,6 +15,7 @@ import fabric.runners
 import pytest
 
 from milatools.cli.remote import Remote, SlurmRemote
+from milatools.cli.utils import cluster_to_connect_kwargs
 from tests.conftest import SLURM_CLUSTER
 
 logger = get_logger(__name__)
@@ -82,7 +83,9 @@ def get_slurm_account(cluster: str) -> str:
     # note: recreating the Connection here because this will be called for every test
     # and we use functools.cache to cache the result, so the input has to be a simpler
     # value like a string.
-    result = fabric.Connection(cluster).run(
+    result = fabric.Connection(
+        cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+    ).run(
         "sacctmgr --noheader show associations where user=$USER format=Account%50",
         echo=True,
         in_stream=False,

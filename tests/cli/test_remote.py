@@ -22,7 +22,7 @@ from milatools.cli.remote import (
     SlurmRemote,
     get_first_node_name,
 )
-from milatools.cli.utils import T, shjoin
+from milatools.cli.utils import T, cluster_to_connect_kwargs, shjoin
 
 from .common import function_call_string
 
@@ -41,7 +41,9 @@ def test_init(
     r = Remote(host, keepalive=keepalive)
     # The Remote should have created a Connection instance (which happens to be
     # the mock_connection we made above).
-    MockConnection.assert_called_once_with(host, connect_kwargs={"banner_timeout": 60})
+    MockConnection.assert_called_once_with(
+        host, connect_kwargs=cluster_to_connect_kwargs.get(host)
+    )
     assert r.connection is mock_connection
 
     # The connection's Transport is opened if a non-zero value is passed for `keepalive`
@@ -137,7 +139,6 @@ def test_remote_transform_methods(
     mock_connection.run.assert_called_once()
 
     transformed_command = mock_connection.run.mock_calls[0][1][0]
-    # "#Connection({mock_connection.host!r}),
     regression_file_text = f"""\
 After creating a Remote like so:
 
