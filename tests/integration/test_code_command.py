@@ -1,16 +1,13 @@
 from datetime import timedelta
 from logging import getLogger as get_logger
 
-import fabric
-import paramiko
 import pytest
 
 from milatools.cli.commands import check_disk_quota, code
 from milatools.cli.remote import Remote
-from tests.cli.test_slurm_remote import (
-    get_recent_jobs_info,
+from tests.integration.test_slurm_remote import (
     get_recent_jobs_info_dicts,
-    requires_access_to_slurm_cluster,  # noqa: F401
+    requires_access_to_slurm_cluster,
 )
 
 logger = get_logger(__name__)
@@ -31,20 +28,20 @@ def cancel_jobs_after_tests(login_node: Remote):
 @pytest.mark.parametrize("persist", [True, False])
 def test_code_persist(
     login_node: Remote,
-    cancel_jobs_after_tests,
     persist: bool,
     capsys: pytest.CaptureFixture,
+    cancel_jobs_after_tests,
 ):
     home = login_node.home()
     scratch = login_node.get_output("echo $SCRATCH")
-
+    relative_path = "bob"
     code(
-        path=".",
+        path=relative_path,
         command="echo",
         persist=persist,
         job=None,
         node=None,
-        alloc=["--time=00:01:00"],
+        alloc=["--time=00:00:10"],
         cluster=login_node.hostname,  # type: ignore
     )
 
@@ -58,10 +55,14 @@ def test_code_persist(
     most_recent_job = recent_job_info[0]
 
     output: str = capsys.readouterr().out
-    assert (
-        f"(local) $ /usr/bin/echo -nw --remote ssh-remote+{most_recent_job['Node']}.server.mila.quebec {home}"
-        in output
-    )
+    assert any(
+        (
+            f"(local) $ /usr/bin/echo -nw --remote "
+            f"ssh-remote+{most_recent_job['Node']}.server.mila.quebec {home}/{relative_path}"
+            in line
+        )
+        for line in output.splitlines()
+    ), output.splitlines()
 
     workdir = most_recent_job["WorkDir"]
     if login_node.hostname == "mila":

@@ -10,7 +10,7 @@ from fabric.connection import Connection
 
 from milatools.cli.remote import Remote
 
-from .common import REQUIRES_S_FLAG_REASON, in_github_CI
+from .cli.common import REQUIRES_S_FLAG_REASON, in_github_CI
 
 SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila" if not in_github_CI else None)
 """The name of the slurm cluster to use for tests.
