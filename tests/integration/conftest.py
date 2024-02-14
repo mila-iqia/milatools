@@ -1,16 +1,12 @@
 import datetime
 import functools
-import logging
 import os
 import time
 from logging import getLogger as get_logger
 
-import fabric
 import pytest
 
-from milatools.cli.commands import setup_logging
 from milatools.cli.remote import Remote
-from milatools.cli.utils import cluster_to_connect_kwargs
 from tests.cli.common import in_github_CI
 
 logger = get_logger(__name__)
