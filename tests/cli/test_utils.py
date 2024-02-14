@@ -41,7 +41,7 @@ def test_hostname():
 
 
 @pytest.mark.parametrize(
-    ("cluster", "node", "expected"),
+    ("cluster_name", "node", "expected"),
     [
         ("mila", "cn-a001", "cn-a001.server.mila.quebec"),
     ]
@@ -78,10 +78,12 @@ def test_hostname():
     # ],
 )
 def test_get_fully_qualified_hostname_of_compute_node(
-    cluster: str, node: str, expected: str
+    cluster_name: str, node: str, expected: str
 ):
     assert (
-        get_fully_qualified_hostname_of_compute_node(node_name=node, cluster=cluster)
+        get_fully_qualified_hostname_of_compute_node(
+            node_name=node, cluster=cluster_name
+        )
         == expected
     )
 

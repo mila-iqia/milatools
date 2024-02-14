@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Generator
 from unittest.mock import Mock
 
@@ -10,16 +9,7 @@ from fabric.connection import Connection
 
 from milatools.cli.remote import Remote
 from milatools.cli.utils import cluster_to_connect_kwargs
-
-from .cli.common import in_github_CI
-
-SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila" if not in_github_CI else None)
-"""The name of the slurm cluster to use for tests.
-
-When running the tests on a dev machine, this defaults to the Mila cluster. Set to
-`None` when running on the github CI.
-"""
-
+from tests.integration.conftest import SLURM_CLUSTER
 
 passwordless_ssh_connection_to_localhost_is_setup = False
 
@@ -111,12 +101,17 @@ def remote(mock_connection: Connection):
     return Remote(hostname=mock_connection.host, connection=mock_connection)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="function")
 def login_node(cluster: str) -> Remote:
-    """Fixture that gives a Remote connected to the login node of the slurm cluster.
+    """Fixture that gives a Remote connected to the login node of a slurm cluster.
 
-    NOTE: Making this a function-scoped fixture because the Connection object is of the
-    Remote is used when creating the SlurmRemotes.
+    NOTE: Making this a function-scoped fixture because the Connection object of the
+    Remote seems to be passed (and reused?) when creating the `SlurmRemote` object.
+
+    We want to avoid that, because `SlurmRemote` creates jobs when it runs commands.
+    We also don't want to accidentally end up with `login_node` that runs commands on
+    compute nodes because a previous test kept the same connection object while doing
+    salloc (just in case that were to happen).
     """
 
     return Remote(

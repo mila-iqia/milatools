@@ -7,7 +7,6 @@ SLURM_CLUSTER is set to "localhost".
 from __future__ import annotations
 
 import datetime
-import functools
 import time
 from logging import getLogger as get_logger
 
@@ -15,14 +14,12 @@ import fabric.runners
 import pytest
 
 from milatools.cli.remote import Remote, SlurmRemote
-from milatools.cli.utils import cluster_to_connect_kwargs
-from tests.conftest import SLURM_CLUSTER
+from milatools.cli.utils import CLUSTERS
+
+from .conftest import JOB_NAME, MAX_JOB_DURATION, SLURM_CLUSTER, hangs_in_github_CI
 
 logger = get_logger(__name__)
 
-JOB_NAME = "milatools_test"
-WCKEY = "milatools_test"
-MAX_JOB_DURATION = datetime.timedelta(seconds=10)
 # BUG: pytest-timeout seems to cause issues with paramiko threads..
 # pytestmark = pytest.mark.timeout(60)
 
@@ -35,9 +32,6 @@ requires_access_to_slurm_cluster = pytest.mark.skipif(
     reason="Requires ssh access to a SLURM cluster.",
 )
 
-# TODO: Import the value from `milatools.cli.utils` once the other PR adds it.
-CLUSTERS = ["mila", "narval", "cedar", "beluga", "graham"]
-
 
 def can_run_on_all_clusters():
     """Makes a given test run on all the clusters in `CLUSTERS`, *for real*!
@@ -46,57 +40,6 @@ def can_run_on_all_clusters():
     enabling it sometimes to test stuff on DRAC clusters.
     """
     return pytest.mark.parametrize("cluster", CLUSTERS, indirect=True)
-
-
-@pytest.fixture(scope="module", autouse=True)
-def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
-    # Note: need to recreate this because login_node is a function-scoped fixture.
-    login_node = Remote(cluster)
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
-    time.sleep(1)
-    yield
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
-    time.sleep(1)
-    # Display the output of squeue just to be sure that the jobs were cancelled.
-    login_node._run("squeue --me", echo=True, in_stream=False)
-
-
-@functools.lru_cache
-def get_slurm_account(cluster: str) -> str:
-    """Gets the SLURM account of the user using sacctmgr on the slurm cluster.
-
-    When there are multiple accounts, this selects the first account, alphabetically.
-
-    On DRAC cluster, this uses the `def` allocations instead of `rrg`, and when
-    the rest of the accounts are the same up to a '_cpu' or '_gpu' suffix, it uses
-    '_cpu'.
-
-    For example:
-
-    ```text
-    def-someprofessor_cpu  <-- this one is used.
-    def-someprofessor_gpu
-    rrg-someprofessor_cpu
-    rrg-someprofessor_gpu
-    ```
-    """
-    # note: recreating the Connection here because this will be called for every test
-    # and we use functools.cache to cache the result, so the input has to be a simpler
-    # value like a string.
-    result = fabric.Connection(
-        cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
-    ).run(
-        "sacctmgr --noheader show associations where user=$USER format=Account%50",
-        echo=True,
-        in_stream=False,
-    )
-    assert isinstance(result, fabric.runners.Result)
-    accounts: list[str] = [line.strip() for line in result.stdout.splitlines()]
-    assert accounts
-    logger.info(f"Accounts on the slurm cluster {cluster}: {accounts}")
-    account = sorted(accounts)[0]
-    logger.info(f"Using account {account} to launch jobs in tests.")
-    return account
 
 
 def get_recent_jobs_info_dicts(
@@ -132,34 +75,6 @@ def get_recent_jobs_info(
 def sleep_so_sacct_can_update():
     print("Sleeping so sacct can update...")
     time.sleep(_SACCT_UPDATE_DELAY.total_seconds())
-
-
-@pytest.fixture()
-def allocation_flags(cluster: str, request: pytest.FixtureRequest):
-    # note: thanks to lru_cache, this is only making one ssh connection per cluster.
-    account = get_slurm_account(cluster)
-    allocation_options = {
-        "job-name": JOB_NAME,
-        "wckey": WCKEY,
-        "account": account,
-        "nodes": 1,
-        "ntasks": 1,
-        "cpus-per-task": 1,
-        "mem": "1G",
-        "time": MAX_JOB_DURATION,
-        "oversubscribe": None,  # allow multiple such jobs to share resources.
-    }
-    overrides = getattr(request, "param", {})
-    assert isinstance(overrides, dict)
-    if overrides:
-        print(f"Overriding allocation options with {overrides}")
-        allocation_options.update(overrides)
-    return " ".join(
-        [
-            f"--{key}={value}" if value is not None else f"--{key}"
-            for key, value in allocation_options.items()
-        ]
-    )
 
 
 @requires_access_to_slurm_cluster
@@ -255,11 +170,6 @@ def test_run(
 
     sacct_output = get_recent_jobs_info(login_node, fields=("JobID", "JobName", "Node"))
     assert (job_id, JOB_NAME, compute_node) in sacct_output
-
-
-hangs_in_github_CI = pytest.mark.skipif(
-    SLURM_CLUSTER == "localhost", reason="BUG: Hangs in the GitHub CI.."
-)
 
 
 @hangs_in_github_CI
