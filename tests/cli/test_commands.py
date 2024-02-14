@@ -81,19 +81,6 @@ def test_invalid_command_output(
     file_regression.check(_convert_argparse_output_to_pre_py311_format(buf.getvalue()))
 
 
-# TODO: Perhaps we could use something like this so we can run all tests locally, but
-# skip the ones that need to actually connect to the cluster when running on GitHub
-# Actions.
-# def dont_run_on_github(*args):
-#     return pytest.param(
-#         *args,
-#         marks=pytest.mark.skipif(
-#             "GITHUB_ACTIONS" in os.environ,
-#             reason="We don't run this test on GitHub Actions.",
-#         ),
-#     )
-
-
 @pytest.mark.parametrize(
     "command", ["mila docs conda", "mila intranet", "mila intranet idt"]
 )
