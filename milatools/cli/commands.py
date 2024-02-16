@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import logging
 import operator
-import os
 import re
 import shutil
 import socket
@@ -16,7 +15,6 @@ import sys
 import time
 import traceback
 import typing
-import warnings
 import webbrowser
 from argparse import ArgumentParser, _HelpAction
 from collections.abc import Sequence
@@ -30,6 +28,7 @@ import questionary as qn
 import rich.logging
 from typing_extensions import TypedDict
 
+from milatools import console
 from milatools.cli.vscode_utils import (
     get_code_command,
     # install_local_vscode_extensions_on_remote,
@@ -541,16 +540,16 @@ def code(
         # Sync the VsCode extensions from the local machine over to the target cluster.
         run_in_the_background = False  # if "pytest" not in sys.modules else True
         print(
-            T.bold_cyan(
-                f"Installing VSCode extensions that are on the local machine on "
+            console.log(
+                f"[cyan]Installing VSCode extensions that are on the local machine on "
                 f"{cluster}" + (" in the background." if run_in_the_background else ".")
             )
         )
         if run_in_the_background:
             copy_vscode_extensions_process = make_process(
                 sync_vscode_extensions_in_parallel_with_hostnames,
-                source="localhost",
-                dest_clusters=[cluster],
+                source_hostname="localhost",
+                dest_cluster_hostnames=[cluster],
             )
             copy_vscode_extensions_process.start()
         else:

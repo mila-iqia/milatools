@@ -185,16 +185,17 @@ def _install_vscode_extensions_task_function(
                 hide="stdout",
                 echo_format=T.bold_cyan(f"({dest_hostname})" + " $ {command}"),
             )
-            if not result.ok:
-                logger.warning(f"{dest_hostname}: " + result.stderr)
+            success = result.return_code == 0
         else:
             result = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
             )
-            if result.returncode:
-                logger.warning(f"{dest_hostname}: " + result.stderr)
+            success = result.returncode == 0
+
+        if not success:
+            logger.info(f"{dest_hostname}: " + result.stderr)
 
         progress_dict[task_id] = {
             "progress": index,
