@@ -6,6 +6,7 @@ import socket
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Sequence
+from logging import getLogger as get_logger
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Literal, TextIO, overload
@@ -27,6 +28,7 @@ from .utils import (
     here,
 )
 
+logger = get_logger(__name__)
 batch_template = """#!/bin/bash
 #SBATCH --output={output_file}
 #SBATCH --ntasks=1
@@ -125,6 +127,8 @@ class Remote:
                     _connect_kwargs = (_connect_kwargs or {}).copy()
                     _connect_kwargs.update(connect_kwargs)
 
+                logger.info(f"Opening a new connection to {hostname}")
+                logger.debug(f"Connection kwargs: {_connect_kwargs}")
                 connection = Connection(hostname, connect_kwargs=_connect_kwargs)
                 if keepalive:
                     connection.open()

@@ -16,7 +16,7 @@ import time
 import traceback
 import typing
 import webbrowser
-from argparse import ArgumentParser, _HelpAction
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _HelpAction
 from collections.abc import Sequence
 from contextlib import ExitStack
 from logging import getLogger as get_logger
@@ -242,6 +242,47 @@ def mila():
     )
     code_parser.set_defaults(function=code)
 
+    # ----- mila sync vscode-extensions ------
+
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Various commands used to synchronize things between the the local machine and remote clusters.",
+        formatter_class=SortingHelpFormatter,
+    )
+    sync_subparsers = sync_parser.add_subparsers(
+        dest="<sync_subcommand>", required=True
+    )
+    sync_vscode_parser = sync_subparsers.add_parser(
+        "vscode-extensions",
+        help="Sync vscode extensions between a source and one or more target machines.",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+    )
+    sync_vscode_parser.add_argument(
+        "--source",
+        type=str,
+        default="localhost",
+        help=(
+            "Source machine whose vscode extensions should be installed on all "
+            "machines in `destinations`. This can either be a local machine or a "
+            "remote cluster. Defaults to 'localhost', assuming that your local editor "
+            "has the extensions you want to have on other machines."
+        ),
+    )
+    sync_vscode_parser.add_argument(
+        "--destinations",
+        type=str,
+        default=CLUSTERS,
+        nargs="+",
+        help=(
+            "hostnames of target machines on which vscode extensions from `source` "
+            "should be installed. These can also include 'localhost' to install remote "
+            "extensions locally. Defaults to all the available SLURM clusters."
+        ),
+    )
+    sync_vscode_parser.set_defaults(
+        function=sync_vscode_extensions_in_parallel_with_hostnames
+    )
+
     # ----- mila serve ------
 
     serve_parser = subparsers.add_parser(
@@ -382,6 +423,7 @@ def mila():
     function = args_dict.pop("function")
     _ = args_dict.pop("<command>")
     _ = args_dict.pop("<serve_subcommand>", None)
+    _ = args_dict.pop("<sync_subcommand>", None)
     setup_logging(verbose)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
@@ -548,14 +590,15 @@ def code(
         if run_in_the_background:
             copy_vscode_extensions_process = make_process(
                 sync_vscode_extensions_in_parallel_with_hostnames,
-                source_hostname="localhost",
-                dest_cluster_hostnames=[cluster],
+                # todo: use the mila cluster as the source? Or use `localhost`?
+                source="localhost",
+                destinations=[cluster],
             )
             copy_vscode_extensions_process.start()
         else:
             sync_vscode_extensions_in_parallel(
                 Local(),
-                [Remote(cluster) for cluster in ["narval"]],
+                [cluster],
             )
 
     if node is None:
