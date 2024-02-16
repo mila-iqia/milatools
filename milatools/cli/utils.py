@@ -15,7 +15,7 @@ import warnings
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Literal, Union, get_args
+from typing import Any, Literal, TypeVar, Union, get_args, overload
 
 import blessed
 import paramiko
@@ -29,6 +29,9 @@ if typing.TYPE_CHECKING:
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
+from rich.console import Console
+
+console = Console(record=True)
 
 T = blessed.Terminal()
 
@@ -310,3 +313,33 @@ def make_process(
 def currently_in_a_test() -> bool:
     """Returns True during unit tests (pytest) and False during normal execution."""
     return "pytest" in sys.modules
+
+
+V = TypeVar("V")
+
+
+def batched(
+    iterable: Iterable[V], n: int, droplast: bool = False
+) -> Iterable[tuple[V, ...]]:
+    """Yield successive n-sized chunks from iterable.
+
+    if `droplast` is True, the last batch will be dropped if it's not full.
+
+    >>> list(batched('ABCDEFG', 3))
+    [('A', 'B', 'C'), ('D', 'E', 'F'), ('G',)]
+    >>> list(batched('ABCDEFG', 3, droplast=True))
+    [('A', 'B', 'C'), ('D', 'E', 'F')]
+    """
+    if sys.version_info >= (3, 12) and not droplast:
+        return itertools.batched(iterable, n)
+    if n < 1:
+        raise ValueError("n must be at least one")
+    it = iter(iterable)
+    while batch := tuple(itertools.islice(it, n)):
+        if len(batch) < n and droplast:
+            break
+        yield batch
+
+
+def stripped_lines_of(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines()]

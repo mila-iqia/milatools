@@ -30,7 +30,10 @@ import questionary as qn
 import rich.logging
 from typing_extensions import TypedDict
 
-from milatools.cli.vscode_utils import copy_vscode_extensions_to_remote
+from milatools.cli.vscode_utils import (
+    get_code_command,
+    install_vscode_extensions_on_remote,
+)
 
 from ..version import version as mversion
 from .init_command import (
@@ -210,7 +213,7 @@ def mila():
     )
     code_parser.add_argument(
         "--command",
-        default=os.environ.get("MILATOOLS_CODE_COMMAND", "code"),
+        default=get_code_command(),
         help=(
             "Command to use to start vscode\n"
             '(defaults to "code" or the value of $MILATOOLS_CODE_COMMAND)'
@@ -513,19 +516,17 @@ def code(
 
     if cluster != "mila" and job is None and node is None:
         if not any("--account" in flag for flag in alloc):
-            warnings.warn(
-                T.orange(
-                    "Warning: When using the DRAC clusters, you usually need to "
-                    "specify the account to use when submitting a job. You can specify "
-                    "this in the job resources with `--alloc`, like so: "
-                    "`--alloc --account=<account_to_use>`, for example:\n"
-                    f"mila code {path} --cluster {cluster} --alloc "
-                    f"--account=your-account-here"
-                )
+            logger.warning(
+                "Warning: When using the DRAC clusters, you usually need to "
+                "specify the account to use when submitting a job. You can specify "
+                "this in the job resources with `--alloc`, like so: "
+                "`--alloc --account=<account_to_use>`, for example:\n"
+                f"mila code {path} --cluster {cluster} --alloc "
+                f"--account=your-account-here"
             )
 
     if command is None:
-        command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
+        command = get_code_command()
 
     try:
         check_disk_quota(remote)
@@ -534,29 +535,25 @@ def code(
     except Exception as exc:
         logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
-    vscode_extensions_folder = Path.home() / ".vscode/extensions"
-    if vscode_extensions_folder.exists() and no_internet_on_compute_nodes(cluster):
+    if no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
+        run_in_the_background = False if "pytest" not in sys.modules else True
         print(
             T.bold_cyan(
-                f"Copying VSCode extensions from local machine to {cluster} in the "
-                f"background..."
+                f"Installing VSCode extensions that are on the local machine on "
+                f"{cluster}" + (" in the background." if run_in_the_background else ".")
             )
         )
-        # Async:
-        copy_vscode_extensions_process = make_process(
-            copy_vscode_extensions_to_remote,
-            cluster,
-            vscode_extensions_folder,
-        )
-        copy_vscode_extensions_process.start()
-
-        # Sync:
-        # copy_vscode_extensions_to_remote(
-        #     cluster,
-        #     local_vscode_extensions_dir=vscode_extensions_folder,
-        #     remote=remote,
-        # )
+        if run_in_the_background:
+            # Async:
+            copy_vscode_extensions_process = make_process(
+                install_vscode_extensions_on_remote,
+                cluster,
+            )
+            copy_vscode_extensions_process.start()
+        else:
+            # Sync:
+            install_vscode_extensions_on_remote(cluster)
 
     if node is None:
         cnode = _find_allocation(

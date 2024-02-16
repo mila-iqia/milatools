@@ -4,15 +4,20 @@ import os
 import shutil
 import subprocess
 import sys
-import tarfile
-from collections.abc import Iterable
 from logging import getLogger as get_logger
 from pathlib import Path
 
-import tqdm
+from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn
 
+from milatools.cli.local import Local
 from milatools.cli.remote import Remote
-from milatools.cli.utils import ClusterWithoutInternetOnCNodes, T
+from milatools.cli.utils import (
+    ClusterWithoutInternetOnCNodes,
+    T,
+    batched,
+    console,
+    stripped_lines_of,
+)
 
 logger = get_logger(__name__)
 
@@ -43,159 +48,110 @@ def get_expected_vscode_settings_json_path() -> Path:
     return Path.home() / ".config/Code/User/settings.json"
 
 
+def get_code_command() -> str:
+    return os.environ.get("MILATOOLS_CODE_COMMAND", "code")
+
+
+def get_vscode_executable_path() -> str | None:
+    return shutil.which(get_code_command())
+
+
 def vscode_installed() -> bool:
-    return bool(shutil.which(os.environ.get("MILATOOLS_CODE_COMMAND", "code")))
+    return bool(get_vscode_executable_path())
 
 
-EXTENSIONS_ARCHIVE_NAME = "vscode-extensions.tar.gz"
-EXTRACTED_VSCODE_EXTENSIONS_FILE = "extracted_vscode_extensions.txt"
-TRANSFERED_VSCODE_EXTENSIONS_FILE = "transferred_vscode_extensions.txt"
-
-
-def copy_vscode_extensions_to_remote(
+def install_vscode_extensions_on_remote(
     cluster: ClusterWithoutInternetOnCNodes,
-    local_vscode_extensions_dir: Path,
     remote: Remote | None = None,
-    remote_vscode_extensions_dir: str = "~/.vscode-server/extensions",
-    local_milatools_dir: Path = Path("~/.milatools"),
-    remote_milatools_dir: str = "~/.milatools",
+    remote_vscode_server_dir: str = "~/.vscode-server",
 ):
     if remote is None:
         remote = Remote(cluster)
 
-    local_milatools_dir = local_milatools_dir.expanduser()
-    local_milatools_dir.mkdir(exist_ok=True, parents=True)
-
-    local_extensions_archive_path = local_milatools_dir / EXTENSIONS_ARCHIVE_NAME
-
-    # todo: Use code --list-extensions to get the extension names instead.
-    local_extensions_names = list(
-        str(p.relative_to(local_vscode_extensions_dir))
-        for p in local_vscode_extensions_dir.iterdir()
-    )
-    remote.run(
-        f"mkdir -p {remote_vscode_extensions_dir}", display=False, in_stream=False
-    )
-    remote_extension_files = remote.run(
-        f"ls {remote_vscode_extensions_dir}",
-        display=False,
-        hide="stdout",
-        warn=True,
-        in_stream=False,
-    ).stdout.split()
-
-    # A file on the remote that contains the names of all the previously successfully
-    # extracted VsCode extensions.
-    remote_extracted_vscode_extensions_file = (
-        f"{remote_milatools_dir}/{EXTRACTED_VSCODE_EXTENSIONS_FILE}"
-    )
-    remote.run(f"mkdir -p {remote_milatools_dir}", display=False, in_stream=False)
-    remote.run(
-        f"touch {remote_extracted_vscode_extensions_file}",
-        display=False,
-        in_stream=False,
-    )
-    already_extracted_extensions = _read_text_file_lines(
-        remote, remote_extracted_vscode_extensions_file
+    code_server_executable = find_code_server_executable(
+        remote, remote_vscode_server_dir
     )
 
-    # Same idea: a file that contains the list of extensions in the archive that was
-    # already scp'ed to the remote. If we already scp'ed the archive with all the
-    # required extensions, then we don't need to scp it again.
-    remote_transferred_extensions_file = (
-        f"{remote_milatools_dir}/{TRANSFERED_VSCODE_EXTENSIONS_FILE}"
+    local_extensions = parse_vscode_extensions_versions(
+        Local()
+        .run(
+            get_code_command(),
+            "--list-extensions",
+            "--show-versions",
+            capture_output=True,
+        )
+        .stdout
     )
-    remote.run(
-        f"touch {remote_transferred_extensions_file}", display=False, in_stream=False
+    remote_extensions = parse_vscode_extensions_versions(
+        remote.run(f"{code_server_executable} --list-extensions --show-versions").stdout
     )
-    already_transfered_extensions = _read_text_file_lines(
-        remote, remote_transferred_extensions_file
-    )
-    # TODO: There's one minor unhandled edge case here: If we sent an archive in the
-    # past, but uninstall some extensions later, then all the required extensions are in
-    # the archive, so this will skip the scp, but the remote will still have the
-    # uninstalled extensions.
 
-    # If an extension is listed in this text file, then it should also be present in the
-    # folder, but filter things just to be sure. For example, when an extension is
-    # uninstalled, its name might still be in the .txt file, but the folder might have
-    # been removed on the remote. Therefore, we also check that the folder still exists.
-    extensions_on_remote = [
-        extension
-        for extension in already_extracted_extensions
-        if extension in remote_extension_files
-    ]
-    missing_extensions = set(local_extensions_names) - set(extensions_on_remote)
-    logger.debug(f"Missing extensions: {sorted(missing_extensions)}")
+    # NOTE: Perhaps we could also make a dict of extensions to install or update locally
+    # because they are installed at a newer version on the remote than on the local
+    # machine? However at that point you might as well just use the vscode sync option.
+    # extensions_to_install_locally: dict[str, str] = {}
+    extensions_to_install_on_remote: dict[str, str] = {}
 
-    if not missing_extensions:
-        print(
-            T.bold_green(
-                f"All local VsCode extensions are already synced to the {cluster} "
-                f"cluster."
+    for local_extension_name, local_version in local_extensions.items():
+        if local_extension_name not in remote_extensions:
+            logger.debug(f"Installing extension {local_extension_name} on {cluster}.")
+            extensions_to_install_on_remote[local_extension_name] = local_version
+        elif (local_version_tuple := _as_version_tuple(local_version)) > (
+            remote_version_tuple := _as_version_tuple(
+                remote_version := remote_extensions[local_extension_name]
             )
-        )
-        return
-
-    # NOTE: Here we just check if we already completed the transfer. We don't try to
-    # only send what's missing, that would make things too complicated.
-    extensions_that_need_to_be_transfered = set(local_extensions_names) - set(
-        already_transfered_extensions
-    )
-    if extensions_that_need_to_be_transfered:
-        print(
-            T.bold_cyan(
-                f"Syncing {len(missing_extensions)} local VsCode extensions with the "
-                f"{cluster} cluster in the background..."
+        ):
+            logger.debug(f"Updating {local_extension_name} to version {local_version}.")
+            extensions_to_install_on_remote[local_extension_name] = local_version
+        elif local_version_tuple < remote_version_tuple:
+            # The extension is at a newer version on the remote.
+            logger.debug(
+                f"Local extension {local_extension_name} is older than version on "
+                f"{cluster}: {local_version} < {remote_version}"
             )
-        )
-        pack_vscode_extensions_into_archive(
-            local_extensions_archive_path,
-            extensions=missing_extensions,
-            local_vscode_extensions_dir=local_vscode_extensions_dir,
-        )
+        else:
+            # The extension is already installed at that version on that cluster.
+            pass
 
-        print(
-            T.bold_cyan(
-                f"Sending archive of missing VsCode extensions over to {cluster}..."
+    # NOTE: It seems like --install-extension only installs one extension (the first
+    # given). Although we could do a single command with xargs to install all
+    # extensions, it's a much nicer user experience to instead use a progress bar and
+    # install them one by one. We're reusing the same ssh connection, so it isn't
+    # _that_ bad.
+    with Progress(
+        SpinnerColumn(),
+        *Progress.get_default_columns(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        # IDEA: Use progress bars for each cluster, and sync the extensions in parallel!
+        # https://www.deanmontgomery.com/2022/03/24/rich-progress-and-multiprocessing/
+        # task1 = progress.add_task(
+        #     f"[green]Syncing extensions on {cluster}",
+        #     total=len(extensions_to_install_on_remote),
+        # )
+        # task2 = progress.add_task("[green]Processing", total=1000)
+        # task3 = progress.add_task("[yellow]Thinking", total=None)
+        for extension_name, extension_verison in progress.track(
+            extensions_to_install_on_remote.items(),
+            description=f"[green]Syncing vscode extensions on {cluster}",
+        ):
+            result = remote.run(
+                f"{code_server_executable} --install-extension {extension_name}@{extension_verison}",
+                in_stream=False,
+                display=False,
+                echo=False,
+                warn=True,
+                asynchronous=False,
+                hide="stdout",
+                echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
             )
-        )
-        scp_command = (
-            f"scp {local_extensions_archive_path} "
-            f"{cluster}:{remote_milatools_dir}/{local_extensions_archive_path.name}"
-        )
-        print(T.bold_green("(local) $ ", scp_command))
-        # TODO: Look into using `remote.connection.local` instead of subprocess.run.
-        subprocess.run(scp_command, shell=True, check=True)
+            if not result.ok:
+                logger.warning(
+                    f"Failed to sync vscode extensions on {cluster}: " + result.stderr
+                )
 
-        print(
-            f"Saving list of synced extensions to {remote_transferred_extensions_file} "
-            f"on the {cluster} cluster."
-        )
-        remote.puttext(
-            "\n".join(local_extensions_names) + "\n",
-            remote_transferred_extensions_file,
-        )
-
-    print(
-        f"Extracting archive with the missing {len(missing_extensions)} VsCode "
-        f"extensions."
-    )
-    remote.run(
-        f"tar --extract --gzip --totals "
-        f"--file {remote_milatools_dir}/{local_extensions_archive_path.name} "
-        f"--directory {remote_vscode_extensions_dir}",
-        in_stream=False,
-    )
-
-    print(
-        f"Saving list of extracted extensions to "
-        f"{remote_extracted_vscode_extensions_file} on {cluster}."
-    )
-    remote.puttext(
-        "\n".join(local_extensions_names) + "\n",
-        remote_extracted_vscode_extensions_file,
-    )
     print(
         T.bold_green(
             f"Done synchronizing VsCode extensions between the local machine and the "
@@ -204,45 +160,101 @@ def copy_vscode_extensions_to_remote(
     )
 
 
-def pack_vscode_extensions_into_archive(
-    local_extensions_archive_path: Path,
-    extensions: Iterable[str],
-    local_vscode_extensions_dir: Path,
-):
-    # NOTE: We don't use `shutil.make_archive` because we want to only ship the
-    # extensions that aren't already on the remote.
+def find_code_server_executable(
+    remote: Remote, remote_vscode_server_dir: str
+) -> str | None:
+    """Find the most recent `code-server` executable on the remote.
 
-    with tarfile.open(local_extensions_archive_path, mode="w:gz") as extensions_tarfile:
-        # Note: we do NOT add the extensions.json file in the archive, otherwise we
-        # might accidentally overwrite that file on the remote!
-        # extensions_tarfile.add(
-        #     local_vscode_extensions_dir / "extensions.json",
-        #     arcname="extensions.json",
-        # )
+    Returns `None` if none are found.
+    """
+    cluster = remote.hostname
+    # TODO: When doing this for the first time on a remote cluster, this file might not
+    # be present until the vscode window has opened and installed the vscode server on the
+    # remote! Perhaps we should wait a little bit until it finishes installing somehow?
+    find_code_server_executables_command = (
+        f"find {remote_vscode_server_dir} -name code-server -executable -type f"
+    )
 
-        with tqdm.tqdm(
-            sorted(extensions),
-            desc="Packing missing VsCode extensions into an archive...",
-            unit="extension",
-        ) as pbar:
-            for extension in pbar:
-                extensions_tarfile.add(
-                    local_vscode_extensions_dir / extension,
-                    # Name in the archive will be {extension} so it can be extracted
-                    # directly in the extensions folder.
-                    arcname=extension,
-                    recursive=True,
-                )
-                pbar.set_postfix({"extension": extension})
-
-
-def _read_text_file_lines(remote: Remote, file: str) -> list[str]:
-    return [
-        line
-        for line in remote.get_output(
-            f"cat {file}",
+    code_server_executables = stripped_lines_of(
+        remote.get_output(
+            find_code_server_executables_command,
             display=False,
+            warn=True,
             hide="stdout",
-        ).splitlines()
-        if line.strip()
-    ]
+        )
+    )
+    if not code_server_executables:
+        logger.warning(f"Unable to find any code-server executables on {cluster}.")
+        return None
+
+    # Run a single fused command over SSH instead of one command for each executable.
+    # Each executable outputs 3 lines:
+    # ```
+    # 1.83.1
+    # f1b07bd25dfad64b0167beb15359ae573aecd2cc
+    # x64
+    # ```
+    remote_version_command_output = stripped_lines_of(
+        remote.get_output(
+            find_code_server_executables_command + " -exec {} --version \\;",
+            display=False,
+        )
+    )
+    # The commands are run in sequence, so the outputs are not interleaved, so we can
+    # group the output lines by 3 safely.
+    code_server_executable_versions: dict[str, tuple[int | str, ...]] = {}
+    for version, hash, _x64 in batched(remote_version_command_output, 3):
+        version = _as_version_tuple(version)
+        for code_server_executable in code_server_executables:
+            if hash in code_server_executable:
+                code_server_executable_versions[code_server_executable] = version
+                break
+
+    if not code_server_executable_versions:
+        logger.warning(
+            f"Unable to determine the versions of any of the code-server "
+            f"executables found on {cluster}."
+        )
+        return None
+
+    logger.debug(
+        f"Found {len(code_server_executable_versions)} code-server executables."
+    )
+    # Use the most recent vscode-server executable.
+    most_recent_code_server_executable = max(
+        code_server_executable_versions.keys(),
+        key=code_server_executable_versions.__getitem__,
+    )
+    return most_recent_code_server_executable
+
+
+def parse_vscode_extensions_versions(
+    list_extensions_output: str,
+) -> dict[str, str]:
+    extensions = stripped_lines_of(list_extensions_output)
+
+    def _extension_name_and_version(extension: str) -> tuple[str, str]:
+        # extensions should include name@version since we use --show-versions.
+        assert "@" in extension
+        name, version = extension.split("@", maxsplit=1)
+        return name, version
+
+    # NOTE: Unsure if it's possible to have more than one version of an extension
+    # installed, but getting the latest version (based on int/string comparison) just to
+    # be sure.
+    name_to_versions: dict[str, list[str]] = {}
+    for extension_name, version in map(_extension_name_and_version, extensions):
+        name_to_versions.setdefault(extension_name, []).append(version)
+
+    return dict(
+        sorted(
+            [
+                (name, max(versions, key=_as_version_tuple))
+                for name, versions in name_to_versions.items()
+            ]
+        )
+    )
+
+
+def _as_version_tuple(version_str: str) -> tuple[int | str, ...]:
+    return tuple([int(v) if v.isdigit() else v for v in version_str.split(".")])
