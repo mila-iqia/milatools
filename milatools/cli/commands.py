@@ -51,6 +51,7 @@ from .utils import (
     MilatoolsUserError,
     SSHConnectionError,
     T,
+    currently_in_a_test,
     get_fully_qualified_hostname_of_compute_node,
     get_fully_qualified_name,
     make_process,
@@ -617,7 +618,7 @@ def code(
                 "The editor was closed. Reopen it with <Enter>"
                 " or terminate the process with <Ctrl+C>"
             )
-            if "pytest" in sys.modules:
+            if currently_in_a_test():
                 break
             input()
 

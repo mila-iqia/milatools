@@ -305,3 +305,8 @@ def make_process(
     # Tiny wrapper around the `multiprocessing.Process` init to detect if the args and
     # kwargs don't match the target signature using typing instead of at runtime.
     return multiprocessing.Process(target=target, daemon=True, args=args, kwargs=kwargs)
+
+
+def currently_in_a_test() -> bool:
+    """Returns True during unit tests (pytest) and False during normal execution."""
+    return "pytest" in sys.modules
