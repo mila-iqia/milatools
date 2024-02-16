@@ -13,7 +13,7 @@ from milatools.cli.remote import Remote
 from milatools.cli.vscode_utils import (
     EXTENSIONS_ARCHIVE_NAME,
     get_expected_vscode_settings_json_path,
-    install_vscode_extensions_on_remote,
+    install_local_vscode_extensions_on_remote,
     pack_vscode_extensions_into_archive,
     vscode_installed,
 )

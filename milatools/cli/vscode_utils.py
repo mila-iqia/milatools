@@ -1,22 +1,31 @@
 from __future__ import annotations
 
+import functools
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
+from typing import Callable, Literal, Sequence
 
 from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn
 
+from milatools import console
 from milatools.cli.local import Local
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
-    ClusterWithoutInternetOnCNodes,
+    Cluster,
     T,
     batched,
-    console,
     stripped_lines_of,
+)
+from milatools.parallel_progress import (
+    DictProxy,
+    ProgressDict,
+    TaskID,
+    parallel_progress_bar,
 )
 
 logger = get_logger(__name__)
@@ -60,45 +69,191 @@ def vscode_installed() -> bool:
     return bool(get_vscode_executable_path())
 
 
-def install_vscode_extensions_on_remote(
-    cluster: ClusterWithoutInternetOnCNodes,
-    remote: Remote | None = None,
-    remote_vscode_server_dir: str = "~/.vscode-server",
+def sync_vscode_extensions_in_parallel_with_hostnames(
+    source_hostname: Cluster | Literal["localhost"],
+    dest_cluster_hostnames: Sequence[Cluster | Literal["localhost"]],
 ):
-    if remote is None:
-        remote = Remote(cluster)
-
-    code_server_executable = find_code_server_executable(
-        remote, remote_vscode_server_dir
-    )
-
-    local_extensions = parse_vscode_extensions_versions(
-        Local()
-        .run(
-            get_code_command(),
-            "--list-extensions",
-            "--show-versions",
-            capture_output=True,
+    if source_hostname in dest_cluster_hostnames:
+        raise RuntimeError(
+            f"hostname {source_hostname} can't be both a source and a destination!"
         )
-        .stdout
-    )
-    remote_extensions = parse_vscode_extensions_versions(
-        remote.run(f"{code_server_executable} --list-extensions --show-versions").stdout
+    if len(set(dest_cluster_hostnames)) != len(dest_cluster_hostnames):
+        raise ValueError(f"{dest_cluster_hostnames=} contains duplicate hostnames!")
+
+    source = Local() if source_hostname == "localhost" else Remote(source_hostname)
+    dest_clusters = [
+        Local() if hostname == "localhost" else Remote(hostname)
+        for hostname in set(dest_cluster_hostnames)
+    ]
+    return sync_vscode_extensions_in_parallel(source, dest_clusters)
+
+
+def sync_vscode_extensions_in_parallel(
+    source: Remote | Local,
+    dest_clusters: Sequence[Remote | Local],
+):
+    """Syncs vscode extensions between `source` all all the clusters in `dest`."""
+
+    if isinstance(source, Local) or source == "localhost":
+        source_extensions = get_local_vscode_extensions()
+    else:
+        source_extensions, _ = get_remote_vscode_extensions(source)
+        if source_extensions is None:
+            raise RuntimeError(
+                f"The vscode-server executable was not found on {source.hostname}."
+            )
+    source_hostname = source.hostname if isinstance(source, Remote) else "localhost"
+
+    task_fns: list[Callable[[DictProxy[TaskID, ProgressDict], TaskID], None]] = []
+    task_descriptions: list[str] = []
+
+    for dest_remote in dest_clusters:
+        if isinstance(dest_remote, Remote):
+            dest_hostname = dest_remote.hostname
+            (
+                extensions_on_dest,
+                code_server_executable,
+            ) = get_remote_vscode_extensions(dest_remote)
+            if extensions_on_dest is None:
+                assert code_server_executable is None
+                logger.warning(
+                    f"The vscode-server executable was not found on {dest_remote.hostname}."
+                    f"Skipping syncing extensions to {dest_remote.hostname}."
+                )
+                continue
+            assert code_server_executable is not None
+        else:
+            dest_hostname = "localhost"
+            extensions_on_dest = get_local_vscode_extensions()
+            code_server_executable = get_vscode_executable_path()
+            assert code_server_executable
+
+        to_install = extensions_to_install(
+            source_extensions, extensions_on_dest, dest_name=dest_hostname
+        )
+        if not to_install:
+            logger.info(f"No extensions to sync to {dest_hostname}.")
+            continue
+
+        logger.debug(f"Will install {len(to_install)} extensions on {dest_hostname}.")
+        task_fns.append(
+            functools.partial(
+                _install_vscode_extensions_task_function,
+                dest_hostname=dest_hostname,
+                code_server_executable=code_server_executable,
+                extensions_to_install=to_install,
+            )
+        )
+        task_descriptions.append(
+            f"Syncing extensions from {source_hostname} -> {dest_hostname}"
+        )
+
+    parallel_progress_bar(
+        task_fns=task_fns,
+        task_descriptions=task_descriptions,
     )
 
+
+def _install_vscode_extensions_task_function(
+    progress_dict: DictProxy[TaskID, ProgressDict],
+    task_id: TaskID,
+    dest_hostname: str | Literal["localhost"],
+    code_server_executable: str,
+    extensions_to_install: dict[str, str],
+):
+    if dest_hostname == "localhost":
+        remote = Local()
+    else:
+        remote = Remote(dest_hostname)
+
+    for index, (extension_name, extension_version) in enumerate(
+        extensions_to_install.items()
+    ):
+        command = (
+            code_server_executable,
+            "--install-extension",
+            f"{extension_name}@{extension_version}",
+        )
+        if isinstance(remote, Remote):
+            result = remote.run(
+                shlex.join(command),
+                in_stream=False,
+                display=False,
+                echo=False,
+                warn=True,
+                asynchronous=False,
+                hide="stdout",
+                echo_format=T.bold_cyan(f"({dest_hostname})" + " $ {command}"),
+            )
+            if not result.ok:
+                logger.warning(f"{dest_hostname}: " + result.stderr)
+        else:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode:
+                logger.warning(f"{dest_hostname}: " + result.stderr)
+
+        progress_dict[task_id] = {
+            "progress": index,
+            "total": len(extensions_to_install),
+        }
+
+
+def get_local_vscode_extensions() -> dict[str, str]:
+    return parse_vscode_extensions_versions(
+        subprocess.run(
+            (
+                get_code_command(),
+                "--list-extensions",
+                "--show-versions",
+            ),
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+
+
+def get_remote_vscode_extensions(
+    remote: Remote,
+) -> tuple[dict[str, str], str] | tuple[None, None]:
+    """Returns the list of isntalled extensions and the path to the code-server
+    executable."""
+    remote_code_server_executable = find_code_server_executable(
+        remote,
+        remote_vscode_server_dir="~/.vscode-server",
+    )
+    if not remote_code_server_executable:
+        return None, None
+    remote_extensions = parse_vscode_extensions_versions(
+        remote.get_output(
+            f"{remote_code_server_executable} --list-extensions --show-versions",
+            display=False,
+            hide=True,
+        )
+    )
+    return remote_extensions, remote_code_server_executable
+
+
+def extensions_to_install(
+    source_extensions: dict[str, str], dest_extensions: dict[str, str], dest_name: str
+) -> dict[str, str]:
+    extensions_to_install_on_remote: dict[str, str] = {}
+    cluster = dest_name
     # NOTE: Perhaps we could also make a dict of extensions to install or update locally
     # because they are installed at a newer version on the remote than on the local
     # machine? However at that point you might as well just use the vscode sync option.
     # extensions_to_install_locally: dict[str, str] = {}
-    extensions_to_install_on_remote: dict[str, str] = {}
 
-    for local_extension_name, local_version in local_extensions.items():
-        if local_extension_name not in remote_extensions:
+    for local_extension_name, local_version in source_extensions.items():
+        if local_extension_name not in dest_extensions:
             logger.debug(f"Installing extension {local_extension_name} on {cluster}.")
             extensions_to_install_on_remote[local_extension_name] = local_version
         elif (local_version_tuple := _as_version_tuple(local_version)) > (
             remote_version_tuple := _as_version_tuple(
-                remote_version := remote_extensions[local_extension_name]
+                remote_version := dest_extensions[local_extension_name]
             )
         ):
             logger.debug(f"Updating {local_extension_name} to version {local_version}.")
@@ -112,12 +267,20 @@ def install_vscode_extensions_on_remote(
         else:
             # The extension is already installed at that version on that cluster.
             pass
+    return extensions_to_install_on_remote
 
+
+def install_extensions(
+    extensions_to_install: dict[str, str],
+    remote: Remote,
+    remote_code_server_executable: str,
+):
     # NOTE: It seems like --install-extension only installs one extension (the first
     # given). Although we could do a single command with xargs to install all
     # extensions, it's a much nicer user experience to instead use a progress bar and
     # install them one by one. We're reusing the same ssh connection, so it isn't
     # _that_ bad.
+    cluster = remote.hostname
     with Progress(
         SpinnerColumn(),
         *Progress.get_default_columns(),
@@ -134,30 +297,21 @@ def install_vscode_extensions_on_remote(
         # task2 = progress.add_task("[green]Processing", total=1000)
         # task3 = progress.add_task("[yellow]Thinking", total=None)
         for extension_name, extension_verison in progress.track(
-            extensions_to_install_on_remote.items(),
+            extensions_to_install.items(),
             description=f"[green]Syncing vscode extensions on {cluster}",
         ):
             result = remote.run(
-                f"{code_server_executable} --install-extension {extension_name}@{extension_verison}",
+                f"{remote_code_server_executable} --install-extension {extension_name}@{extension_verison}",
                 in_stream=False,
                 display=False,
                 echo=False,
                 warn=True,
                 asynchronous=False,
-                hide="stdout",
+                hide=True,
                 echo_format=T.bold_cyan(f"({cluster})" + " $ {command}"),
             )
             if not result.ok:
-                logger.warning(
-                    f"Failed to sync vscode extensions on {cluster}: " + result.stderr
-                )
-
-    print(
-        T.bold_green(
-            f"Done synchronizing VsCode extensions between the local machine and the "
-            f"{cluster} cluster."
-        )
-    )
+                logger.warning(f"{cluster}: " + result.stderr)
 
 
 def find_code_server_executable(
@@ -180,7 +334,7 @@ def find_code_server_executable(
             find_code_server_executables_command,
             display=False,
             warn=True,
-            hide="stdout",
+            hide=True,
         )
     )
     if not code_server_executables:
@@ -198,6 +352,7 @@ def find_code_server_executable(
         remote.get_output(
             find_code_server_executables_command + " -exec {} --version \\;",
             display=False,
+            hide=True,
         )
     )
     # The commands are run in sequence, so the outputs are not interleaved, so we can

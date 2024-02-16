@@ -1,6 +1,7 @@
 """Tests for the Remote and SlurmRemote classes."""
 from __future__ import annotations
 
+import shlex
 import shutil
 import time
 import typing
@@ -21,7 +22,7 @@ from milatools.cli.remote import (
     SlurmRemote,
     get_first_node_name,
 )
-from milatools.cli.utils import T, cluster_to_connect_kwargs, shjoin
+from milatools.cli.utils import T, cluster_to_connect_kwargs
 
 from .common import function_call_string
 
@@ -620,9 +621,9 @@ class TestSlurmRemote:
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
         expected_command = (
-            f"cd $SCRATCH && salloc {shjoin(alloc)}"
+            f"cd $SCRATCH && salloc {shlex.join(alloc)}"
             if mock_connection.host == "mila"
-            else f"salloc {shjoin(alloc)}"
+            else f"salloc {shlex.join(alloc)}"
         )
 
         def write_stuff(

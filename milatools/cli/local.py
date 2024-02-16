@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
@@ -9,7 +10,7 @@ import fabric
 import paramiko.ssh_exception
 from typing_extensions import deprecated
 
-from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs, shjoin
+from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs
 
 logger = get_logger(__name__)
 
@@ -70,7 +71,7 @@ def display(split_command: list[str] | tuple[str, ...] | str) -> None:
     if isinstance(split_command, str):
         command = split_command
     else:
-        command = shjoin(split_command)
+        command = shlex.join(split_command)
     print(T.bold_green("(local) $ ", command))
 
 

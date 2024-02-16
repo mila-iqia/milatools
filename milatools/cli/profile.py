@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import typing
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,7 +13,7 @@ import questionary as qn
 from questionary import Style
 from questionary.prompts.common import FormattedText
 
-from .utils import askpath, shjoin, yn
+from .utils import askpath, yn
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
@@ -297,7 +298,7 @@ def ensure_program(remote: Remote, program: str, installers: dict[str, str]):
     progs = [
         Path(p).name
         for p in remote.get_output(
-            shjoin(["which", *to_test]),
+            shlex.join(["which", *to_test]),
             hide=True,
             warn=True,
         ).split()

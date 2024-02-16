@@ -29,9 +29,6 @@ if typing.TYPE_CHECKING:
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
-from rich.console import Console
-
-console = Console(record=True)
 
 T = blessed.Terminal()
 
@@ -185,12 +182,6 @@ def askpath(prompt: str, remote: Remote) -> str:
             qn.print(f"Path {pth} does not exist")
             continue
         return pth
-
-
-# This is the implementation of shlex.join in Python >= 3.8
-def shjoin(split_command: Iterable[str]) -> str:
-    """Return a shell-escaped string from *split_command*."""
-    return " ".join(shlex.quote(arg) for arg in split_command)
 
 
 class SSHConfig:

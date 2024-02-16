@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 import socket
 import tempfile
 import time
@@ -24,7 +25,6 @@ from .utils import (
     cluster_to_connect_kwargs,
     control_file_var,
     here,
-    shjoin,
 )
 
 batch_template = """#!/bin/bash
@@ -156,7 +156,7 @@ class Remote:
         return self.wrap(f"source {profile} && {{}}")
 
     def with_bash(self) -> Self:
-        return self.with_transforms(lambda cmd: shjoin(["bash", "-c", cmd]))
+        return self.with_transforms(lambda cmd: shlex.join(["bash", "-c", cmd]))
 
     def display(self, cmd: str) -> None:
         print(T.bold_cyan(f"({self.hostname}) $ ", cmd))
@@ -416,7 +416,7 @@ class Remote:
         print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
         self.simple_run(f"mkdir -p {base}")
         self.put(here / name, dest)
-        return self.run(shjoin([dest, *args]), **kwargs)
+        return self.run(shlex.join([dest, *args]), **kwargs)
 
     @deprecated(
         "Seems to be unused, so we'll remove it. Don't start using it.", category=None
@@ -434,7 +434,7 @@ class Remote:
         print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
         self.simple_run(f"mkdir -p {base}")
         self.put(here / name, dest)
-        return self.extract(shjoin([dest, *args]), pattern=pattern, **kwargs)
+        return self.extract(shlex.join([dest, *args]), pattern=pattern, **kwargs)
 
 
 class SlurmRemote(Remote):
@@ -458,7 +458,7 @@ class SlurmRemote(Remote):
         )
 
     def srun_transform(self, cmd: str) -> str:
-        return shjoin(["srun", *self.alloc, "bash", "-c", cmd])
+        return shlex.join(["srun", *self.alloc, "bash", "-c", cmd])
 
     def srun_transform_persist(self, cmd: str) -> str:
         tag = time.time_ns()
@@ -473,7 +473,7 @@ class SlurmRemote(Remote):
         )
         self.puttext(text=batch, dest=batch_file)
         self.simple_run(f"chmod +x {batch_file}")
-        cmd = shjoin(["sbatch", *self.alloc, batch_file])
+        cmd = shlex.join(["sbatch", *self.alloc, batch_file])
 
         # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
         if self.connection.host in DRAC_CLUSTERS:
@@ -526,7 +526,7 @@ class SlurmRemote(Remote):
             }, login_node_runner
         else:
             remote = Remote(hostname=self.hostname, connection=self.connection)
-            command = shjoin(["salloc", *self.alloc])
+            command = shlex.join(["salloc", *self.alloc])
             # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or
             # /projects before submitting a job.
             if self.connection.host in DRAC_CLUSTERS:

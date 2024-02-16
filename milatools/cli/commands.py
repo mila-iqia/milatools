@@ -32,7 +32,9 @@ from typing_extensions import TypedDict
 
 from milatools.cli.vscode_utils import (
     get_code_command,
-    install_vscode_extensions_on_remote,
+    # install_local_vscode_extensions_on_remote,
+    sync_vscode_extensions_in_parallel,
+    sync_vscode_extensions_in_parallel_with_hostnames,
 )
 
 from ..version import version as mversion
@@ -537,7 +539,7 @@ def code(
 
     if no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
-        run_in_the_background = False if "pytest" not in sys.modules else True
+        run_in_the_background = False  # if "pytest" not in sys.modules else True
         print(
             T.bold_cyan(
                 f"Installing VSCode extensions that are on the local machine on "
@@ -545,15 +547,17 @@ def code(
             )
         )
         if run_in_the_background:
-            # Async:
             copy_vscode_extensions_process = make_process(
-                install_vscode_extensions_on_remote,
-                cluster,
+                sync_vscode_extensions_in_parallel_with_hostnames,
+                source="localhost",
+                dest_clusters=[cluster],
             )
             copy_vscode_extensions_process.start()
         else:
-            # Sync:
-            install_vscode_extensions_on_remote(cluster)
+            sync_vscode_extensions_in_parallel(
+                Local(),
+                [Remote(cluster) for cluster in ["narval"]],
+            )
 
     if node is None:
         cnode = _find_allocation(
