@@ -38,22 +38,20 @@ def parallel_progress_bar(
     n_workers: int = 8,  # set this to the number of cores you have on your machine
 ):
     """Adapted from https://www.deanmontgomery.com/2022/03/24/rich-progress-and-
-    multiprocessing/"""
+    multiprocessing/
+
+    TODO: make sure that all subprocesses are killed if the user CTRL+C's.
+    """
     task_descriptions = task_descriptions or [f"Task {i}" for i in range(len(task_fns))]
     assert len(task_fns) == len(task_descriptions)
 
     with Progress(
-        # "[progress.description]{task.description}",
-        # progress.BarColumn(),
-        # "[progress.percentage]{task.percentage:>3.0f}%",
-        # progress.TimeRemainingColumn(),
-        # progress.TimeElapsedColumn(),
         SpinnerColumn(),
         *Progress.get_default_columns(),
         TimeElapsedColumn(),
         console=console,
         transient=False,
-        refresh_per_second=1,  # bit slower updates
+        refresh_per_second=4,  # bit slower updates
     ) as progress:
         futures: list[Future[None]] = []  # keep track of the jobs
         with (
@@ -95,7 +93,7 @@ def parallel_progress_bar(
                     completed=total_progress,
                     total=total_task_lengths,
                 )
-                time.sleep(0.1)
+                time.sleep(0.01)
 
             # raise any errors:
             for future in futures:
