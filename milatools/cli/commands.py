@@ -1092,7 +1092,7 @@ def _parse_lfs_quota_output(
             header_line_index = index
             break
     assert header_line
-    assert header_line_index
+    assert header_line_index is not None
 
     values_line_parts: list[str] = []
     # The next line may overflow to two (or maybe even more?) lines if the name of the

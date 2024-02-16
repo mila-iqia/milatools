@@ -471,7 +471,7 @@ class SlurmRemote(Remote):
         self.simple_run(f"chmod +x {batch_file}")
         cmd = shjoin(["sbatch", *self.alloc, batch_file])
 
-        # NOTE: We need to move to $SCRATCH before we run `sbatch` on DRAC clusters.
+        # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
         if self.connection.host in DRAC_CLUSTERS:
             cmd = f"cd $SCRATCH && {cmd}"
         return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
