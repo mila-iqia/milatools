@@ -28,7 +28,7 @@ import questionary as qn
 import rich.logging
 from typing_extensions import TypedDict
 
-from milatools import console
+from milatools.cli import console
 from milatools.cli.vscode_utils import (
     get_code_command,
     # install_local_vscode_extensions_on_remote,

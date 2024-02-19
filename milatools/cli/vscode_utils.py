@@ -8,7 +8,7 @@ import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Literal
 
 from milatools.cli.local import Local
 from milatools.cli.remote import Remote
@@ -20,6 +20,7 @@ from milatools.cli.utils import (
 from milatools.parallel_progress import (
     DictProxy,
     ProgressDict,
+    TaskFn,
     TaskID,
     parallel_progress_bar,
 )
@@ -104,7 +105,7 @@ def sync_vscode_extensions_in_parallel(
                 f"The vscode-server executable was not found on {source.hostname}."
             )
 
-    task_fns: list[Callable[[DictProxy[TaskID, ProgressDict], TaskID], None]] = []
+    task_fns: list[TaskFn[None]] = []
     task_descriptions: list[str] = []
 
     for dest_remote in dest_clusters:
@@ -116,15 +117,14 @@ def sync_vscode_extensions_in_parallel(
                 source_name=source_hostname,
             )
         )
-        task_descriptions.append(
-            f"Syncing extensions from {source_hostname} -> {dest_remote}"
-        )
+        task_descriptions.append(f"{source_hostname} -> {dest_remote}")
 
-    parallel_progress_bar(
+    for result in parallel_progress_bar(
         task_fns=task_fns,
         task_descriptions=task_descriptions,
         overall_progress_task_description="[green]Syncing vscode extensions:",
-    )
+    ):
+        pass
 
 
 def _install_vscode_extensions_task_function(
@@ -134,6 +134,11 @@ def _install_vscode_extensions_task_function(
     source_extensions: dict[str, str],
     source_name: str,
 ):
+    progress_dict[task_id] = {
+        "progress": 0,
+        "total": len(source_extensions),
+        "info": "Connecting...",
+    }
     if dest_hostname == "localhost":
         remote = Local()
     else:
@@ -151,7 +156,11 @@ def _install_vscode_extensions_task_function(
                 f"The vscode-server executable was not found on {remote.hostname}."
                 f"Skipping syncing extensions to {remote.hostname}."
             )
-            progress_dict[task_id] = {"progress": 1, "total": 1}
+            progress_dict[task_id] = {
+                "progress": 0,
+                "total": 0,
+                "info": "code-server executable not found!",
+            }
             return
 
         assert code_server_executable is not None
@@ -168,12 +177,10 @@ def _install_vscode_extensions_task_function(
         dest_name=dest_hostname,
     )
 
-    if not to_install:
+    if to_install:
+        logger.debug(f"Will install {len(to_install)} extensions on {dest_hostname}.")
+    else:
         logger.info(f"No extensions to sync to {dest_hostname}.")
-        progress_dict[task_id] = {"progress": len(to_install), "total": len(to_install)}
-        return
-
-    logger.debug(f"Will install {len(to_install)} extensions on {dest_hostname}.")
 
     for index, (extension_name, extension_version) in enumerate(to_install.items()):
         command = (
@@ -204,9 +211,16 @@ def _install_vscode_extensions_task_function(
             logger.info(f"{dest_hostname}: " + result.stderr)
 
         progress_dict[task_id] = {
-            "progress": index,
+            "progress": index + 1,
             "total": len(to_install),
+            "info": f"Installing {extension_name}",
         }
+
+    progress_dict[task_id] = {
+        "progress": len(to_install),
+        "total": len(to_install),
+        "info": "Done.",
+    }
 
 
 def get_local_vscode_extensions() -> dict[str, str]:

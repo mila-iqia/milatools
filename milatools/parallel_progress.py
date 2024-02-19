@@ -3,8 +3,9 @@ from __future__ import annotations
 import multiprocessing
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from logging import getLogger as get_logger
 from multiprocessing.managers import DictProxy
-from typing import Callable, TypedDict
+from typing import Iterable, Protocol, TypedDict, TypeVar
 
 from rich.progress import (
     Progress,
@@ -12,92 +13,157 @@ from rich.progress import (
     TaskID,
     TimeElapsedColumn,
 )
+from typing_extensions import NotRequired
 
-from milatools import console
+from milatools.cli import console
+
+logger = get_logger(__name__)
+OutT_co = TypeVar("OutT_co", covariant=True)
 
 
 class ProgressDict(TypedDict):
     progress: int
     total: int
+    info: NotRequired[str]
 
 
-def example_task_fn(progress_dict: DictProxy[TaskID, ProgressDict], task_id: TaskID):
-    import random
-    import time
+class TaskFn(Protocol[OutT_co]):
+    """Protocol for a function that can be run in parallel and reports its progress.
 
-    len_of_task = random.randint(3, 20)  # take some random length of time
-    for n in range(0, len_of_task):
-        time.sleep(1)  # sleep for a bit to simulate work
-        progress_dict[task_id] = {"progress": n + 1, "total": len_of_task}
+    The function should periodically set a dict containing info about it's progress in
+    the `progress_dict` at key `task_id`. For example:
+
+    ```python
+    def _example_task_fn(progress_dict: DictProxy[TaskID, ProgressDict], task_id: TaskID):
+        import random
+        import time
+        progress_dict[task_id] = {"progress": 0, "total": len_of_task, "info": "Starting."}
+
+        len_of_task = random.randint(3, 20)  # take some random length of time
+        for n in range(len_of_task):
+            time.sleep(1)  # sleep for a bit to simulate work
+            progress_dict[task_id] = {"progress": n + 1, "total": len_of_task}
+
+        progress_dict[task_id] = {"progress": len_of_task, "total": len_of_task, "info": "Done."}
+        return f"Some result for task {task_id}."
+
+    for result in parallel_progress_bar([_example_task_fn, _example_task_fn]):
+        print(result)
+    """
+
+    def __call__(
+        self, progress_dict: DictProxy[TaskID, ProgressDict], task_id: TaskID
+    ) -> OutT_co:
+        ...
 
 
 def parallel_progress_bar(
-    task_fns: list[Callable[[DictProxy[TaskID, ProgressDict], TaskID], None]],
+    task_fns: list[TaskFn[OutT_co]],
     task_descriptions: list[str] | None = None,
     overall_progress_task_description: str = "[green]All jobs progress:",
-    n_workers: int = 8,  # set this to the number of cores you have on your machine
-):
+    n_workers: int = 8,
+) -> Iterable[OutT_co]:
     """Adapted from https://www.deanmontgomery.com/2022/03/24/rich-progress-and-
     multiprocessing/
 
-    TODO: make sure that all subprocesses are killed if the user CTRL+C's.
+    TODO: Double-check that using a ThreadPoolExecutor here actually makes sense and
+    that the calls over SSH can be done in parallel.
     """
-    task_descriptions = task_descriptions or [f"Task {i}" for i in range(len(task_fns))]
+    if task_descriptions is None:
+        task_descriptions = [f"Task {i}" for i in range(len(task_fns))]
+
+    assert task_fns
     assert len(task_fns) == len(task_descriptions)
 
-    with Progress(
-        SpinnerColumn(),
-        *Progress.get_default_columns(),
-        TimeElapsedColumn(),
-        console=console,
-        transient=False,
-        refresh_per_second=10,
-    ) as progress:
-        futures: list[Future[None]] = []  # keep track of the jobs
-        with (
-            multiprocessing.Manager() as manager,
-            ThreadPoolExecutor(max_workers=n_workers) as executor,
-        ):
-            # this is the key - we share some state between our
-            # main process and our worker functions
-            _progress_dict: DictProxy[TaskID, ProgressDict] = manager.dict()
-            overall_progress_task = progress.add_task(
-                overall_progress_task_description,
-                visible=False,
+    futures: dict[TaskID, Future[OutT_co]] = {}
+    num_yielded_results: int = 0
+
+    with (
+        ThreadPoolExecutor(
+            max_workers=n_workers, thread_name_prefix="mila_sync_worker"
+        ) as executor,
+        # ProcessPoolExecutor(max_workers=n_workers) as executor,
+        multiprocessing.Manager() as manager,
+        Progress(
+            SpinnerColumn(finished_text="[green]✓"),
+            *Progress.get_default_columns(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+            refresh_per_second=10,
+        ) as progress,
+    ):
+        # We share some state between our main process and our worker
+        # functions
+        _progress_dict: DictProxy[TaskID, ProgressDict] = manager.dict()
+
+        overall_progress_task = progress.add_task(
+            overall_progress_task_description,
+            visible=True,
+            start=True,
+        )
+
+        # iterate over the jobs we need to run
+        for task_name, task_fn in zip(task_descriptions, task_fns):
+            # NOTE: Could set visible=false so we don't have a lot of bars all at once.
+            task_id = progress.add_task(
+                description=task_name, visible=True, start=False
             )
+            futures[task_id] = executor.submit(task_fn, _progress_dict, task_id)
 
-            # iterate over the jobs we need to run
-            for task_name, task_fn in zip(task_descriptions, task_fns):
-                # set visible false so we don't have a lot of bars all at once:
-                task_id = progress.add_task(description=task_name, visible=False)
-                futures.append(executor.submit(task_fn, _progress_dict, task_id))
+        _started_task_ids: list[TaskID] = []
 
-            # monitor the progress:
-            while not all(future.done() for future in futures):
-                total_progress = 0
-                total_task_lengths = 0
-                for task_id, update_data in _progress_dict.items():
-                    task_progress = update_data["progress"]
-                    total = update_data["total"]
-                    # update the progress bar for this task:
-                    progress.update(
-                        task_id=task_id,
-                        completed=task_progress,
-                        total=total,
-                        # visible=task_progress < total,
-                        visible=True,
-                    )
-                    total_progress += task_progress
-                    total_task_lengths += total
+        # monitor the progress:
+        while num_yielded_results < len(futures):
+            total_progress = 0
+            total_task_lengths = 0
 
+            for (task_id, future), task_description in zip(
+                futures.items(), task_descriptions
+            ):
+                if task_id not in _progress_dict:
+                    # No progress reported yet by the task function.
+                    continue
+
+                update_data = _progress_dict[task_id]
+                task_progress = update_data["progress"]
+                total = update_data["total"]
+
+                # Start the task in the progress bar when the first update is received.
+                # This allows us to have a nice per-task elapsed time instead of the
+                # same elapsed time in all tasks.
+                if task_id not in _started_task_ids and task_progress > 0:
+                    # Note: calling `start_task` multiple times doesn't cause issues,
+                    # but we're still doing this just to be explicit.
+                    progress.start_task(task_id)
+                    _started_task_ids.append(task_id)
+
+                # Update the progress bar for this task:
                 progress.update(
-                    overall_progress_task,
+                    task_id=task_id,
+                    completed=task_progress,
+                    total=total,
+                    description=task_description
+                    + (f" - {info}" if (info := update_data.get("info")) else ""),
+                    visible=True,
+                )
+                total_progress += task_progress
+                total_task_lengths += total
+
+            if total_progress or total_task_lengths:
+                progress.update(
+                    task_id=overall_progress_task,
                     completed=total_progress,
                     total=total_task_lengths,
-                    visible=total_task_lengths > 0,
+                    visible=True,
                 )
-                time.sleep(0.01)
 
-            # raise any errors:
-            for future in futures:
-                future.result()
+            next_task_id_to_yield, next_future_to_resolve = list(futures.items())[
+                num_yielded_results
+            ]
+            if next_future_to_resolve.done():
+                logger.debug(f"Task {next_task_id_to_yield} is done, yielding result.")
+                yield next_future_to_resolve.result()
+                num_yielded_results += 1
+
+            time.sleep(0.01)
