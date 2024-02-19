@@ -115,13 +115,17 @@ class Remote:
         connection: fabric.Connection | None = None,
         transforms: Sequence[Callable[[str], str]] = (),
         keepalive: int = 60,
+        connect_kwargs: dict[str, str] | None = None,
     ):
         self.hostname = hostname
         try:
             if connection is None:
-                connection = Connection(
-                    hostname, connect_kwargs=cluster_to_connect_kwargs.get(hostname)
-                )
+                _connect_kwargs = cluster_to_connect_kwargs.get(hostname)
+                if connect_kwargs is not None:
+                    _connect_kwargs = (_connect_kwargs or {}).copy()
+                    _connect_kwargs.update(connect_kwargs)
+
+                connection = Connection(hostname, connect_kwargs=_connect_kwargs)
                 if keepalive:
                     connection.open()
                     # NOTE: this transport gets mocked in tests, so we use a "soft"

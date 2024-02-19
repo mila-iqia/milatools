@@ -51,6 +51,7 @@ from .utils import (
     MilatoolsUserError,
     SSHConnectionError,
     T,
+    cluster_to_connect_kwargs,
     currently_in_a_test,
     get_fully_qualified_hostname_of_compute_node,
     get_fully_qualified_name,
@@ -1206,11 +1207,11 @@ def _find_allocation(
 
     if node is not None:
         node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
-        return Remote(node_name)
+        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
 
     elif job is not None:
         node_name = remote.get_output(f"squeue --jobs {job} -ho %N")
-        return Remote(node_name)
+        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
 
     else:
         alloc = ["-J", job_name, *alloc]
