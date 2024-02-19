@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import time
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from multiprocessing.managers import DictProxy
 from typing import Callable, TypedDict
 
@@ -51,18 +51,19 @@ def parallel_progress_bar(
         TimeElapsedColumn(),
         console=console,
         transient=False,
-        refresh_per_second=4,  # bit slower updates
+        refresh_per_second=10,
     ) as progress:
         futures: list[Future[None]] = []  # keep track of the jobs
         with (
             multiprocessing.Manager() as manager,
-            ProcessPoolExecutor(max_workers=n_workers) as executor,
+            ThreadPoolExecutor(max_workers=n_workers) as executor,
         ):
             # this is the key - we share some state between our
             # main process and our worker functions
             _progress_dict: DictProxy[TaskID, ProgressDict] = manager.dict()
             overall_progress_task = progress.add_task(
-                overall_progress_task_description, visible=len(task_fns) > 1
+                overall_progress_task_description,
+                visible=False,
             )
 
             # iterate over the jobs we need to run
@@ -88,10 +89,12 @@ def parallel_progress_bar(
                     )
                     total_progress += task_progress
                     total_task_lengths += total
+
                 progress.update(
                     overall_progress_task,
                     completed=total_progress,
                     total=total_task_lengths,
+                    visible=total_task_lengths > 0,
                 )
                 time.sleep(0.01)
 

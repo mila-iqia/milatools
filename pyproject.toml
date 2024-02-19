@@ -52,11 +52,18 @@ combine_as_imports = true
 addopts = "--doctest-modules"
 markers = "--enable-internet: Allow some tests to run using real connections to the cluster."
 
-
 [tool.poetry-dynamic-versioning]
 enable = true
 vcs = "git"
 style = "semver"
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+# Add the pyupgrade and isort options in addition to the defaults.
+select = ["E4", "E7", "E9", "F", "I", "UP"]
+
+
 
 [build-system]
 requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]

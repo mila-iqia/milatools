@@ -1,20 +1,14 @@
 from __future__ import annotations
 
-import filecmp
 import json
 import shutil
-import tarfile
 from pathlib import Path
 from typing import Any, Literal, get_args
 
 import pytest
 
-from milatools.cli.remote import Remote
 from milatools.cli.vscode_utils import (
-    EXTENSIONS_ARCHIVE_NAME,
     get_expected_vscode_settings_json_path,
-    install_local_vscode_extensions_on_remote,
-    pack_vscode_extensions_into_archive,
     vscode_installed,
 )
 

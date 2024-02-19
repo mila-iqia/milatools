@@ -8,14 +8,12 @@ import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Callable, Literal, Sequence
+from typing import Callable, Literal
 
 from milatools.cli.local import Local
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     CLUSTERS,
-    Cluster,
-    T,
     batched,
     stripped_lines_of,
 )
