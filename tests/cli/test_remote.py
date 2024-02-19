@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import shutil
-import sys
 import time
 import typing
 import unittest
@@ -22,9 +21,9 @@ from milatools.cli.remote import (
     SlurmRemote,
     get_first_node_name,
 )
-from milatools.cli.utils import T, shjoin
+from milatools.cli.utils import T, cluster_to_connect_kwargs, shjoin
 
-from .common import function_call_string, requires_s_flag
+from .common import function_call_string
 
 
 @pytest.mark.parametrize("keepalive", [0, 123])
@@ -41,7 +40,9 @@ def test_init(
     r = Remote(host, keepalive=keepalive)
     # The Remote should have created a Connection instance (which happens to be
     # the mock_connection we made above).
-    MockConnection.assert_called_once_with(host)
+    MockConnection.assert_called_once_with(
+        host, connect_kwargs=cluster_to_connect_kwargs.get(host)
+    )
     assert r.connection is mock_connection
 
     # The connection's Transport is opened if a non-zero value is passed for `keepalive`
@@ -137,7 +138,6 @@ def test_remote_transform_methods(
     mock_connection.run.assert_called_once()
 
     transformed_command = mock_connection.run.mock_calls[0][1][0]
-    # "#Connection({mock_connection.host!r}),
     regression_file_text = f"""\
 After creating a Remote like so:
 
@@ -412,14 +412,8 @@ def test_home(remote: Remote):
         assert home_dir == str(Path.home())
 
 
-@requires_s_flag
-def test_persist(remote: Remote, capsys: pytest.CaptureFixture):
-    _persisted_remote = remote.persist()
-    assert (
-        "Warning: --persist does not work with --node or --job"
-        in capsys.readouterr().out
-    )
-    assert _persisted_remote is remote
+def test_persist(remote: Remote):
+    assert remote.persist() is remote
 
 
 def test_ensure_allocation(remote: Remote):
@@ -504,24 +498,26 @@ class TestSlurmRemote:
                     f"remote.{method_call_string}",
                     "```",
                     "",
-                    "created the following files:",
+                    "created the following files (with abs path to the home directory "
+                    "replaced with '$HOME' for tests):",
                     "\n".join(
                         "\n\n".join(
                             [
                                 f"- {str(new_file).replace(str(Path.home()), '~')}:",
                                 "",
                                 "```",
-                                new_file.read_text(),
+                                new_file.read_text().replace(str(Path.home()), "$HOME"),
                                 "```",
                             ]
                         )
                         for new_file in new_files
                     ),
                     "",
-                    "and produced the following command as output:",
+                    "and produced the following command as output (with the absolute "
+                    "path to the home directory replaced with '$HOME' for tests):",
                     "",
                     "```bash",
-                    output_command,
+                    output_command.replace(str(Path.home()), "$HOME"),
                     "```",
                     "",
                 ]
@@ -623,7 +619,11 @@ class TestSlurmRemote:
         alloc = ["--time=00:01:00"]
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
-        expected_command = f"cd $SCRATCH && salloc {shjoin(alloc)}"
+        expected_command = (
+            f"cd $SCRATCH && salloc {shjoin(alloc)}"
+            if mock_connection.host == "mila"
+            else f"salloc {shjoin(alloc)}"
+        )
 
         def write_stuff(
             command: str,

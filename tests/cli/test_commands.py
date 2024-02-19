@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import contextlib
 import io
 import shlex
+import textwrap
 
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.commands import main
+from milatools.cli.commands import _parse_lfs_quota_output, main
 
 from .common import requires_no_s_flag
 
@@ -81,19 +84,6 @@ def test_invalid_command_output(
     file_regression.check(_convert_argparse_output_to_pre_py311_format(buf.getvalue()))
 
 
-# TODO: Perhaps we could use something like this so we can run all tests locally, but
-# skip the ones that need to actually connect to the cluster when running on GitHub
-# Actions.
-# def dont_run_on_github(*args):
-#     return pytest.param(
-#         *args,
-#         marks=pytest.mark.skipif(
-#             "GITHUB_ACTIONS" in os.environ,
-#             reason="We don't run this test on GitHub Actions.",
-#         ),
-#     )
-
-
 @pytest.mark.parametrize(
     "command", ["mila docs conda", "mila intranet", "mila intranet idt"]
 )
@@ -111,3 +101,53 @@ def test_check_command_output(
         main()
     output: str = buf.getvalue()
     file_regression.check(_convert_argparse_output_to_pre_py311_format(output))
+
+
+used_kbytes = 95764232
+limit_kbytes = 104857600
+used_files = 908504
+limit_files = 1048576
+
+
+def _kb_to_gb(kb: int) -> float:
+    return kb / (1024**2)
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        (
+            textwrap.dedent(
+                f"""\
+                Disk quotas for usr normandf (uid 1471600598):
+                     Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace
+                /home/mila/n/normandf
+                                {used_kbytes}       0 {limit_kbytes}       -  {used_files}       0 {limit_files}       -
+                uid 1471600598 is using default block quota setting
+                uid 1471600598 is using default file quota setting
+                """
+            ),
+            (
+                (_kb_to_gb(used_kbytes), _kb_to_gb(limit_kbytes)),
+                (used_files, limit_files),
+            ),
+        ),
+        (
+            textwrap.dedent(
+                f"""\
+                Disk quotas for usr normandf (uid 3098083):
+                     Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace
+                 /home/normandf {used_kbytes}  {limit_kbytes} {limit_kbytes}       -  {used_files}  {limit_files}  {limit_files}       -
+                """
+            ),
+            (
+                (_kb_to_gb(used_kbytes), _kb_to_gb(limit_kbytes)),
+                (used_files, limit_files),
+            ),
+        ),
+    ],
+)
+def test_parse_lfs_quota_output(
+    output, expected: tuple[tuple[float, float], tuple[int, int]]
+):
+    assert _parse_lfs_quota_output(output) == expected

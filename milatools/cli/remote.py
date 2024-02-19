@@ -17,7 +17,15 @@ import questionary as qn
 from fabric import Connection
 from typing_extensions import Self, TypedDict, deprecated
 
-from .utils import SSHConnectionError, T, control_file_var, here, shjoin
+from .utils import (
+    DRAC_CLUSTERS,
+    SSHConnectionError,
+    T,
+    cluster_to_connect_kwargs,
+    control_file_var,
+    here,
+    shjoin,
+)
 
 batch_template = """#!/bin/bash
 #SBATCH --output={output_file}
@@ -107,11 +115,17 @@ class Remote:
         connection: fabric.Connection | None = None,
         transforms: Sequence[Callable[[str], str]] = (),
         keepalive: int = 60,
+        connect_kwargs: dict[str, str] | None = None,
     ):
         self.hostname = hostname
         try:
             if connection is None:
-                connection = Connection(hostname)
+                _connect_kwargs = cluster_to_connect_kwargs.get(hostname)
+                if connect_kwargs is not None:
+                    _connect_kwargs = (_connect_kwargs or {}).copy()
+                    _connect_kwargs.update(connect_kwargs)
+
+                connection = Connection(hostname, connect_kwargs=_connect_kwargs)
                 if keepalive:
                     connection.open()
                     # NOTE: this transport gets mocked in tests, so we use a "soft"
@@ -379,7 +393,7 @@ class Remote:
             self.put(f.name, dest)
 
     def home(self) -> str:
-        return self.get_output("echo $HOME", hide=True)
+        return self.simple_run("echo $HOME").stdout.strip()
 
     def persist(self):
         # TODO: I don't really understand why this is here.
@@ -427,7 +441,7 @@ class SlurmRemote(Remote):
     def __init__(
         self,
         connection: fabric.Connection,
-        alloc: Sequence[str],
+        alloc: list[str],
         transforms: Sequence[Callable[[str], str]] = (),
         persist: bool = False,
         hostname: str = "->",
@@ -448,18 +462,23 @@ class SlurmRemote(Remote):
 
     def srun_transform_persist(self, cmd: str) -> str:
         tag = time.time_ns()
-        batch_file = f".milatools/batch/batch-{tag}.sh"
-        output_file = f".milatools/batch/out-{tag}.txt"
+        home = self.home()
+
+        batch_file = str(Path(home) / f".milatools/batch/batch-{tag}.sh")
+        output_file = str(Path(home) / f".milatools/batch/out-{tag}.txt")
         batch = batch_template.format(
             command=cmd,
             output_file=output_file,
             control_file=control_file_var.get(),
         )
-        # NOTE: We need to move to $SCRATCH before we run `sbatch`.
-        self.puttext(batch, batch_file)
+        self.puttext(text=batch, dest=batch_file)
         self.simple_run(f"chmod +x {batch_file}")
-        cmd = shjoin(["sbatch", *self.alloc, f"~/{batch_file}"])
-        return f"cd $SCRATCH && {cmd}; touch {output_file}; tail -n +1 -f {output_file}"
+        cmd = shjoin(["sbatch", *self.alloc, batch_file])
+
+        # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
+        if self.connection.host in DRAC_CLUSTERS:
+            cmd = f"cd $SCRATCH && {cmd}"
+        return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
 
     def with_transforms(
         self, *transforms: Callable[[str], str], persist: bool | None = None
@@ -507,11 +526,13 @@ class SlurmRemote(Remote):
             }, login_node_runner
         else:
             remote = Remote(hostname=self.hostname, connection=self.connection)
+            command = shjoin(["salloc", *self.alloc])
             # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or
-            # /projects
-            # before submitting a job.
+            # /projects before submitting a job.
+            if self.connection.host in DRAC_CLUSTERS:
+                command = f"cd $SCRATCH && {command}"
             proc, results = remote.extract(
-                "cd $SCRATCH && " + shjoin(["salloc", *self.alloc]),
+                command,
                 patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},
             )
 

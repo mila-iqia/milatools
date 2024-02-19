@@ -63,6 +63,17 @@ CLUSTERS: list[Cluster] = list(
 )
 DRAC_CLUSTERS: list[Cluster] = [c for c in CLUSTERS if c != "mila"]
 
+cluster_to_connect_kwargs: dict[str, dict[str, Any]] = {
+    "mila": {
+        "banner_timeout": 60,
+    }
+}
+"""The `connect_kwargs` dict to be passed to `fabric.Connection` for each cluster.
+
+NOTE: These are passed down to `paramiko.SSHClient.connect`. See that method for all
+the possible values.
+"""
+
 
 def no_internet_on_compute_nodes(
     cluster: Cluster,
@@ -149,8 +160,12 @@ class SSHConnectionError(paramiko.SSHException):
             + "\n\t"
             + "-Retry connecting with mila"
             + "\n\t"
-            + f"-Try to exclude the node with -x {self.node_hostname} "
-            "parameter"
+            + f"-Try to exclude the node with -x {self.node_hostname} parameter\n"
+            + "\n"
+            + "If you reach out for help, you might want to also include this detailed error message:\n"
+            + "\n```\n"
+            + str(self.error)
+            + "\n```\n"
         )
 
 
@@ -290,3 +305,8 @@ def make_process(
     # Tiny wrapper around the `multiprocessing.Process` init to detect if the args and
     # kwargs don't match the target signature using typing instead of at runtime.
     return multiprocessing.Process(target=target, daemon=True, args=args, kwargs=kwargs)
+
+
+def currently_in_a_test() -> bool:
+    """Returns True during unit tests (pytest) and False during normal execution."""
+    return "pytest" in sys.modules

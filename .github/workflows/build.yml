@@ -33,7 +33,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install poetry
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: poetry
@@ -58,9 +58,6 @@ jobs:
 
     - name: Test with pytest
       run: poetry run pytest --cov=milatools --cov-report=xml --cov-append
-
-    - name: Test with pytest (with -s flag)
-      run: poetry run pytest --cov=milatools --cov-report=xml --cov-append -s
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
@@ -96,7 +93,7 @@ jobs:
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # NOTE: Replacing this with our customized version of
       # - uses: koesterlab/setup-slurm-action@v1
@@ -120,7 +117,7 @@ jobs:
           ssh -o 'StrictHostKeyChecking no' localhost id
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -131,7 +128,7 @@ jobs:
           poetry install --with=dev
 
       - name: Launch integration tests
-        run: poetry run pytest tests/cli/test_slurm_remote.py --cov=milatools --cov-report=xml --cov-append -s -vvv --log-level=DEBUG
+        run: poetry run pytest tests/integration --cov=milatools --cov-report=xml --cov-append -s -vvv --log-level=DEBUG
         timeout-minutes: 3
         env:
           SLURM_CLUSTER: localhost

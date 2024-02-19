@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Generator
 from unittest.mock import Mock
 
@@ -9,29 +8,8 @@ import pytest
 from fabric.connection import Connection
 
 from milatools.cli.remote import Remote
-
-from .common import REQUIRES_S_FLAG_REASON
-
-in_github_ci = "PLATFORM" in os.environ
-
-
-@pytest.fixture(autouse=in_github_ci)
-def skip_if_s_flag_passed_during_ci_run_and_test_doesnt_require_it(
-    request: pytest.FixtureRequest, pytestconfig: pytest.Config
-):
-    capture_value = pytestconfig.getoption("-s")
-    assert capture_value in ["no", "fd"]
-    s_flag_set = capture_value == "no"
-    test_requires_s_flag = any(
-        mark.name == "skipif"
-        and mark.kwargs.get("reason", "") == REQUIRES_S_FLAG_REASON
-        for mark in request.node.iter_markers()
-    )
-    if s_flag_set and not test_requires_s_flag:
-        # NOTE: WE only run the tests that require -s when -s is passed, because
-        # otherwise we get very weird errors related to closed file descriptors!
-        pytest.skip(reason="Running with the -s flag and this test doesn't require it.")
-
+from milatools.cli.utils import cluster_to_connect_kwargs
+from tests.integration.conftest import SLURM_CLUSTER
 
 passwordless_ssh_connection_to_localhost_is_setup = False
 
@@ -114,11 +92,6 @@ def mock_connection(
     This Mock is used to check how the connection is used by `Remote` and `SlurmRemote`.
     """
     mock_connection: Mock = MockConnection.return_value
-    # mock_connection.configure_mock(
-    #     # Modify the repr so they show up nicely in the regression files and with
-    #     # consistent/reproducible names.
-    #     __repr__=lambda _: f"Connection({repr(host)})",
-    # )
     return mock_connection
 
 
@@ -126,3 +99,43 @@ def mock_connection(
 def remote(mock_connection: Connection):
     assert isinstance(mock_connection.host, str)
     return Remote(hostname=mock_connection.host, connection=mock_connection)
+
+
+@pytest.fixture(scope="function")
+def login_node(cluster: str) -> Remote:
+    """Fixture that gives a Remote connected to the login node of a slurm cluster.
+
+    NOTE: Making this a function-scoped fixture because the Connection object of the
+    Remote seems to be passed (and reused?) when creating the `SlurmRemote` object.
+
+    We want to avoid that, because `SlurmRemote` creates jobs when it runs commands.
+    We also don't want to accidentally end up with `login_node` that runs commands on
+    compute nodes because a previous test kept the same connection object while doing
+    salloc (just in case that were to happen).
+    """
+
+    return Remote(
+        cluster,
+        connection=Connection(
+            cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+        ),
+    )
+
+
+@pytest.fixture(scope="session", params=[SLURM_CLUSTER])
+def cluster(request: pytest.FixtureRequest) -> str:
+    """Fixture that gives the hostname of the slurm cluster to use for tests.
+
+    NOTE: The `cluster` can also be parametrized indirectly by tests, for example:
+
+    ```python
+    @pytest.mark.parametrize("cluster", ["mila", "some_cluster"], indirect=True)
+    def test_something(remote: Remote):
+        ...  # here the remote is connected to the cluster specified above!
+    ```
+    """
+    slurm_cluster_hostname = request.param
+
+    if not slurm_cluster_hostname:
+        pytest.skip("Requires ssh access to a SLURM cluster.")
+    return slurm_cluster_hostname
