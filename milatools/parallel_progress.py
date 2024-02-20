@@ -8,10 +8,15 @@ from multiprocessing.managers import DictProxy
 from typing import Iterable, Protocol, TypedDict, TypeVar
 
 from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TaskID,
+    TaskProgressColumn,
+    TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
 from typing_extensions import NotRequired
 
@@ -86,11 +91,16 @@ def parallel_progress_bar(
         multiprocessing.Manager() as manager,
         Progress(
             SpinnerColumn(finished_text="[green]✓"),
-            *Progress.get_default_columns(),
+            TextColumn("[progress.description]{task.description}"),
+            MofNCompleteColumn(),
+            BarColumn(bar_width=None),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
             TimeElapsedColumn(),
             console=console,
             transient=False,
             refresh_per_second=10,
+            expand=False,
         ) as progress,
     ):
         # We share some state between our main process and our worker
