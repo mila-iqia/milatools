@@ -36,7 +36,7 @@ from milatools.cli.vscode_utils import (
     sync_vscode_extensions_in_parallel_with_hostnames,
 )
 
-from ..version import version as mversion
+from ..__version__ import __version__
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -95,9 +95,9 @@ def main():
         print(T.red(traceback.format_exc()), file=sys.stderr)
         command = sys.argv[1] if len(sys.argv) > 1 else None
         options = {
-            "labels": ",".join([command, mversion] if command else [mversion]),
+            "labels": ",".join([command, __version__] if command else [__version__]),
             "template": "bug_report.md",
-            "title": f"[v{mversion}] Issue running the command "
+            "title": f"[v{__version__}] Issue running the command "
             + (f"`mila {command}`" if command else "`mila`"),
         }
         github_issue_url = (
@@ -129,7 +129,7 @@ def mila():
     parser.add_argument(
         "--version",
         action="version",
-        version=f"milatools v{mversion}",
+        version=f"milatools v{__version__}",
         help="Milatools version",
     )
     parser.add_argument(
