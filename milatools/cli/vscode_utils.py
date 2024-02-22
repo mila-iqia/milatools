@@ -10,11 +10,8 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal
 
-import paramiko
-
-from milatools.cli import console
-from milatools.cli.init_command import DRAC_CLUSTERS
 from milatools.cli.local import Local
+from milatools.cli.mfa_remote import MfaRemote
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     CLUSTERS,
@@ -100,163 +97,6 @@ def sync_vscode_extensions_in_parallel_with_hostnames(
     return sync_vscode_extensions_in_parallel(source_obj, destinations)
 
 
-def _controlpath_from_sshconfig(cluster: str) -> Path | None:
-    """Returns true if the ControlMaster and ControlPath options are set in the config
-    for that host."""
-    ssh_config = paramiko.SSHConfig.from_path(str(Path.home() / ".ssh" / "config"))
-    values = ssh_config.lookup(cluster)
-    if not (control_path := values.get("controlpath")):
-        logger.debug("ControlPath isn't set.")
-        return None
-    return Path(control_path).expanduser()
-
-
-def setup_first_connection_controlpath(cluster: str) -> Path:
-    # note: this is the pattern in ~/.ssh/config: ~/.cache/ssh/%r@%h:%p
-
-    if matching_socket_files := list(
-        (Path.home() / ".cache" / "ssh").glob(f"*@{cluster}*")
-    ):
-        control_file = matching_socket_files[0]
-    elif control_file := _controlpath_from_sshconfig(cluster):
-        pass
-    else:
-        control_file = Path.home() / ".cache" / "ssh" / f"{cluster}.control"
-        logger.warning(
-            f"ControlPath wasn't set in the SSH config at ~/.ssh/config. "
-            f"Will try to set the value to {control_file}."
-        )
-
-    if control_file.exists():
-        logger.info(
-            f"Reusable SSH socket is already setup for {cluster}: {control_file}"
-        )
-        return control_file
-
-    control_file.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Connecting to {cluster}.")
-    logger.debug(f"({control_file} does not exist)")
-    console.log(
-        f"Cluster {cluster} may be using two-factor authentication. "
-        f"If you enabled 2FA, please take out your phone to confirm when prompted...",
-        style="yellow",
-    )
-    if cluster in DRAC_CLUSTERS:
-        send_notification_on_phone = 1  # to go straight to the prompt on the phone.
-        prompt_text_sign = "Enter a passcode"
-        first_command = (
-            f"sshpass -P '{prompt_text_sign}' -p {send_notification_on_phone} "
-            f"ssh -o ControlMaster=auto -o ControlPath={control_file} "
-            f"-o ControlPersist=yes {cluster} 'echo OK'"
-        )
-    console.log(f"Making the first connection to {cluster}...")
-    console.log(f"[green](local) $ {first_command}")
-    try:
-        first_connection_output = subprocess.check_output(
-            first_command,
-            shell=True,
-            text=True,
-        )
-    except subprocess.CalledProcessError as err:
-        raise RuntimeError(
-            f"Unable to setup a reusable SSH connection to cluster {cluster}!"
-        ) from err
-    if "OK" not in first_connection_output:
-        raise RuntimeError(
-            f"Did not receive the expected output ('OK') from {cluster}: "
-            f"{first_connection_output}"
-        )
-    if not control_file.exists():
-        raise RuntimeError(
-            f"{control_file} was not created after the first connection."
-        )
-    return control_file
-
-
-def create_reusable_ssh_connection_sockets(clusters: list[str]) -> list[Path | None]:
-    """Try to create the connection sockets to be reused by the subprocesses when
-    connecting."""
-    control_paths: list[Path | None] = []
-    for cluster in clusters:
-        console.log(f"Creating the controlpath for cluster {cluster}")
-        try:
-            control_path = setup_first_connection_controlpath(cluster)
-        except RuntimeError as err:
-            logger.warning(
-                f"Unable to setup a reusable SSH connection to cluster {cluster}."
-            )
-            logger.error(err)
-            control_path = None
-
-        control_paths.append(control_path)
-    return control_paths
-
-
-class DumbRemote:
-    def __init__(
-        self,
-        hostname: str,
-        control_path: Path,
-        control_persist: int | Literal["yes", "no"] = "yes",
-    ):
-        self.hostname = hostname
-        self.control_path = control_path
-        self.control_persist = control_persist
-
-    def run(
-        self, command: str, display: bool = True, warn: bool = False, hide: bool = False
-    ):
-        ssh_command = (
-            f"ssh -o ControlMaster=auto -o ControlPersist={self.control_persist} "
-            f'-o ControlPath={self.control_path} {self.hostname} "{command}"'
-        )
-        assert self.control_path.exists()
-        # if display:
-        logger.debug(f"[green](local) $ {ssh_command}")
-        result = subprocess.run(
-            ssh_command,
-            capture_output=True,
-            check=not warn,
-            shell=True,
-            text=True,
-        )
-        logger.debug(f"{result.stdout=}")
-        logger.debug(f"{result.stdout=}")
-        return result
-
-    def get_output(
-        self,
-        command: str,
-        display=False,
-        warn=False,
-        hide=True,
-    ):
-        ssh_command = (
-            f"ssh -o ControlMaster=auto -o ControlPersist={self.control_persist} "
-            f'-o ControlPath={self.control_path} {self.hostname} "{command}"'
-        )
-        assert self.control_path.exists()
-        if display:
-            console.log(f"[green](local) $ {ssh_command}")
-        if warn or not hide:
-            result = subprocess.run(
-                ssh_command,
-                capture_output=hide,
-                check=not warn,
-                shell=True,
-                text=True,
-            ).stdout
-        else:
-            result = subprocess.check_output(
-                ssh_command,
-                shell=True,
-                text=True,
-            )
-        if not hide:
-            console.log(result, style="dim")
-        return result.strip()
-
-
 def sync_vscode_extensions_in_parallel(
     source: Remote | Local,
     dest_clusters: list[str],
@@ -278,26 +118,25 @@ def sync_vscode_extensions_in_parallel(
     task_descriptions: list[str] = []
 
     for dest_remote in dest_clusters:
+        remote: Local | MfaRemote | None = None
         if dest_remote == "localhost":
-            control_path = None
+            remote = Local()
         else:
-            console.log(f"Creating a reusable connection to the {dest_remote} cluster.")
             try:
-                control_path = setup_first_connection_controlpath(dest_remote)
+                remote = MfaRemote(hostname=dest_remote)
             except RuntimeError as err:
                 logger.warning(
                     f"Unable to setup a reusable SSH connection to cluster {dest_remote}."
                 )
                 logger.error(err)
-                control_path = None
-                raise  # FIXME: remove this
+                remote = None  # the `Remote` class will be used.
 
         task_fns.append(
             functools.partial(
                 _install_vscode_extensions_task_function,
                 dest_hostname=dest_remote,
                 source_extensions=source_extensions,
-                control_path=control_path,
+                remote=remote,
                 source_name=source_hostname,
             )
         )
@@ -315,7 +154,7 @@ def _install_vscode_extensions_task_function(
     task_id: TaskID,
     dest_hostname: str | Literal["localhost"],
     source_extensions: dict[str, str],
-    control_path: Path | None,
+    remote: MfaRemote | Local | Remote | None,
     source_name: str,
 ):
     progress_dict[task_id] = {
@@ -323,14 +162,24 @@ def _install_vscode_extensions_task_function(
         "total": len(source_extensions),
         "info": "Connecting...",
     }
-    if dest_hostname == "localhost":
-        remote = Local()
-    elif control_path:
-        remote = DumbRemote(dest_hostname, control_path=control_path)
-    else:
-        remote = Remote(dest_hostname)
+    if remote is None:
+        if dest_hostname == "localhost":
+            remote = Local()
+        elif sys.platform == "win32":
+            logger.warning(
+                "Please consider using milatools from the Windows Subsystem for Linux!"
+            )
+            # todo: Consider switching to the new Remote class eventually (+2fa, -win32)
+            remote = Remote(dest_hostname)
+        else:
+            remote = MfaRemote(dest_hostname)
 
-    if isinstance(remote, (Remote, DumbRemote)):
+    if isinstance(remote, Local):
+        assert dest_hostname == "localhost"
+        extensions_on_dest = get_local_vscode_extensions()
+        code_server_executable = get_vscode_executable_path()
+        assert code_server_executable
+    else:
         dest_hostname = remote.hostname
         (
             extensions_on_dest,
@@ -350,11 +199,6 @@ def _install_vscode_extensions_task_function(
             return
 
         assert code_server_executable is not None
-    else:
-        dest_hostname = "localhost"
-        extensions_on_dest = get_local_vscode_extensions()
-        code_server_executable = get_vscode_executable_path()
-        assert code_server_executable
 
     to_install = extensions_to_install(
         source_extensions,
@@ -385,7 +229,7 @@ def _install_vscode_extensions_task_function(
                 hide=True,
             )
             success = result.return_code == 0
-        elif isinstance(remote, DumbRemote):
+        elif isinstance(remote, MfaRemote):
             result = remote.run(
                 shlex.join(command),
                 display=False,
@@ -432,7 +276,7 @@ def get_local_vscode_extensions() -> dict[str, str]:
 
 
 def get_remote_vscode_extensions(
-    remote: Remote | DumbRemote,
+    remote: Remote | MfaRemote,
 ) -> tuple[dict[str, str], str] | tuple[None, None]:
     """Returns the list of isntalled extensions and the path to the code-server
     executable."""
@@ -488,7 +332,7 @@ def extensions_to_install(
 
 
 def find_code_server_executable(
-    remote: Remote | DumbRemote, remote_vscode_server_dir: str
+    remote: Remote | MfaRemote, remote_vscode_server_dir: str
 ) -> str | None:
     """Find the most recent `code-server` executable on the remote.
 
