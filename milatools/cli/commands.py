@@ -1187,7 +1187,7 @@ def check_disk_quota(remote: Remote) -> None:
         logger.debug("Cluster doesn't have the lfs command. Skipping check.")
         return
 
-    logger.debug("Checking disk quota on $HOME...")
+    console.log("Checking disk quota on $HOME...")
 
     home_disk_quota_output = remote.get_output("lfs quota -u $USER $HOME", hide=True)
     if "not on a mounted Lustre filesystem" in home_disk_quota_output:
@@ -1197,8 +1197,20 @@ def check_disk_quota(remote: Remote) -> None:
     (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
         home_disk_quota_output
     )
-    logger.debug(
-        f"Disk usage: {used_gb:.1f} / {max_gb} GiB and {used_files} / {max_files} files"
+
+    def get_colour(used: float, max: float) -> str:
+        return "red" if used >= max else "orange" if used / max > 0.7 else "green"
+
+    disk_usage_style = get_colour(used_gb, max_gb)
+    num_files_style = get_colour(used_files, max_files)
+    from rich.text import Text
+
+    console.log(
+        "Disk usage:",
+        Text(f"{used_gb:.1f} / {max_gb} GiB", style=disk_usage_style),
+        "and",
+        Text(f"{used_files} / {max_files} files", style=num_files_style),
+        markup=False,
     )
     size_ratio = used_gb / max_gb
     files_ratio = used_files / max_files
