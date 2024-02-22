@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import shutil
 import subprocess
 from logging import getLogger as get_logger
