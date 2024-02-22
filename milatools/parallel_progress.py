@@ -82,7 +82,6 @@ def parallel_progress_bar(
 
     futures: dict[TaskID, Future[OutT_co]] = {}
     num_yielded_results: int = 0
-
     with (
         ThreadPoolExecutor(
             max_workers=n_workers, thread_name_prefix="mila_sync_worker"
