@@ -22,16 +22,15 @@ class MfaRemote:
         self.hostname = hostname
         self.control_persist = control_persist
 
-        if control_path is None:
-            control_path = _controlpath_from_sshconfig(self.hostname)
-            if control_path is None:
-                control_path = (
-                    Path.home() / ".cache" / "ssh" / f"{self.hostname}.control"
-                )
-                logger.warning(
-                    f"ControlPath wasn't set in the SSH config for {self.hostname}. "
-                    f"Will try to set the value to {control_path}."
-                )
+        if (
+            control_path is None
+            or (control_path := _controlpath_from_sshconfig(self.hostname)) is None
+        ):
+            control_path = Path.home() / ".cache" / "ssh" / f"{self.hostname}.control"
+            logger.warning(
+                f"ControlPath wasn't set in the SSH config for {self.hostname}. "
+                f"Will try to set the value to {control_path}."
+            )
 
         self.control_path = control_path
 
