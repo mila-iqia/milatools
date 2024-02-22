@@ -10,7 +10,10 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal
 
+import paramiko
+
 from milatools.cli import console
+from milatools.cli.init_command import DRAC_CLUSTERS
 from milatools.cli.local import Local
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
@@ -97,14 +100,32 @@ def sync_vscode_extensions_in_parallel_with_hostnames(
     return sync_vscode_extensions_in_parallel(source_obj, destinations)
 
 
+def _controlpath_from_sshconfig(cluster: str) -> Path | None:
+    """Returns true if the ControlMaster and ControlPath options are set in the config
+    for that host."""
+    ssh_config = paramiko.SSHConfig.from_path(str(Path.home() / ".ssh" / "config"))
+    values = ssh_config.lookup(cluster)
+    if not (control_path := values.get("controlpath")):
+        logger.debug("ControlPath isn't set.")
+        return None
+    return Path(control_path).expanduser()
+
+
 def setup_first_connection_controlpath(cluster: str) -> Path:
     # note: this is the pattern in ~/.ssh/config: ~/.cache/ssh/%r@%h:%p
-    for file in (Path.home() / ".cache" / "ssh").glob(f"*@{cluster}*"):
-        control_file = file
-        break
+
+    if matching_socket_files := list(
+        (Path.home() / ".cache" / "ssh").glob(f"*@{cluster}*")
+    ):
+        control_file = matching_socket_files[0]
+    elif control_file := _controlpath_from_sshconfig(cluster):
+        pass
     else:
         control_file = Path.home() / ".cache" / "ssh" / f"{cluster}.control"
-        control_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.warning(
+            f"ControlPath wasn't set in the SSH config at ~/.ssh/config. "
+            f"Will try to set the value to {control_file}."
+        )
 
     if control_file.exists():
         logger.info(
@@ -112,6 +133,7 @@ def setup_first_connection_controlpath(cluster: str) -> Path:
         )
         return control_file
 
+    control_file.parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Connecting to {cluster}.")
     logger.debug(f"({control_file} does not exist)")
     console.log(
@@ -119,10 +141,14 @@ def setup_first_connection_controlpath(cluster: str) -> Path:
         f"If you enabled 2FA, please take out your phone to confirm when prompted...",
         style="yellow",
     )
-    first_command = (
-        f"sshpass -P 'Enter a passcode' -p 1 ssh -o ControlMaster=auto "
-        f"-o ControlPath={control_file} -o ControlPersist=yes {cluster} echo OK"
-    )
+    if cluster in DRAC_CLUSTERS:
+        send_notification_on_phone = 1  # to go straight to the prompt on the phone.
+        prompt_text_sign = "Enter a passcode"
+        first_command = (
+            f"sshpass -P '{prompt_text_sign}' -p {send_notification_on_phone} "
+            f"ssh -o ControlMaster=auto -o ControlPath={control_file} "
+            f"-o ControlPersist=yes {cluster} 'echo OK'"
+        )
     console.log(f"Making the first connection to {cluster}...")
     console.log(f"[green](local) $ {first_command}")
     try:
@@ -130,7 +156,6 @@ def setup_first_connection_controlpath(cluster: str) -> Path:
             first_command,
             shell=True,
             text=True,
-            timeout=30,
         )
     except subprocess.CalledProcessError as err:
         raise RuntimeError(
@@ -182,9 +207,10 @@ class DumbRemote:
         self, command: str, display: bool = True, warn: bool = False, hide: bool = False
     ):
         ssh_command = (
-            f"ssh -o ControlMaster=yes -o ControlPersist={self.control_persist} "
+            f"ssh -o ControlMaster=auto -o ControlPersist={self.control_persist} "
             f'-o ControlPath={self.control_path} {self.hostname} "{command}"'
         )
+        assert self.control_path.exists()
         # if display:
         logger.debug(f"[green](local) $ {ssh_command}")
         result = subprocess.run(
@@ -209,6 +235,7 @@ class DumbRemote:
             f"ssh -o ControlMaster=auto -o ControlPersist={self.control_persist} "
             f'-o ControlPath={self.control_path} {self.hostname} "{command}"'
         )
+        assert self.control_path.exists()
         if display:
             console.log(f"[green](local) $ {ssh_command}")
         if warn or not hide:
@@ -225,7 +252,8 @@ class DumbRemote:
                 shell=True,
                 text=True,
             )
-        logger.debug(f"{result=}")
+        if not hide:
+            console.log(result, style="dim")
         return result.strip()
 
 
@@ -253,9 +281,7 @@ def sync_vscode_extensions_in_parallel(
         if dest_remote == "localhost":
             control_path = None
         else:
-            logger.debug(
-                f"Creating a reusable connection to the {dest_remote} cluster."
-            )
+            console.log(f"Creating a reusable connection to the {dest_remote} cluster.")
             try:
                 control_path = setup_first_connection_controlpath(dest_remote)
             except RuntimeError as err:
@@ -276,7 +302,6 @@ def sync_vscode_extensions_in_parallel(
             )
         )
         task_descriptions.append(f"{source_hostname} -> {dest_remote}")
-
     for result in parallel_progress_bar(
         task_fns=task_fns,
         task_descriptions=task_descriptions,
