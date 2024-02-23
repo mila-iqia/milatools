@@ -82,7 +82,7 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
     # Remove the elapsed column since its values can vary a little bit, and we're
     # already checking the elapsed time for each result in the for-loop above.
     all_output_without_elapsed = "\n".join(
-        line.removesuffix(last_part)
+        line.removesuffix(last_part).rstrip()
         if (last_part := line.split()[-1]).count(":") == 2
         else line
         for line in all_output.splitlines()
