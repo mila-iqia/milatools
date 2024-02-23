@@ -8,10 +8,9 @@ import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 from milatools.cli.local import Local
-from milatools.cli.mfa_remote import MfaRemote
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     CLUSTERS,
@@ -25,6 +24,7 @@ from milatools.parallel_progress import (
     TaskID,
     parallel_progress_bar,
 )
+from milatools.remote_v2 import RemoteV2
 
 logger = get_logger(__name__)
 
@@ -84,31 +84,26 @@ def sync_vscode_extensions_in_parallel_with_hostnames(
     if len(set(destinations)) != len(destinations):
         raise ValueError(f"{destinations=} contains duplicate hostnames!")
 
-    source_obj = Local() if source == "localhost" else Remote(source)
-
-    # if source in DRAC_CLUSTERS or any(dest in DRAC_CLUSTERS for dest in destinations):
-    #     if not shutil.which("sshpass"):
-    #         raise RuntimeError(
-    #             "The `sshpass` command is required to sync extensions to DRAC "
-    #             "clusters in order to send the two-factor authentication "
-    #             "notification."
-    #         )
-
+    source_obj = Local() if source == "localhost" else RemoteV2(source)
     return sync_vscode_extensions_in_parallel(source_obj, destinations)
 
 
 def sync_vscode_extensions_in_parallel(
-    source: Remote | Local,
-    dest_clusters: list[str],
+    source: Local | Remote | RemoteV2,
+    dest_clusters: Sequence[str | Local | RemoteV2],
 ):
-    """Syncs vscode extensions between `source` all all the clusters in `dest`."""
+    """Syncs vscode extensions between `source` all all the clusters in `dest`.
+
+    This spawns a thread for each cluster in `dest` and displays a parallel progress bar
+    for the syncing of vscode extensions to each cluster.
+    """
 
     if isinstance(source, Local):
-        source_extensions = get_local_vscode_extensions()
         source_hostname = "localhost"
+        source_extensions = get_local_vscode_extensions()
     else:
-        source_extensions, _ = get_remote_vscode_extensions(source)
         source_hostname = source.hostname
+        source_extensions, _ = get_remote_vscode_extensions(source)
         if source_extensions is None:
             raise RuntimeError(
                 f"The vscode-server executable was not found on {source.hostname}."
@@ -118,29 +113,44 @@ def sync_vscode_extensions_in_parallel(
     task_descriptions: list[str] = []
 
     for dest_remote in dest_clusters:
-        remote: Local | MfaRemote | None = None
+        dest_hostname: str
+
         if dest_remote == "localhost":
-            remote = Local()
+            dest_hostname = dest_remote  # type: ignore
+            dest_remote = Local()  # pickleable
+        elif isinstance(dest_remote, Local):
+            dest_hostname = "localhost"
+            dest_remote = dest_remote  # again, pickleable
+        elif isinstance(dest_remote, RemoteV2):
+            dest_hostname = dest_remote.hostname
+            dest_remote = dest_remote  # pickleable
+        elif isinstance(dest_remote, Remote):
+            # We unfortunately can't pass this kind of object to another process or
+            # thread because it uses `fabric.Connection` which don't appear to be
+            # pickleable. This means we will have to re-connect in the subprocess.
+            dest_hostname = dest_remote.hostname
+            dest_remote = None
         else:
-            try:
-                remote = MfaRemote(hostname=dest_remote)
-            except RuntimeError as err:
-                logger.warning(
-                    f"Unable to setup a reusable SSH connection to cluster {dest_remote}."
-                )
-                logger.error(err)
-                remote = None  # the `Remote` class will be used.
+            assert isinstance(dest_remote, str)
+            # The dest_remote is a hostname. Try to connect to it with a reusable SSH
+            # control socket so we can get the 2FA prompts out of the way in advance.
+            # NOTE: We could fallback to using the `Remote` class with paramiko inside
+            # the subprocess if this doesn't work, but it would suck because it messes
+            # up the UI, and you need to press 1 in the terminal to get the 2FA prompt,
+            # which screws up the progress bars.
+            dest_hostname = dest_remote
+            dest_remote = RemoteV2(hostname=dest_hostname)
 
         task_fns.append(
             functools.partial(
                 _install_vscode_extensions_task_function,
-                dest_hostname=dest_remote,
+                dest_hostname=dest_hostname,
                 source_extensions=source_extensions,
-                remote=remote,
+                remote=dest_remote,
                 source_name=source_hostname,
             )
         )
-        task_descriptions.append(f"{source_hostname} -> {dest_remote}")
+        task_descriptions.append(f"{source_hostname} -> {dest_hostname}")
     for result in parallel_progress_bar(
         task_fns=task_fns,
         task_descriptions=task_descriptions,
@@ -154,9 +164,18 @@ def _install_vscode_extensions_task_function(
     task_id: TaskID,
     dest_hostname: str | Literal["localhost"],
     source_extensions: dict[str, str],
-    remote: MfaRemote | Local | Remote | None,
+    remote: RemoteV2 | Local | Remote | None,
     source_name: str,
 ):
+    """Installs vscode extensions on the remote cluster.
+
+    1. Finds the `code-server` executable on the remote;
+    2. Get the list of installed extensions on the remote;
+    3. Compare the list of installed extensions on the remote with the list of
+       extensions on the source;
+    4. Install the extensions that are missing or out of date on the remote, updating
+       the progress dict as it goes.
+    """
     progress_dict[task_id] = {
         "progress": 0,
         "total": len(source_extensions),
@@ -165,14 +184,8 @@ def _install_vscode_extensions_task_function(
     if remote is None:
         if dest_hostname == "localhost":
             remote = Local()
-        elif sys.platform == "win32":
-            logger.warning(
-                "Please consider using milatools from the Windows Subsystem for Linux!"
-            )
-            # todo: Consider switching to the new Remote class eventually (+2fa, -win32)
-            remote = Remote(dest_hostname)
         else:
-            remote = MfaRemote(dest_hostname)
+            remote = RemoteV2(dest_hostname)
 
     if isinstance(remote, Local):
         assert dest_hostname == "localhost"
@@ -229,7 +242,7 @@ def _install_vscode_extensions_task_function(
                 hide=True,
             )
             success = result.return_code == 0
-        elif isinstance(remote, MfaRemote):
+        elif isinstance(remote, RemoteV2):
             result = remote.run(
                 shlex.join(command),
                 display=False,
@@ -276,7 +289,7 @@ def get_local_vscode_extensions() -> dict[str, str]:
 
 
 def get_remote_vscode_extensions(
-    remote: Remote | MfaRemote,
+    remote: Remote | RemoteV2,
 ) -> tuple[dict[str, str], str] | tuple[None, None]:
     """Returns the list of isntalled extensions and the path to the code-server
     executable."""
@@ -332,7 +345,7 @@ def extensions_to_install(
 
 
 def find_code_server_executable(
-    remote: Remote | MfaRemote, remote_vscode_server_dir: str
+    remote: Remote | RemoteV2, remote_vscode_server_dir: str
 ) -> str | None:
     """Find the most recent `code-server` executable on the remote.
 
