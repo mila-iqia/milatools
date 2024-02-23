@@ -35,8 +35,10 @@ class Local:
         capture_output: bool = False,
         timeout: float | None = None,
         check: bool = False,
+        display_command: bool = True,
     ) -> CompletedProcess[str]:
-        display(cmd)
+        if display_command:
+            display(cmd)
         try:
             return subprocess.run(
                 cmd,

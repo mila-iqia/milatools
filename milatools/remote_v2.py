@@ -105,7 +105,8 @@ class RemoteV2:
             text=True,
             bufsize=1,  # 1 means line buffered
         )
-        logger.debug(f"{result.stdout=}")
+        if result.stdout:
+            logger.debug(f"{result.stdout=}")
         if result.stderr:
             logger.debug(f"{result.stderr=}")
         return result
@@ -123,18 +124,31 @@ class RemoteV2:
 def get_controlpath_for(
     cluster: str,
     ssh_config_path: Path = Path.home() / ".ssh" / "config",
-    ssh_cache_dir: Path = Path.home() / ".cache" / "ssh",
+    ssh_cache_dir: Path | None = Path.home() / ".cache" / "ssh",
 ) -> Path:
     """Returns the control path to use for the given host using the ssh config.
 
-    If the `ControlPath` option doesn't doesn't apply for that host in the SSH config,
-    then a path with name '{user}@{qualified_hostname}:{port}' in `ssh_cache_dir` is
-    returned, based on the values in the SSH config for that host.
+    If the ControlPath option is set or applies to that host in the ssh config, returns
+    the string with user, hostname, port already resolved (based on the values in the
+    config).
+
+    If the `ControlPath` option doesn't doesn't apply for that host in the SSH config
+    and `ssh_cache_dir` is set, a path of the form
+    '{ssh_cache_dir}/{user}@{qualified_hostname}:{port}' is returned, with values based
+    on the values in the SSH config for that host if present.
+
+    If `ssh_cache_dir` is not set, and the `ControlPath` option doesn't apply for that
+    hostname, a `RuntimeError` is raised.
     """
     assert ssh_config_path.exists()
     ssh_config = SSHConfig.from_path(str(ssh_config_path))
     values = ssh_config.lookup(cluster)
     if not (control_path := values.get("controlpath")):
+        if ssh_cache_dir is None:
+            raise RuntimeError(
+                f"ControlPath isn't set in the ssh config for {cluster}, and "
+                "ssh_cache_dir isn't set."
+            )
         logger.debug("ControlPath isn't set.")
         hostname = values.get("hostname", cluster)
         username = values.get("user", getpass.getuser())

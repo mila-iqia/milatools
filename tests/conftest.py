@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import contextlib
+import time
 from collections.abc import Generator
+from logging import getLogger as get_logger
 from unittest.mock import Mock
 
 import paramiko.ssh_exception
@@ -11,6 +14,7 @@ from milatools.cli.remote import Remote
 from milatools.cli.utils import cluster_to_connect_kwargs
 from tests.integration.conftest import SLURM_CLUSTER
 
+logger = get_logger(__name__)
 passwordless_ssh_connection_to_localhost_is_setup = False
 
 try:
@@ -134,8 +138,33 @@ def cluster(request: pytest.FixtureRequest) -> str:
         ...  # here the remote is connected to the cluster specified above!
     ```
     """
+
     slurm_cluster_hostname = request.param
 
     if not slurm_cluster_hostname:
         pytest.skip("Requires ssh access to a SLURM cluster.")
-    return slurm_cluster_hostname
+
+    with cancel_all_milatools_jobs_before_and_after_tests(slurm_cluster_hostname):
+        return slurm_cluster_hostname
+
+
+@contextlib.contextmanager
+def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
+    login_node = Remote(cluster)
+    from .integration.conftest import WCKEY
+
+    logger.info(
+        f"Cancelling milatools test jobs on {cluster} before running integration tests."
+    )
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
+    time.sleep(1)
+    # Note: need to recreate this because login_node is a function-scoped fixture.
+    yield
+    logger.info(
+        f"Cancelling milatools test jobs on {cluster} after running integration tests."
+    )
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
+    time.sleep(1)
+    # Display the output of squeue just to be sure that the jobs were cancelled.
+    logger.info(f"Checking that all jobs have been cancelked on {cluster}...")
+    login_node._run("squeue --me", echo=True, in_stream=False)

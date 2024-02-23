@@ -89,7 +89,7 @@ def sync_vscode_extensions_in_parallel_with_hostnames(
 
 
 def sync_vscode_extensions_in_parallel(
-    source: Local | Remote | RemoteV2,
+    source: str | Local | RemoteV2,
     dest_clusters: Sequence[str | Local | RemoteV2],
 ):
     """Syncs vscode extensions between `source` all all the clusters in `dest`.
@@ -97,17 +97,20 @@ def sync_vscode_extensions_in_parallel(
     This spawns a thread for each cluster in `dest` and displays a parallel progress bar
     for the syncing of vscode extensions to each cluster.
     """
-
     if isinstance(source, Local):
         source_hostname = "localhost"
         source_extensions = get_local_vscode_extensions()
-    else:
+    elif isinstance(source, RemoteV2):
         source_hostname = source.hostname
         source_extensions, _ = get_remote_vscode_extensions(source)
         if source_extensions is None:
             raise RuntimeError(
                 f"The vscode-server executable was not found on {source.hostname}."
             )
+    else:
+        assert isinstance(source, str)
+        source_hostname = source
+        source = RemoteV2(source)
 
     task_fns: list[TaskFn[None]] = []
     task_descriptions: list[str] = []
@@ -164,8 +167,9 @@ def _install_vscode_extensions_task_function(
     task_id: TaskID,
     dest_hostname: str | Literal["localhost"],
     source_extensions: dict[str, str],
-    remote: RemoteV2 | Local | Remote | None,
+    remote: RemoteV2 | Local | None,
     source_name: str,
+    verbose: bool = False,
 ):
     """Installs vscode extensions on the remote cluster.
 
@@ -176,6 +180,7 @@ def _install_vscode_extensions_task_function(
     4. Install the extensions that are missing or out of date on the remote, updating
        the progress dict as it goes.
     """
+
     progress_dict[task_id] = {
         "progress": 0,
         "total": len(source_extensions),
@@ -226,40 +231,14 @@ def _install_vscode_extensions_task_function(
         logger.info(f"No extensions to sync to {dest_hostname}.")
 
     for index, (extension_name, extension_version) in enumerate(to_install.items()):
-        command = (
+        result = install_vscode_extension(
+            remote,
             code_server_executable,
-            "--install-extension",
-            f"{extension_name}@{extension_version}",
+            extension=f"{extension_name}@{extension_version}",
+            verbose=verbose,
         )
-        if isinstance(remote, Remote):
-            result = remote.run(
-                shlex.join(command),
-                in_stream=False,
-                display=False,
-                echo=False,
-                warn=True,
-                asynchronous=False,
-                hide=True,
-            )
-            success = result.return_code == 0
-        elif isinstance(remote, RemoteV2):
-            result = remote.run(
-                shlex.join(command),
-                display=False,
-                warn=True,
-                hide=True,
-            )
-            success = result.returncode == 0
-        else:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-            )
-            success = result.returncode == 0
-
-        if not success:
-            logger.info(f"{dest_hostname}: " + result.stderr)
+        if result.returncode != 0:
+            logger.warning(f"{dest_hostname}: " + result.stderr)
 
         progress_dict[task_id] = {
             "progress": index + 1,
@@ -272,6 +251,35 @@ def _install_vscode_extensions_task_function(
         "total": len(to_install),
         "info": "Done.",
     }
+
+
+def install_vscode_extension(
+    remote: Local | RemoteV2,
+    code_server_executable: str,
+    extension: str,
+    verbose: bool = False,
+):
+    command = (
+        code_server_executable,
+        "--install-extension",
+        extension,
+    )
+    if isinstance(remote, RemoteV2):
+        result = remote.run(
+            shlex.join(command),
+            display=verbose,
+            warn=True,
+            hide=not verbose,
+        )
+    else:
+        result = remote.run(
+            *command,
+            capture_output=not verbose,
+            display_command=verbose,
+        )
+    if result.stdout:
+        logger.debug(result.stdout)
+    return result
 
 
 def get_local_vscode_extensions() -> dict[str, str]:

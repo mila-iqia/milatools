@@ -3,12 +3,12 @@ from __future__ import annotations
 import datetime
 import functools
 import os
-import time
 from logging import getLogger as get_logger
 
 import pytest
 
 from milatools.cli.remote import Remote
+from milatools.remote_v2 import get_controlpath_for
 from tests.cli.common import in_github_CI
 
 logger = get_logger(__name__)
@@ -33,24 +33,22 @@ hangs_in_github_CI = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="session", autouse=True)
-def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
-    # Note: need to recreate this because login_node is a function-scoped fixture.
-    login_node = Remote(cluster)
-    logger.info(
-        f"Cancelling milatools test jobs on {cluster} before running integration tests."
+def skip_param_if_not_already_logged_in(cluster: str):
+    """Skip a test if not already logged in to the cluster.
+
+    This is useful for example if we're connecting to the DRAC cluster in unit tests and
+    we only want to go through 2FA once.
+    """
+    return pytest.param(
+        cluster,
+        marks=pytest.mark.skipif(
+            not get_controlpath_for(cluster).exists(),
+            reason=(
+                f"Logging into {cluster} might go through 2FA. It should be done "
+                "in advance."
+            ),
+        ),
     )
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
-    time.sleep(1)
-    yield
-    logger.info(
-        f"Cancelling milatools test jobs on {cluster} after running integration tests."
-    )
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
-    time.sleep(1)
-    # Display the output of squeue just to be sure that the jobs were cancelled.
-    logger.info(f"Checking that all jobs have been cancelked on {cluster}...")
-    login_node._run("squeue --me", echo=True, in_stream=False)
 
 
 @functools.lru_cache

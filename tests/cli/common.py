@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import inspect
 import os
+import subprocess
 import sys
 import typing
 from collections.abc import Callable
@@ -14,6 +15,8 @@ import paramiko.ssh_exception
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
+
+from milatools.remote_v2 import RemoteV2
 
 if typing.TYPE_CHECKING:
     from typing import TypeGuard
@@ -30,16 +33,21 @@ skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_gi
 passwordless_ssh_connection_to_localhost_is_setup = False
 
 try:
-    _connection = fabric.Connection("localhost")
-    _connection.open()
+    localhost_remote = RemoteV2("localhost")
 except (
-    paramiko.ssh_exception.SSHException,
-    paramiko.ssh_exception.NoValidConnectionsError,
+    subprocess.CalledProcessError,
+    subprocess.TimeoutExpired,
+    RuntimeError,
 ):
-    pass
+    try:
+        connection = fabric.Connection("localhost")
+    except (
+        paramiko.ssh_exception.SSHException,
+        paramiko.ssh_exception.NoValidConnectionsError,
+    ):
+        passwordless_ssh_connection_to_localhost_is_setup = True
 else:
     passwordless_ssh_connection_to_localhost_is_setup = True
-    _connection.close()
 
 requires_ssh_to_localhost = pytest.mark.skipif(
     not passwordless_ssh_connection_to_localhost_is_setup,

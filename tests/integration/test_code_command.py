@@ -13,7 +13,11 @@ from milatools.cli.remote import Remote
 from milatools.cli.utils import get_fully_qualified_hostname_of_compute_node
 
 from ..cli.common import in_github_CI, skip_param_if_on_github_ci
-from .conftest import SLURM_CLUSTER, hangs_in_github_CI
+from .conftest import (
+    SLURM_CLUSTER,
+    hangs_in_github_CI,
+    skip_param_if_not_already_logged_in,
+)
 from .test_slurm_remote import get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
@@ -23,11 +27,11 @@ logger = get_logger(__name__)
     "cluster",
     [
         skip_param_if_on_github_ci("mila"),
-        skip_param_if_on_github_ci("narval"),
-        skip_param_if_on_github_ci("beluga"),
-        skip_param_if_on_github_ci("cedar"),
-        skip_param_if_on_github_ci("graham"),
-        skip_param_if_on_github_ci("niagara"),
+        skip_param_if_not_already_logged_in("narval"),
+        skip_param_if_not_already_logged_in("beluga"),
+        skip_param_if_not_already_logged_in("cedar"),
+        skip_param_if_not_already_logged_in("graham"),
+        skip_param_if_not_already_logged_in("niagara"),
     ],
     indirect=True,
 )
@@ -61,11 +65,11 @@ def test_check_disk_quota(
             ],
         ),
         skip_param_if_on_github_ci("mila"),
-        skip_param_if_on_github_ci("narval"),
-        skip_param_if_on_github_ci("beluga"),
-        skip_param_if_on_github_ci("cedar"),
-        skip_param_if_on_github_ci("graham"),
-        skip_param_if_on_github_ci("niagara"),
+        skip_param_if_not_already_logged_in("narval"),
+        skip_param_if_not_already_logged_in("beluga"),
+        skip_param_if_not_already_logged_in("cedar"),
+        skip_param_if_not_already_logged_in("graham"),
+        skip_param_if_not_already_logged_in("niagara"),
     ],
     indirect=True,
 )
