@@ -138,7 +138,7 @@ def test_sync_vscode_extensions_in_parallel():
 
 
 @pytest.fixture
-def _vscode_extensions(
+def vscode_extensions(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     """Returns a dict of vscode extension names and versions to be installed locally.
@@ -174,27 +174,27 @@ def _vscode_extensions(
 
 @pytest.fixture
 def all_extensions(
-    _vscode_extensions: tuple[dict[str, str], ...],
+    vscode_extensions: tuple[dict[str, str], ...],
 ) -> dict[str, str]:
     """Dict of all the vscode extensions (on the source and the dest)."""
-    return _vscode_extensions[0]
+    return vscode_extensions[0]
 
 
 @pytest.fixture
 def installed_extensions(
-    _vscode_extensions: tuple[dict[str, str], ...],
+    vscode_extensions: tuple[dict[str, str], ...],
 ) -> dict[str, str]:
     """Dict of the extensions that are already installed on the dest (missing some)."""
 
-    return _vscode_extensions[1]
+    return vscode_extensions[1]
 
 
 @pytest.fixture
 def missing_extensions(
-    _vscode_extensions: tuple[dict[str, str], ...],
+    vscode_extensions: tuple[dict[str, str], ...],
 ) -> dict[str, str]:
     """Dict of the extensions that are missing from the destination."""
-    return _vscode_extensions[2]
+    return vscode_extensions[2]
 
 
 def _remote(hostname: str):
@@ -276,6 +276,7 @@ def test_get_remote_vscode_extensions(mock_find_code_server_executable: Mock):
     assert fake_remote_extensions == get_local_vscode_extensions()
 
 
+@test_requires_vscode
 def test_extensions_to_install(
     all_extensions: dict[str, str],
     installed_extensions: dict[str, str],
