@@ -96,6 +96,9 @@ def check_passwordless(host: str) -> bool:
     except (
         paramiko.ssh_exception.SSHException,
         paramiko.ssh_exception.NoValidConnectionsError,
+        # BUG: Also getting ValueError("q must be exactlu 160, 224, or 256 bits long")
+        # with older versions of paramiko.
+        # ValueError,
     ) as err:
         logger.debug(f"Unable to connect to {host} without a password: {err}")
         return False

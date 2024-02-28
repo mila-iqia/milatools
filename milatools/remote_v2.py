@@ -16,6 +16,19 @@ from milatools.cli.utils import DRAC_CLUSTERS
 
 logger = get_logger(__name__)
 
+SSH_CACHE_DIR = Path.home() / ".cache" / "ssh"
+
+
+def raise_error_if_running_on_windows():
+    if sys.platform == "win32":
+        raise RuntimeError(
+            "This feature doesn't work on Windows, as it assumes that the SSH client "
+            "has SSH multiplexing support (ControlMaster, ControlPath and "
+            "ControlPersist).\n"
+            "Please consider switching to the Windows Subsystem for Linux (WSL).\n"
+            "Take a look at https://learn.microsoft.com/en-us/windows/wsl/install"
+        )
+
 
 def ssh_command(
     hostname: str,
@@ -121,10 +134,41 @@ class RemoteV2:
         return self.run(command, display=display, warn=warn, hide=hide).stdout.strip()
 
 
+def is_already_logged_in(cluster: str, also_run_command_to_check: bool = False) -> bool:
+    """Checks whether we are already logged in to the given cluster.
+
+    More specifically, this checks whether a reusable SSH control master is setup at the
+    controlpath for the given cluster.
+
+    Parameters
+    ----------
+    cluster: Hostname of the cluster to connect to.
+    also_run_command_to_check: Whether we should also run a command over SSH to make
+        100% sure that we are logged in. In most cases this isn't necessary so we can
+        skip it, since it can take a few seconds.
+    """
+    control_path = get_controlpath_for(cluster)
+    if not control_path.exists():
+        logger.debug(f"ControlPath at {control_path} doesn't exist. Not logged in.")
+        return False
+
+    status, output = subprocess.getstatusoutput(
+        ("ssh", "-O", "check", f"-oControlPath={control_path}", cluster)
+    )
+    if status != 0 or not output.startswith("Master running"):
+        logger.debug(
+            f"{control_path=} doesn't exist or isn't running: {status=}, {output=}."
+        )
+        return False
+    if not also_run_command_to_check:
+        return True
+    return RemoteV2(cluster, control_path=control_path).get_output("echo OK") == "OK"
+
+
 def get_controlpath_for(
     cluster: str,
     ssh_config_path: Path = Path.home() / ".ssh" / "config",
-    ssh_cache_dir: Path | None = Path.home() / ".cache" / "ssh",
+    ssh_cache_dir: Path | None = SSH_CACHE_DIR,
 ) -> Path:
     """Returns the control path to use for the given host using the ssh config.
 
@@ -145,11 +189,15 @@ def get_controlpath_for(
     values = ssh_config.lookup(cluster)
     if not (control_path := values.get("controlpath")):
         if ssh_cache_dir is None:
+            raise_error_if_running_on_windows()
             raise RuntimeError(
                 f"ControlPath isn't set in the ssh config for {cluster}, and "
                 "ssh_cache_dir isn't set."
             )
-        logger.debug("ControlPath isn't set.")
+        logger.debug(
+            f"ControlPath isn't set for host {cluster}. Falling back to the ssh cache "
+            f"directory at {ssh_cache_dir}."
+        )
         hostname = values.get("hostname", cluster)
         username = values.get("user", getpass.getuser())
         port = values.get("port", 22)
@@ -164,6 +212,8 @@ def setup_connection_with_controlpath(
     timeout: int | None = None,
 ) -> None:
     """Setup (or test) an SSH connection to this cluster using this control path.
+
+    This goes through the 2FA process for clusters where 2FA is enabled.
 
     Parameters
     ----------
@@ -182,15 +232,7 @@ def setup_connection_with_controlpath(
         If the control path doesn't exist after the first connection, or if we didn't
         receive the output we expected from running the command.
     """
-    if sys.platform == "win32":
-        logger.warning(
-            "Windows SSH clients don't normally support SSH multiplexing "
-            "(ControlMaster, ControlPath and ControlPersist) which are required in "
-            "order to use this feature.\n"
-            "We will attempt it anyway, but this is very unlikely to work!\n"
-            "Please consider using milatools from the Windows Subsystem for Linux "
-            "instead!"
-        )
+    raise_error_if_running_on_windows()
 
     if not control_path.exists():
         control_path.parent.mkdir(parents=True, exist_ok=True)

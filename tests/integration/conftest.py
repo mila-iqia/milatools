@@ -8,7 +8,9 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.remote import Remote
-from milatools.remote_v2 import get_controlpath_for
+from milatools.remote_v2 import (
+    is_already_logged_in,
+)
 from tests.cli.common import in_github_CI
 
 logger = get_logger(__name__)
@@ -33,6 +35,21 @@ hangs_in_github_CI = pytest.mark.skipif(
 )
 
 
+def skip_if_not_already_logged_in(cluster: str) -> pytest.MarkDecorator:
+    """Skip a test if not already logged in to the cluster.
+
+    This is useful for example if we're connecting to the DRAC cluster in unit tests and
+    we only want to go through 2FA once.
+    """
+    return pytest.mark.skipif(
+        not is_already_logged_in(cluster),
+        reason=(
+            f"Logging into {cluster} might go through 2FA. It should be done "
+            "in advance."
+        ),
+    )
+
+
 def skip_param_if_not_already_logged_in(cluster: str):
     """Skip a test if not already logged in to the cluster.
 
@@ -41,13 +58,9 @@ def skip_param_if_not_already_logged_in(cluster: str):
     """
     return pytest.param(
         cluster,
-        marks=pytest.mark.skipif(
-            not get_controlpath_for(cluster).exists(),
-            reason=(
-                f"Logging into {cluster} might go through 2FA. It should be done "
-                "in advance."
-            ),
-        ),
+        marks=[
+            skip_if_not_already_logged_in(cluster),
+        ],
     )
 
 

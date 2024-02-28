@@ -296,6 +296,7 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
+    # TODO: This will fail for clusters with 2FA.
     if check_passwordless(cluster):
         logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
         return True

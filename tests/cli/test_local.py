@@ -6,12 +6,13 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
+from milatools.remote_v2 import is_already_logged_in
 
 from .common import (
+    in_github_CI,
     output_tester,
     passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
-    skip_param_if_on_github_ci,
     xfails_on_windows,
 )
 
@@ -110,19 +111,60 @@ def test_popen(
     )
 
 
+def paramiko_openssh_key_parsing_issue(cluster: str, strict: bool = False):
+    return pytest.mark.xfail(
+        not in_github_CI and not is_already_logged_in(cluster),
+        strict=strict,
+        raises=ValueError,
+        # ValueError("q must be exactly 160, 224, or 256 bits long")
+        # https://github.com/paramiko/paramiko/issues/1839
+        # https://github.com/fabric/fabric/issues/2182
+        # https://github.com/paramiko/paramiko/pull/1606
+        reason=(
+            "BUG: Seems like paramiko reads new RSA keys of OpenSSH as DSA "
+            "and raises a ValueError."
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
         ("localhost", passwordless_ssh_connection_to_localhost_is_setup),
         ("blablabob@localhost", False),
-        skip_param_if_on_github_ci("mila", True),
-        skip_param_if_on_github_ci("bobobobobobo@mila", False),
-        skip_param_if_on_github_ci("narval", True),
-        skip_param_if_on_github_ci("blablabob@narval", False),
-        skip_param_if_on_github_ci("beluga", True),
-        skip_param_if_on_github_ci("cedar", True),
-        skip_param_if_on_github_ci("graham", True),
-        skip_param_if_on_github_ci("niagara", False),  # Not enabled by default.
+        ("mila", not in_github_CI),
+        ("bobobobobobo@mila", False),
+        # For the clusters with 2FA, we expect `check_passwordless` to return True if
+        # we've already setup the shared SSH connection.
+        pytest.param(
+            "blablabob@narval",
+            False,
+            marks=paramiko_openssh_key_parsing_issue("narval"),
+        ),
+        *(
+            pytest.param(
+                drac_cluster,
+                logged_in := is_already_logged_in(
+                    drac_cluster, also_run_command_to_check=False
+                ),
+                marks=[
+                    pytest.mark.skipif(
+                        not logged_in,
+                        reason=(
+                            "TODO: this goes through 2FA on first login. Needs to be "
+                            "reworked."
+                        ),
+                    ),
+                    paramiko_openssh_key_parsing_issue(drac_cluster, strict=False),
+                ],
+            )
+            for drac_cluster in ["narval", "beluga", "cedar", "graham"]
+        ),
+        pytest.param(
+            "niagara",
+            False,
+            marks=paramiko_openssh_key_parsing_issue("niagara"),
+        ),  # SSH access isn't enabled by default.
     ],
 )
 def test_check_passwordless(hostname: str, expected: bool):

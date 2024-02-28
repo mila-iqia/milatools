@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 
 import milatools.remote_v2
-from milatools.remote_v2 import RemoteV2, get_controlpath_for
+from milatools.remote_v2 import RemoteV2, get_controlpath_for, is_already_logged_in
 from tests.integration.conftest import skip_param_if_not_already_logged_in
 
 from .cli.common import requires_ssh_to_localhost
@@ -55,3 +55,7 @@ def test_run(hostname: str):
     remote = RemoteV2(hostname)
     output = remote.get_output(command)
     assert output == "Hello World"
+
+
+def test_is_already_logged_in(cluster: str, already_logged_in: bool):
+    assert is_already_logged_in(cluster) == already_logged_in

@@ -333,3 +333,15 @@ def batched(
 
 def stripped_lines_of(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines()]
+
+
+if sys.version_info < (3, 9):
+
+    def removesuffix(s: str, suffix: str) -> str:
+        """Backport of `str.removesuffix` for Python<3.9."""
+        if s.endswith(suffix):
+            return s[: -len(suffix)]
+        else:
+            return s
+else:
+    removesuffix = str.removesuffix

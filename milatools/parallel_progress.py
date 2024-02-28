@@ -82,26 +82,27 @@ def parallel_progress_bar(
 
     futures: dict[TaskID, Future[OutT_co]] = {}
     num_yielded_results: int = 0
-    with (
-        ThreadPoolExecutor(
-            max_workers=n_workers, thread_name_prefix="mila_sync_worker"
-        ) as executor,
-        # ProcessPoolExecutor(max_workers=n_workers) as executor,
-        multiprocessing.Manager() as manager,
-        Progress(
-            SpinnerColumn(finished_text="[green]✓"),
-            TextColumn("[progress.description]{task.description}"),
-            MofNCompleteColumn(),
-            BarColumn(bar_width=None),
-            TaskProgressColumn(),
-            TimeRemainingColumn(),
-            TimeElapsedColumn(),
-            console=console,
-            transient=False,
-            refresh_per_second=10,
-            expand=False,
-        ) as progress,
-    ):
+
+    # NOTE: Could also use a ProcessPoolExecutor here:
+    # executor = ProcessPoolExecutor(max_workers=n_workers)
+    executor = ThreadPoolExecutor(
+        max_workers=n_workers, thread_name_prefix="mila_sync_worker"
+    )
+    manager = multiprocessing.Manager()
+    progress = Progress(
+        SpinnerColumn(finished_text="[green]✓"),
+        TextColumn("[progress.description]{task.description}"),
+        MofNCompleteColumn(),
+        BarColumn(bar_width=None),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+        refresh_per_second=10,
+        expand=False,
+    )
+    with executor, manager, progress:
         # We share some state between our main process and our worker
         # functions
         _progress_dict: DictProxy[TaskID, ProgressDict] = manager.dict()
