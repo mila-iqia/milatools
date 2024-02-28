@@ -19,14 +19,19 @@ logger = get_logger(__name__)
 SSH_CACHE_DIR = Path.home() / ".cache" / "ssh"
 
 
+class UnsupportedPlatformError(NotImplementedError):
+    ...
+
+
 def raise_error_if_running_on_windows():
     if sys.platform == "win32":
-        raise RuntimeError(
-            "This feature doesn't work on Windows, as it assumes that the SSH client "
-            "has SSH multiplexing support (ControlMaster, ControlPath and "
+        raise UnsupportedPlatformError(
+            "This feature isn't supported on Windows, as it requires an SSH client "
+            "with SSH multiplexing support (ControlMaster, ControlPath and "
             "ControlPersist).\n"
             "Please consider switching to the Windows Subsystem for Linux (WSL).\n"
-            "Take a look at https://learn.microsoft.com/en-us/windows/wsl/install"
+            "See https://learn.microsoft.com/en-us/windows/wsl/install for a guide on "
+            "setting up WSL."
         )
 
 
@@ -152,13 +157,19 @@ def is_already_logged_in(cluster: str, also_run_command_to_check: bool = False) 
         logger.debug(f"ControlPath at {control_path} doesn't exist. Not logged in.")
         return False
 
-    status, output = subprocess.getstatusoutput(
-        ("ssh", "-O", "check", f"-oControlPath={control_path}", cluster)
+    result = subprocess.run(
+        ("ssh", "-O", "check", f"-oControlPath={control_path}", cluster),
+        shell=False,
+        text=True,
+        capture_output=True,
     )
-    if status != 0 or not output.startswith("Master running"):
-        logger.debug(
-            f"{control_path=} doesn't exist or isn't running: {status=}, {output=}."
-        )
+    logger.debug(f"Result: {result}")
+    if (
+        result.returncode != 0
+        or not result.stderr
+        or not result.stderr.startswith("Master running")
+    ):
+        logger.debug(f"{control_path=} doesn't exist or isn't running: {result=}.")
         return False
     if not also_run_command_to_check:
         return True

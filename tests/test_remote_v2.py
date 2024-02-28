@@ -4,10 +4,17 @@ from unittest.mock import Mock
 import pytest
 
 import milatools.remote_v2
-from milatools.remote_v2 import RemoteV2, get_controlpath_for, is_already_logged_in
+from milatools.remote_v2 import (
+    RemoteV2,
+    UnsupportedPlatformError,
+    get_controlpath_for,
+    is_already_logged_in,
+)
 from tests.integration.conftest import skip_param_if_not_already_logged_in
 
-from .cli.common import requires_ssh_to_localhost
+from .cli.common import requires_ssh_to_localhost, xfails_on_windows
+
+pytestmark = [xfails_on_windows(raises=UnsupportedPlatformError, strict=True)]
 
 
 @requires_ssh_to_localhost
@@ -57,5 +64,17 @@ def test_run(hostname: str):
     assert output == "Hello World"
 
 
-def test_is_already_logged_in(cluster: str, already_logged_in: bool):
-    assert is_already_logged_in(cluster) == already_logged_in
+# NOTE: The timeout here is a part of the test: if we are already connected, running the
+# command should be fast.
+@pytest.mark.timeout(1, func_only=True)
+@pytest.mark.parametrize("also_run_command_to_check", [False, True])
+def test_is_already_logged_in(
+    cluster: str, already_logged_in: bool, also_run_command_to_check: bool
+):
+    assert (
+        is_already_logged_in(
+            cluster, also_run_command_to_check=also_run_command_to_check
+        )
+        == already_logged_in
+        == get_controlpath_for(cluster).exists()
+    )

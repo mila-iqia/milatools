@@ -5,6 +5,7 @@ import shutil
 import time
 from collections.abc import Generator
 from logging import getLogger as get_logger
+from pathlib import Path
 from unittest.mock import Mock
 
 import paramiko.ssh_exception
@@ -12,6 +13,7 @@ import pytest
 from fabric.connection import Connection
 
 from milatools.cli import console
+from milatools.cli.init_command import DRAC_CLUSTERS
 from milatools.cli.remote import Remote
 from milatools.cli.utils import cluster_to_connect_kwargs
 from milatools.remote_v2 import (
@@ -151,8 +153,10 @@ def cluster(request: pytest.FixtureRequest) -> str:
     if not slurm_cluster_hostname:
         pytest.skip("Requires ssh access to a SLURM cluster.")
 
-    with cancel_all_milatools_jobs_before_and_after_tests(slurm_cluster_hostname):
-        return slurm_cluster_hostname
+    # TODO: Re-enable this, but only on tests that say that they run jobs on the
+    # cluster.
+    # with cancel_all_milatools_jobs_before_and_after_tests(slurm_cluster_hostname):
+    return slurm_cluster_hostname
 
 
 @contextlib.contextmanager
@@ -177,7 +181,9 @@ def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
     login_node._run("squeue --me", echo=True, in_stream=False)
 
 
-@pytest.fixture(scope="session", params=[True, False])
+@pytest.fixture(
+    scope="session", params=[True, False], ids=["already_logged_in", "not_logged_in"]
+)
 def already_logged_in(
     cluster: str,
     request: pytest.FixtureRequest,
@@ -192,43 +198,53 @@ def already_logged_in(
     assert isinstance(should_already_be_logged_in_during_tests, bool)
 
     logged_in_before_tests = is_already_logged_in(cluster)
-
+    control_path = get_controlpath_for(cluster)
     if logged_in_before_tests and should_already_be_logged_in_during_tests:
         # All good.
+        console.log(f"Reusing an existing connection to {cluster} in tests.")
         yield True
         return
 
     if not logged_in_before_tests and not should_already_be_logged_in_during_tests:
         # All good.
+        console.log(
+            f"No prior connection to {cluster} before running tests, as desired."
+        )
         yield False
         return
 
     if not logged_in_before_tests and should_already_be_logged_in_during_tests:
         console.log(
-            f"Going through 2FA with cluster {cluster} just once before running "
-            f"integration tests."
+            f"No prior connection to {cluster} before running tests, creating one."
         )
+
+        if cluster in DRAC_CLUSTERS:
+            # todo: Seems like logger.warning is not being displayed in the test output
+            # somehow?
+            console.log(
+                f"Going through 2FA with cluster {cluster} only once before tests."
+            )
+
         RemoteV2(cluster)
         assert is_already_logged_in(cluster, also_run_command_to_check=True)
         yield True
         # TODO: Should we remove the connection after running the tests?
         return
 
-    assert logged_in_before_tests and not should_already_be_logged_in_during_tests
     control_path = get_controlpath_for(cluster)
     assert control_path.exists()
     backup_dir = tmp_path_factory.mktemp("backup")
-    logger.warning(
-        f"Temporarily moving {control_path} to {backup_dir=} to simulate not having an "
-        f"existing connection to {cluster} during tests."
+
+    console.log(
+        f"Temporarily moving {control_path} to {backup_dir} so tests are run without "
+        f"an existing connection."
     )
-    moved_path = shutil.move(control_path, backup_dir)
+    moved_path = shutil.move(str(control_path), str(backup_dir))
+    moved_path = Path(moved_path)
     try:
         yield False
     finally:
-        logger.warning(
-            f"Restoring the Control socket from {moved_path} to {control_path}"
-        )
+        console.log(f"Restoring the Control socket from {moved_path} to {control_path}")
         assert moved_path.exists()
         if control_path.exists():
             control_path.unlink()
