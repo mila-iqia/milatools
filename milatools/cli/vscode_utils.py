@@ -146,7 +146,7 @@ def sync_vscode_extensions_in_parallel(
 
         task_fns.append(
             functools.partial(
-                _install_vscode_extensions_task_function,
+                install_vscode_extensions_task_function,
                 dest_hostname=dest_hostname,
                 source_extensions=source_extensions,
                 remote=dest_remote,
@@ -162,7 +162,7 @@ def sync_vscode_extensions_in_parallel(
         print(result)
 
 
-def _install_vscode_extensions_task_function(
+def install_vscode_extensions_task_function(
     progress_dict: DictProxy[TaskID, ProgressDict],
     task_id: TaskID,
     dest_hostname: str | Literal["localhost"],
@@ -238,7 +238,7 @@ def _install_vscode_extensions_task_function(
             verbose=verbose,
         )
         if result.returncode != 0:
-            logger.warning(f"{dest_hostname}: " + result.stderr)
+            logger.debug(f"{dest_hostname}: {result.stderr}")
 
         progress_dict[task_id] = {
             "progress": index + 1,

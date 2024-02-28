@@ -10,9 +10,9 @@ from typing_extensions import ParamSpec
 
 from milatools.cli.local import Local
 from milatools.cli.vscode_utils import (
-    _install_vscode_extensions_task_function,
     extensions_to_install,
     find_code_server_executable,
+    install_vscode_extensions_task_function,
     sync_vscode_extensions_in_parallel,
 )
 from milatools.remote_v2 import RemoteV2
@@ -72,7 +72,7 @@ def test_sync_vscode_extensions(
         return mock
 
     mock_task_function = _mock_and_patch(
-        wraps=_install_vscode_extensions_task_function,
+        wraps=install_vscode_extensions_task_function,
         # side_effect=functools.partial(
         #     _install_vscode_extensions_task_function, verbose=True
         # ),

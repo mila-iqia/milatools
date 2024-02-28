@@ -12,14 +12,14 @@ from typing import Literal
 from paramiko import SSHConfig
 
 from milatools.cli import console
-from milatools.cli.utils import DRAC_CLUSTERS
+from milatools.cli.utils import DRAC_CLUSTERS, MilatoolsUserError
 
 logger = get_logger(__name__)
 
 SSH_CACHE_DIR = Path.home() / ".cache" / "ssh"
 
 
-class UnsupportedPlatformError(NotImplementedError):
+class UnsupportedPlatformError(MilatoolsUserError):
     ...
 
 
@@ -91,7 +91,7 @@ class RemoteV2:
         self.control_path = control_path or get_controlpath_for(hostname)
 
         if not self.control_path.exists():
-            console.log(
+            logger.info(
                 f"Creating a reusable connection to the {self.hostname} cluster."
             )
             setup_connection_with_controlpath(
@@ -258,7 +258,7 @@ def setup_connection_with_controlpath(
     )
     if cluster in DRAC_CLUSTERS:
         console.log(
-            f"Cluster {cluster} may be using two-factor authentication. ",
+            f"The {cluster} cluster may be using two-factor authentication. ",
             "If you enabled 2FA, please take out your phone now.",
             sep="\n",
             style="yellow",
@@ -291,14 +291,18 @@ def setup_connection_with_controlpath(
     logger.info(f"Making the first connection to {cluster}...")
     logger.debug(f"(local) $ {first_command_args}")
     if display:
-        console.log(f"({cluster}) $ {command}", style="green")
+        console.log(f"({cluster}) $ {command}", style="green", _stack_offset=2)
     try:
-        first_connection_output = subprocess.check_output(
+        first_connection_result = subprocess.run(
             first_command_args,
+            shell=False,
             text=True,
             bufsize=1,  # line buffered
             timeout=timeout,
+            capture_output=True,  # don't show output (login can print lots of stuff).
+            check=True,
         )
+        first_connection_output = first_connection_result.stdout
     except subprocess.TimeoutExpired as err:
         console.log(
             f"Timeout while setting up a reusable SSH connection to cluster {cluster}!"
