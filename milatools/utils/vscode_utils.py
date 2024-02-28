@@ -227,7 +227,7 @@ def install_vscode_extensions_task_function(
             return no_progress
 
         assert code_server_executable is not None
-
+    logger.debug(f"{len(source_extensions)=}, {len(extensions_on_dest)=}")
     to_install = extensions_to_install(
         source_extensions,
         extensions_on_dest,
@@ -238,7 +238,9 @@ def install_vscode_extensions_task_function(
     if to_install:
         logger.debug(f"Will install {len(to_install)} extensions on {dest_hostname}.")
     else:
-        logger.info(f"No extensions to sync to {dest_hostname}.")
+        logger.info(
+            f"No extensions to sync to {dest_hostname} (all {len(to_install)} extensions are up to date.)"
+        )
 
     for index, (extension_name, extension_version) in enumerate(to_install.items()):
         try:

@@ -124,9 +124,9 @@ class RemoteV2:
             bufsize=1,  # 1 means line buffered
         )
         if result.stdout:
-            logger.debug(f"{result.stdout=}")
+            logger.debug(f"{result.stdout}")
         if result.stderr:
-            logger.debug(f"{result.stderr=}")
+            logger.debug(f"{result.stderr}")
         return result
 
     def get_output(
