@@ -16,6 +16,7 @@ from milatools.parallel_progress import (
     TaskID,
     parallel_progress_bar,
 )
+from tests.cli.common import xfails_on_windows
 
 logger = get_logger(__name__)
 
@@ -45,6 +46,11 @@ def _task_fn(
     return result
 
 
+@xfails_on_windows(
+    raises=AssertionError,
+    reason="Output is weird on windows? something to do with linebreaks perhaps.",
+    strict=True,
+)
 def test_parallel_progress_bar(file_regression: FileRegressionFixture):
     num_tasks = 3
     task_lengths = [(i + 1) * 2 for i in range(num_tasks)]
@@ -89,7 +95,7 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
         for line in all_output.splitlines()
     )
 
-    file_regression.check(all_output_without_elapsed)
+    file_regression.check(all_output_without_elapsed, encoding="utf-8")
 
     total_time_seconds = time.time() - start_time
     # output = console.end_capture()

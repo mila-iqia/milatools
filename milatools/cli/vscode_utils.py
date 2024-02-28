@@ -286,10 +286,11 @@ def get_local_vscode_extensions() -> dict[str, str]:
     return parse_vscode_extensions_versions(
         subprocess.run(
             (
-                get_code_command(),
+                str(get_vscode_executable_path()),
                 "--list-extensions",
                 "--show-versions",
             ),
+            shell=False,
             capture_output=True,
             text=True,
         ).stdout

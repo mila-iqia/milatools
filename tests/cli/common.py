@@ -17,7 +17,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
 from milatools.cli.utils import removesuffix
-from milatools.remote_v2 import RemoteV2
+from milatools.remote_v2 import RemoteV2, UnsupportedPlatformError
 
 if typing.TYPE_CHECKING:
     from typing import TypeGuard
@@ -36,6 +36,7 @@ passwordless_ssh_connection_to_localhost_is_setup = False
 try:
     localhost_remote = RemoteV2("localhost")
 except (
+    UnsupportedPlatformError,
     subprocess.CalledProcessError,
     subprocess.TimeoutExpired,
     RuntimeError,
