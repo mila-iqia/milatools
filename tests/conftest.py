@@ -16,7 +16,7 @@ from milatools.cli import console
 from milatools.cli.init_command import DRAC_CLUSTERS
 from milatools.cli.remote import Remote
 from milatools.cli.utils import cluster_to_connect_kwargs
-from milatools.remote_v2 import (
+from milatools.utils.remote_v2 import (
     RemoteV2,
     get_controlpath_for,
     is_already_logged_in,

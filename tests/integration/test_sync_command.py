@@ -9,13 +9,13 @@ import pytest
 from typing_extensions import ParamSpec
 
 from milatools.cli.local import Local
-from milatools.cli.vscode_utils import (
+from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.vscode_utils import (
     extensions_to_install,
     find_code_server_executable,
     install_vscode_extensions_task_function,
     sync_vscode_extensions_in_parallel,
 )
-from milatools.remote_v2 import RemoteV2
 from tests.integration.conftest import skip_param_if_not_already_logged_in
 
 from ..cli.common import (

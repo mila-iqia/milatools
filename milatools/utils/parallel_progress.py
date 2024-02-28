@@ -57,7 +57,7 @@ class TaskFn(Protocol[OutT_co]):
     """
 
     def __call__(
-        self, progress_dict: DictProxy[TaskID, ProgressDict], task_id: TaskID
+        self, task_progress_dict: DictProxy[TaskID, ProgressDict], task_id: TaskID
     ) -> OutT_co:
         ...
 
@@ -176,4 +176,12 @@ def parallel_progress_bar(
                 yield next_future_to_resolve.result()
                 num_yielded_results += 1
 
-            time.sleep(0.01)
+            try:
+                time.sleep(0.01)
+            except KeyboardInterrupt:
+                logger.info(
+                    "Received keyboard interrupt, cancelling tasks that haven't started yet."
+                )
+                for future in futures.values():
+                    future.cancel()
+                break

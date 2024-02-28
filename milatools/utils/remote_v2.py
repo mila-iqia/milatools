@@ -39,6 +39,7 @@ def ssh_command(
     hostname: str,
     control_path: Path | Literal["none"],
     command: str,
+    extra_ssh_args: list[str] | None = None,
     control_master: Literal["yes", "no", "auto", "ask", "autoask"] = "auto",
     control_persist: int | str | Literal["yes", "no"] = "yes",
 ):
@@ -61,6 +62,7 @@ def ssh_command(
         f"-oControlMaster={control_master}",
         f"-oControlPersist={control_persist}",
         f"-oControlPath={control_path}",
+        *(extra_ssh_args or []),
         hostname,
         command,
     )
@@ -77,6 +79,7 @@ class RemoteV2:
         self,
         hostname: str,
         control_path: Path | None = None,
+        extra_ssh_args: list[str] | None = None,
     ):
         """Create an SSH connection using this control_path, creating it if necessary.
 
@@ -89,6 +92,7 @@ class RemoteV2:
         """
         self.hostname = hostname
         self.control_path = control_path or get_controlpath_for(hostname)
+        self.extra_ssh_args = extra_ssh_args or []
 
         if not self.control_path.exists():
             logger.info(
@@ -111,6 +115,7 @@ class RemoteV2:
             control_path=self.control_path,
             control_master="auto",
             control_persist="yes",
+            extra_ssh_args=self.extra_ssh_args,
             command=command,
         )
         logger.debug(f"(local) $ {shlex.join(run_command)}")
@@ -144,6 +149,8 @@ def is_already_logged_in(cluster: str, also_run_command_to_check: bool = False) 
 
     More specifically, this checks whether a reusable SSH control master is setup at the
     controlpath for the given cluster.
+
+    NOTE: This function is not supported on Windows.
 
     Parameters
     ----------

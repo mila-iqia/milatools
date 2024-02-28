@@ -17,7 +17,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
 from milatools.cli.utils import removesuffix
-from milatools.remote_v2 import RemoteV2, UnsupportedPlatformError
+from milatools.utils.remote_v2 import RemoteV2, UnsupportedPlatformError
 
 if typing.TYPE_CHECKING:
     from typing import TypeGuard

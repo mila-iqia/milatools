@@ -9,14 +9,15 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import console
 from milatools.cli.utils import removesuffix
-from milatools.parallel_progress import (
+from milatools.utils.parallel_progress import (
     DictProxy,
     ProgressDict,
     TaskFn,
     TaskID,
     parallel_progress_bar,
 )
-from tests.cli.common import xfails_on_windows
+
+from ..cli.common import xfails_on_windows
 
 logger = get_logger(__name__)
 

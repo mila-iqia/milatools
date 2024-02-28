@@ -17,14 +17,14 @@ from milatools.cli.utils import (
     batched,
     stripped_lines_of,
 )
-from milatools.parallel_progress import (
+from milatools.utils.parallel_progress import (
     DictProxy,
     ProgressDict,
     TaskFn,
     TaskID,
     parallel_progress_bar,
 )
-from milatools.remote_v2 import RemoteV2
+from milatools.utils.remote_v2 import RemoteV2
 
 logger = get_logger(__name__)
 
@@ -112,7 +112,8 @@ def sync_vscode_extensions_in_parallel(
         source_hostname = source
         source = RemoteV2(source)
 
-    task_fns: list[TaskFn[None]] = []
+    task_hostnames: list[str] = []
+    task_fns: list[TaskFn[ProgressDict]] = []
     task_descriptions: list[str] = []
 
     for dest_remote in dest_clusters:
@@ -144,6 +145,7 @@ def sync_vscode_extensions_in_parallel(
             dest_hostname = dest_remote
             dest_remote = RemoteV2(hostname=dest_hostname)
 
+        task_hostnames.append(dest_hostname)
         task_fns.append(
             functools.partial(
                 install_vscode_extensions_task_function,
@@ -154,23 +156,30 @@ def sync_vscode_extensions_in_parallel(
             )
         )
         task_descriptions.append(f"{source_hostname} -> {dest_hostname}")
-    for result in parallel_progress_bar(
-        task_fns=task_fns,
-        task_descriptions=task_descriptions,
-        overall_progress_task_description="[green]Syncing vscode extensions:",
+
+    results: dict[str, ProgressDict] = {}
+
+    for hostname, result in zip(
+        task_hostnames,
+        parallel_progress_bar(
+            task_fns=task_fns,
+            task_descriptions=task_descriptions,
+            overall_progress_task_description="[green]Syncing vscode extensions:",
+        ),
     ):
-        print(result)
+        results[hostname] = result
+    return results
 
 
 def install_vscode_extensions_task_function(
-    progress_dict: DictProxy[TaskID, ProgressDict],
+    task_progress_dict: DictProxy[TaskID, ProgressDict],
     task_id: TaskID,
     dest_hostname: str | Literal["localhost"],
     source_extensions: dict[str, str],
     remote: RemoteV2 | Local | None,
     source_name: str,
     verbose: bool = False,
-):
+) -> ProgressDict:
     """Installs vscode extensions on the remote cluster.
 
     1. Finds the `code-server` executable on the remote;
@@ -181,7 +190,7 @@ def install_vscode_extensions_task_function(
        the progress dict as it goes.
     """
 
-    progress_dict[task_id] = {
+    task_progress_dict[task_id] = {
         "progress": 0,
         "total": len(source_extensions),
         "info": "Connecting...",
@@ -209,12 +218,13 @@ def install_vscode_extensions_task_function(
                 f"The vscode-server executable was not found on {remote.hostname}."
                 f"Skipping syncing extensions to {remote.hostname}."
             )
-            progress_dict[task_id] = {
+            no_progress: ProgressDict = {
                 "progress": 0,
                 "total": 0,
                 "info": "code-server executable not found!",
             }
-            return
+            task_progress_dict[task_id] = no_progress
+            return no_progress
 
         assert code_server_executable is not None
 
@@ -231,26 +241,36 @@ def install_vscode_extensions_task_function(
         logger.info(f"No extensions to sync to {dest_hostname}.")
 
     for index, (extension_name, extension_version) in enumerate(to_install.items()):
-        result = install_vscode_extension(
-            remote,
-            code_server_executable,
-            extension=f"{extension_name}@{extension_version}",
-            verbose=verbose,
-        )
+        try:
+            result = install_vscode_extension(
+                remote,
+                code_server_executable,
+                extension=f"{extension_name}@{extension_version}",
+                verbose=verbose,
+            )
+        except KeyboardInterrupt:
+            return {
+                "progress": index,
+                "total": len(to_install),
+                "info": "Interrupted.",
+            }
+
         if result.returncode != 0:
             logger.debug(f"{dest_hostname}: {result.stderr}")
 
-        progress_dict[task_id] = {
+        task_progress_dict[task_id] = {
             "progress": index + 1,
             "total": len(to_install),
             "info": f"Installing {extension_name}",
         }
 
-    progress_dict[task_id] = {
+    finished: ProgressDict = {
         "progress": len(to_install),
         "total": len(to_install),
         "info": "Done.",
     }
+    task_progress_dict[task_id] = finished
+    return finished
 
 
 def install_vscode_extension(
@@ -283,18 +303,18 @@ def install_vscode_extension(
 
 
 def get_local_vscode_extensions() -> dict[str, str]:
-    return parse_vscode_extensions_versions(
-        subprocess.run(
-            (
-                str(get_vscode_executable_path()),
-                "--list-extensions",
-                "--show-versions",
-            ),
-            shell=False,
-            capture_output=True,
-            text=True,
-        ).stdout
-    )
+    output = subprocess.run(
+        (
+            get_code_command(),
+            "--list-extensions",
+            "--show-versions",
+        ),
+        shell=False,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return parse_vscode_extensions_versions(stripped_lines_of(output))
 
 
 def get_remote_vscode_extensions(
@@ -309,10 +329,12 @@ def get_remote_vscode_extensions(
     if not remote_code_server_executable:
         return None, None
     remote_extensions = parse_vscode_extensions_versions(
-        remote.get_output(
-            f"{remote_code_server_executable} --list-extensions --show-versions",
-            display=False,
-            hide=True,
+        stripped_lines_of(
+            remote.get_output(
+                f"{remote_code_server_executable} --list-extensions --show-versions",
+                display=False,
+                hide=True,
+            )
         )
     )
     return remote_extensions, remote_code_server_executable
@@ -423,9 +445,9 @@ def find_code_server_executable(
 
 
 def parse_vscode_extensions_versions(
-    list_extensions_output: str,
+    list_extensions_output_lines: list[str],
 ) -> dict[str, str]:
-    extensions = stripped_lines_of(list_extensions_output)
+    extensions = list_extensions_output_lines
 
     def _extension_name_and_version(extension: str) -> tuple[str, str]:
         # extensions should include name@version since we use --show-versions.

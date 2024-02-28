@@ -8,7 +8,7 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.remote import Remote
-from milatools.remote_v2 import (
+from milatools.utils.remote_v2 import (
     is_already_logged_in,
 )
 from tests.cli.common import in_github_CI

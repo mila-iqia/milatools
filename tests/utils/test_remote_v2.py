@@ -3,8 +3,8 @@ from unittest.mock import Mock
 
 import pytest
 
-import milatools.remote_v2
-from milatools.remote_v2 import (
+import milatools.utils.remote_v2
+from milatools.utils.remote_v2 import (
     RemoteV2,
     UnsupportedPlatformError,
     get_controlpath_for,
@@ -12,7 +12,7 @@ from milatools.remote_v2 import (
 )
 from tests.integration.conftest import skip_param_if_not_already_logged_in
 
-from .cli.common import requires_ssh_to_localhost, xfails_on_windows
+from ..cli.common import requires_ssh_to_localhost, xfails_on_windows
 
 pytestmark = [xfails_on_windows(raises=UnsupportedPlatformError, strict=True)]
 
@@ -34,7 +34,7 @@ def test_init_with_none_controlpath(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     )
 
     monkeypatch.setattr(
-        milatools.remote_v2,
+        milatools.utils.remote_v2,
         get_controlpath_for.__name__,
         mock_get_controlpath_for,
     )
@@ -65,7 +65,8 @@ def test_run(hostname: str):
 
 
 # NOTE: The timeout here is a part of the test: if we are already connected, running the
-# command should be fast.
+# command should be fast, and if we aren't connected, this should be able to tell fast
+# (in other words, it shouldn't wait for 2FA input or similar).
 @pytest.mark.timeout(1, func_only=True)
 @pytest.mark.parametrize("also_run_command_to_check", [False, True])
 def test_is_already_logged_in(

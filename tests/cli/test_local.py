@@ -6,7 +6,6 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
-from milatools.remote_v2 import is_already_logged_in
 
 from .common import (
     in_github_CI,
@@ -111,9 +110,9 @@ def test_popen(
     )
 
 
-def paramiko_openssh_key_parsing_issue(cluster: str, strict: bool = False):
+def paramiko_openssh_key_parsing_issue(strict: bool = False):
     return pytest.mark.xfail(
-        not in_github_CI and not is_already_logged_in(cluster),
+        not in_github_CI,
         strict=strict,
         raises=ValueError,
         # ValueError("q must be exactly 160, 224, or 256 bits long")
@@ -133,37 +132,34 @@ def paramiko_openssh_key_parsing_issue(cluster: str, strict: bool = False):
         ("localhost", passwordless_ssh_connection_to_localhost_is_setup),
         ("blablabob@localhost", False),
         ("mila", not in_github_CI),
-        ("bobobobobobo@mila", False),
+        pytest.param(
+            "bobobobobobo@mila",
+            False,
+            marks=paramiko_openssh_key_parsing_issue(),
+        ),
         # For the clusters with 2FA, we expect `check_passwordless` to return True if
         # we've already setup the shared SSH connection.
         pytest.param(
             "blablabob@narval",
             False,
-            marks=paramiko_openssh_key_parsing_issue("narval"),
+            marks=[
+                paramiko_openssh_key_parsing_issue(),
+            ],
         ),
         *(
             pytest.param(
                 drac_cluster,
-                logged_in := is_already_logged_in(
-                    drac_cluster, also_run_command_to_check=False
+                True,
+                marks=pytest.mark.skip(
+                    reason="TODO: Rework this, currently might wait for 2FA input.",
                 ),
-                marks=[
-                    pytest.mark.skipif(
-                        not logged_in,
-                        reason=(
-                            "TODO: this goes through 2FA on first login. Needs to be "
-                            "reworked."
-                        ),
-                    ),
-                    paramiko_openssh_key_parsing_issue(drac_cluster, strict=False),
-                ],
             )
             for drac_cluster in ["narval", "beluga", "cedar", "graham"]
         ),
         pytest.param(
             "niagara",
             False,
-            marks=paramiko_openssh_key_parsing_issue("niagara"),
+            marks=paramiko_openssh_key_parsing_issue(),
         ),  # SSH access isn't enabled by default.
     ],
 )
