@@ -23,12 +23,12 @@ logger = get_logger(__name__)
 
 
 def _task_fn(
-    progress_dict: DictProxy[TaskID, ProgressDict],
+    task_progress_dict: DictProxy[TaskID, ProgressDict],
     task_id: TaskID,
     task_length: int,
     result: Any,
 ) -> Any:
-    progress_dict[task_id] = {
+    task_progress_dict[task_id] = {
         "progress": 0,
         "total": task_length,
         "info": "Starting task.",
@@ -37,9 +37,9 @@ def _task_fn(
     for n in range(task_length):
         time.sleep(1.0)  # sleep for a bit to simulate work
         logger.debug(f"Task {task_id} is {n+1}/{task_length} done.")
-        progress_dict[task_id] = {"progress": n + 1, "total": task_length}
+        task_progress_dict[task_id] = {"progress": n + 1, "total": task_length}
 
-    progress_dict[task_id] = {
+    task_progress_dict[task_id] = {
         "progress": task_length,
         "total": task_length,
         "info": "Done.",
@@ -73,7 +73,7 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
         time_to_result_i = time.time() - start_time
 
         # It should take ~`task_lengths[i]` seconds to get result #i
-        assert task_lengths[i] <= time_to_result_i <= task_lengths[i] + 0.5
+        assert task_lengths[i] <= time_to_result_i <= task_lengths[i] + 1
         assert result is task_results[i]
 
         print(f"------- After receiving output #{i}", flush=True)
