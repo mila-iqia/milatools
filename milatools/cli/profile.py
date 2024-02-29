@@ -5,7 +5,7 @@ import re
 import shlex
 import typing
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Generic, TypeVar
 
 import invoke
@@ -46,7 +46,7 @@ def setup_profile(remote: Remote, path: str) -> str:
     if profile is None:
         profile = create_profile(remote)
 
-    profile_file = Path(path) / ".milatools-profile"
+    profile_file = PurePosixPath(path) / ".milatools-profile"
     if not preferred:
         save = yn(
             f"Do you want to use this profile by default in {path}?",

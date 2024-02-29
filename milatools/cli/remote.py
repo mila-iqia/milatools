@@ -382,18 +382,23 @@ class Remote:
         promise.join()
         return runner, results
 
-    def get(self, src: str, dest: str | None) -> fabric.transfer.Result:
-        return self.connection.get(src, dest)
+    def get(
+        self, remote: PurePosixPath | str, local: str | None
+    ) -> fabric.transfer.Result:
+        return self.connection.get(remote, local)
 
-    def put(self, src: str | Path, dest: str) -> fabric.transfer.Result:
-        return self.connection.put(src, dest)
+    def put(
+        self, local: str | Path, remote: PurePosixPath | str
+    ) -> fabric.transfer.Result:
+        return self.connection.put(local, str(remote))
 
-    def puttext(self, text: str, dest: str) -> None:
+    def puttext(self, text: str, dest: PurePosixPath | str) -> None:
         base = PurePosixPath(dest).parent
         self.simple_run(f"mkdir -p {base}")
         with tempfile.NamedTemporaryFile("w") as f:
             f.write(text)
             f.flush()
+            # BUG: Getting permission denied errors here on Windows!
             self.put(f.name, dest)
 
     def home(self) -> str:
@@ -467,12 +472,8 @@ class SlurmRemote(Remote):
     def srun_transform_persist(self, cmd: str) -> str:
         tag = time.time_ns()
         remote_home = self.home()
-        batch_file = str(
-            PurePosixPath(remote_home) / f".milatools/batch/batch-{tag}.sh"
-        )
-        output_file = str(
-            PurePosixPath(remote_home) / f".milatools/batch/out-{tag}.txt"
-        )
+        batch_file = PurePosixPath(remote_home) / f".milatools/batch/batch-{tag}.sh"
+        output_file = PurePosixPath(remote_home) / f".milatools/batch/out-{tag}.txt"
         batch = batch_template.format(
             command=cmd,
             output_file=output_file,
@@ -480,7 +481,7 @@ class SlurmRemote(Remote):
         )
         self.puttext(text=batch, dest=batch_file)
         self.simple_run(f"chmod +x {batch_file}")
-        cmd = shlex.join(["sbatch", *self.alloc, batch_file])
+        cmd = shlex.join(["sbatch", *self.alloc, str(batch_file)])
 
         # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
         if self.connection.host in DRAC_CLUSTERS:
