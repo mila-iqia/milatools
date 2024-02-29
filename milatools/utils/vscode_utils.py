@@ -202,7 +202,7 @@ def install_vscode_extensions_task_function(
         progress_dict: ProgressDict = {
             "progress": progress,
             "total": total,
-            "info": status,
+            "info": textwrap.shorten(status, 50, placeholder="..."),
         }
         task_progress_dict[task_id] = progress_dict
         return progress_dict
@@ -239,7 +239,7 @@ def install_vscode_extensions_task_function(
                 total=0,
                 status="code-server executable not found!",
             )
-        _update_progress(0, status="fetching list of installed extensions...")
+        _update_progress(0, status="fetching installed extensions...")
         extensions_on_dest = get_remote_vscode_extensions(
             remote, code_server_executable
         )
@@ -264,7 +264,7 @@ def install_vscode_extensions_task_function(
             _update_progress(
                 progress=index + 1,
                 total=len(to_install),
-                status=textwrap.shorten(f"Installing {extension_name}", width=40),
+                status=f"Installing {extension_name}",
             )
             result = install_vscode_extension(
                 remote,
