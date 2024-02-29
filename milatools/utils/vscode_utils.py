@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import textwrap
 from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal, Sequence
@@ -102,11 +103,14 @@ def sync_vscode_extensions_in_parallel(
         source_extensions = get_local_vscode_extensions()
     elif isinstance(source, RemoteV2):
         source_hostname = source.hostname
-        source_extensions, _ = get_remote_vscode_extensions(source)
-        if source_extensions is None:
+        code_server_executable = find_code_server_executable(
+            source, remote_vscode_server_dir="~/.vscode-server"
+        )
+        if not code_server_executable:
             raise RuntimeError(
                 f"The vscode-server executable was not found on {source.hostname}."
             )
+        source_extensions = get_remote_vscode_extensions(source, code_server_executable)
     else:
         assert isinstance(source, str)
         source_hostname = source
@@ -190,43 +194,56 @@ def install_vscode_extensions_task_function(
        the progress dict as it goes.
     """
 
-    task_progress_dict[task_id] = {
-        "progress": 0,
-        "total": len(source_extensions),
-        "info": "Connecting...",
-    }
+    def _update_progress(
+        progress: int, status: str, total: int = len(source_extensions)
+    ):
+        # Show progress to the parent process by setting an item in the task progress
+        # dict.
+        progress_dict: ProgressDict = {
+            "progress": progress,
+            "total": total,
+            "info": status,
+        }
+        task_progress_dict[task_id] = progress_dict
+        return progress_dict
+
     if remote is None:
         if dest_hostname == "localhost":
             remote = Local()
         else:
+            _update_progress(0, "Connecting...")
             remote = RemoteV2(dest_hostname)
 
     if isinstance(remote, Local):
         assert dest_hostname == "localhost"
-        extensions_on_dest = get_local_vscode_extensions()
         code_server_executable = get_vscode_executable_path()
         assert code_server_executable
+        extensions_on_dest = get_local_vscode_extensions()
     else:
         dest_hostname = remote.hostname
-        (
-            extensions_on_dest,
-            code_server_executable,
-        ) = get_remote_vscode_extensions(remote)
-        if extensions_on_dest is None:
-            assert code_server_executable is None
-            logger.warning(
+        remote_vscode_server_dir = "~/.vscode-server"
+        _update_progress(0, f"Looking for code-server in {remote_vscode_server_dir}")
+        code_server_executable = find_code_server_executable(
+            remote,
+            remote_vscode_server_dir=remote_vscode_server_dir,
+        )
+        if not code_server_executable:
+            logger.debug(
                 f"The vscode-server executable was not found on {remote.hostname}."
                 f"Skipping syncing extensions to {remote.hostname}."
             )
-            no_progress: ProgressDict = {
-                "progress": 0,
-                "total": 0,
-                "info": "code-server executable not found!",
-            }
-            task_progress_dict[task_id] = no_progress
-            return no_progress
+            return _update_progress(
+                # IDEA: Use a progress of `-1` to signify an error, and use a "X"
+                # instead of a checkmark?
+                progress=0,
+                total=0,
+                status="code-server executable not found!",
+            )
+        _update_progress(0, status="fetching list of installed extensions...")
+        extensions_on_dest = get_remote_vscode_extensions(
+            remote, code_server_executable
+        )
 
-        assert code_server_executable is not None
     logger.debug(f"{len(source_extensions)=}, {len(extensions_on_dest)=}")
     to_install = extensions_to_install(
         source_extensions,
@@ -244,6 +261,11 @@ def install_vscode_extensions_task_function(
 
     for index, (extension_name, extension_version) in enumerate(to_install.items()):
         try:
+            _update_progress(
+                progress=index + 1,
+                total=len(to_install),
+                status=textwrap.shorten(f"Installing {extension_name}", width=40),
+            )
             result = install_vscode_extension(
                 remote,
                 code_server_executable,
@@ -251,28 +273,20 @@ def install_vscode_extensions_task_function(
                 verbose=verbose,
             )
         except KeyboardInterrupt:
-            return {
-                "progress": index,
-                "total": len(to_install),
-                "info": "Interrupted.",
-            }
+            return _update_progress(
+                progress=index,
+                total=len(to_install),
+                status="Interrupted.",
+            )
 
         if result.returncode != 0:
             logger.debug(f"{dest_hostname}: {result.stderr}")
 
-        task_progress_dict[task_id] = {
-            "progress": index + 1,
-            "total": len(to_install),
-            "info": f"Installing {extension_name}",
-        }
-
-    finished: ProgressDict = {
-        "progress": len(to_install),
-        "total": len(to_install),
-        "info": "Done.",
-    }
-    task_progress_dict[task_id] = finished
-    return finished
+    return _update_progress(
+        progress=len(to_install),
+        total=len(to_install),
+        status="Done.",
+    )
 
 
 def install_vscode_extension(
@@ -307,7 +321,7 @@ def install_vscode_extension(
 def get_local_vscode_extensions() -> dict[str, str]:
     output = subprocess.run(
         (
-            get_code_command(),
+            get_vscode_executable_path() or get_code_command(),
             "--list-extensions",
             "--show-versions",
         ),
@@ -321,15 +335,10 @@ def get_local_vscode_extensions() -> dict[str, str]:
 
 def get_remote_vscode_extensions(
     remote: Remote | RemoteV2,
-) -> tuple[dict[str, str], str] | tuple[None, None]:
+    remote_code_server_executable: str,
+) -> dict[str, str]:
     """Returns the list of isntalled extensions and the path to the code-server
     executable."""
-    remote_code_server_executable = find_code_server_executable(
-        remote,
-        remote_vscode_server_dir="~/.vscode-server",
-    )
-    if not remote_code_server_executable:
-        return None, None
     remote_extensions = parse_vscode_extensions_versions(
         stripped_lines_of(
             remote.get_output(
@@ -339,7 +348,7 @@ def get_remote_vscode_extensions(
             )
         )
     )
-    return remote_extensions, remote_code_server_executable
+    return remote_extensions
 
 
 def extensions_to_install(
@@ -378,7 +387,7 @@ def extensions_to_install(
 
 
 def find_code_server_executable(
-    remote: Remote | RemoteV2, remote_vscode_server_dir: str
+    remote: Remote | RemoteV2, remote_vscode_server_dir: str = "~/.vscode-server"
 ) -> str | None:
     """Find the most recent `code-server` executable on the remote.
 
