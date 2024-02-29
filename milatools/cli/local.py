@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import socket
 import subprocess
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
@@ -96,6 +97,7 @@ def check_passwordless(host: str) -> bool:
     except (
         paramiko.ssh_exception.SSHException,
         paramiko.ssh_exception.NoValidConnectionsError,
+        socket.gaierror,
         # BUG: Also getting ValueError("q must be exactlu 160, 224, or 256 bits long")
         # with older versions of paramiko.
         # ValueError,
