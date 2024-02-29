@@ -77,6 +77,8 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
         assert result is task_results[i]
 
         print(f"------- After receiving output #{i}", flush=True)
+        # NOTE: Trying to capture the console output at different points in time, but it
+        # isn't working.
         # all_output += capsys.readouterr().out
         all_output += console.end_capture()
         console.begin_capture()
@@ -103,4 +105,5 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
     # longest task was programmed to take a known amount of time to run, so the
     # overall progress bar should have taken a max of ~ `max(task_lengths)` seconds.
     longtest_task_length = max(task_lengths)
-    assert longtest_task_length <= total_time_seconds <= longtest_task_length + 1
+    # note: somewhat arbitrary offset here, was sometimes failing in the CI with just 1.
+    assert longtest_task_length <= total_time_seconds <= longtest_task_length + 1.5
