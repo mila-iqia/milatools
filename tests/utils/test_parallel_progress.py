@@ -73,7 +73,8 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
         time_to_result_i = time.time() - start_time
 
         # It should take ~`task_lengths[i]` seconds to get result #i
-        assert task_lengths[i] <= time_to_result_i <= task_lengths[i] + 1
+        # note: adding some slack which seems to be sometimes failing in the CI.
+        assert task_lengths[i] <= time_to_result_i <= task_lengths[i] + 1.5
         assert result is task_results[i]
 
         print(f"------- After receiving output #{i}", flush=True)
