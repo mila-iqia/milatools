@@ -95,7 +95,10 @@ class RemoteV2:
                 f"Creating a reusable connection to the {self.hostname} cluster."
             )
             setup_connection_with_controlpath(
-                self.hostname, self.control_path, timeout=None
+                self.hostname,
+                self.control_path,
+                timeout=None,
+                display=False,
             )
         else:
             logger.info(f"Reusing an existing SSH socket at {self.control_path}.")
@@ -266,10 +269,11 @@ def setup_connection_with_controlpath(
             style="yellow",
         )
         if shutil.which("sshpass"):
-            console.log(
-                "If 2FA is enabled, you should now receive a push notification in the "
-                "Duo app. Confirm it to continue."
-            )
+            # console.log(
+            #     f"If 2FA is enabled on {cluster}, you should now receive a push "
+            #     "notification in the Duo app. Confirm it to continue."
+            #     style="yellow",
+            # )
             # Enter 1 with `sshpass` to go straight to the prompt on the phone.
             first_command_args = (
                 "sshpass",
@@ -293,7 +297,7 @@ def setup_connection_with_controlpath(
     logger.info(f"Making the first connection to {cluster}...")
     logger.debug(f"(local) $ {first_command_args}")
     if display:
-        console.log(f"({cluster}) $ {command}", style="green", _stack_offset=2)
+        console.log(f"({cluster}) $ {command}", style="green")
     try:
         first_connection_result = subprocess.run(
             first_command_args,
