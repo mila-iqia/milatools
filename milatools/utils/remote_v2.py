@@ -200,7 +200,9 @@ def get_controlpath_for(
     If `ssh_cache_dir` is not set, and the `ControlPath` option doesn't apply for that
     hostname, a `RuntimeError` is raised.
     """
-    assert ssh_config_path.exists()
+    if not ssh_config_path.exists():
+        raise MilatoolsUserError(f"SSH config file doesn't exist at {ssh_config_path}.")
+
     ssh_config = SSHConfig.from_path(str(ssh_config_path))
     values = ssh_config.lookup(cluster)
     if not (control_path := values.get("controlpath")):
