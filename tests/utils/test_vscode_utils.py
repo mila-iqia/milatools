@@ -313,6 +313,7 @@ def test_extensions_to_install(
             "~/vscode",
             False,
             marks=[
+                skip_if_on_github_CI,
                 requires_ssh_to_localhost,
                 requires_vscode,
             ],
