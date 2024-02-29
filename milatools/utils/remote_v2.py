@@ -16,6 +16,7 @@ from milatools.cli.utils import DRAC_CLUSTERS, MilatoolsUserError
 
 logger = get_logger(__name__)
 
+SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
 SSH_CACHE_DIR = Path.home() / ".cache" / "ssh"
 
 
@@ -183,7 +184,7 @@ def is_already_logged_in(cluster: str, also_run_command_to_check: bool = False) 
 
 def get_controlpath_for(
     cluster: str,
-    ssh_config_path: Path = Path.home() / ".ssh" / "config",
+    ssh_config_path: Path = SSH_CONFIG_FILE,
     ssh_cache_dir: Path | None = SSH_CACHE_DIR,
 ) -> Path:
     """Returns the control path to use for the given host using the ssh config.

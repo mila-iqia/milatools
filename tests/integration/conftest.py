@@ -9,9 +9,10 @@ import pytest
 
 from milatools.cli.remote import Remote
 from milatools.utils.remote_v2 import (
+    SSH_CONFIG_FILE,
     is_already_logged_in,
 )
-from tests.cli.common import in_github_CI, on_windows
+from tests.cli.common import in_github_CI
 
 logger = get_logger(__name__)
 JOB_NAME = "milatools_test"
@@ -42,7 +43,7 @@ def skip_if_not_already_logged_in(cluster: str) -> pytest.MarkDecorator:
     we only want to go through 2FA once.
     """
     return pytest.mark.skipif(
-        (in_github_CI and on_windows) or not is_already_logged_in(cluster),
+        not SSH_CONFIG_FILE.exists() or not is_already_logged_in(cluster),
         reason=(
             f"Logging into {cluster} might go through 2FA. It should be done "
             "in advance."
