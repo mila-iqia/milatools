@@ -16,6 +16,7 @@ import pytest
 from milatools.cli.remote import Remote, SlurmRemote
 from milatools.cli.utils import CLUSTERS
 
+from ..cli.common import on_windows
 from .conftest import JOB_NAME, MAX_JOB_DURATION, SLURM_CLUSTER, hangs_in_github_CI
 
 logger = get_logger(__name__)
@@ -261,6 +262,11 @@ def test_ensure_allocation(
     assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output
 
 
+@pytest.mark.xfail(
+    on_windows,
+    raises=PermissionError,
+    reason="BUG: Getting permission denied while reading a NamedTemporaryFile?",
+)
 @hangs_in_github_CI
 @requires_access_to_slurm_cluster
 def test_ensure_allocation_sbatch(login_node: Remote, sbatch_slurm_remote: SlurmRemote):
