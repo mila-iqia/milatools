@@ -62,7 +62,7 @@ requires_no_s_flag = pytest.mark.skipif(
     reason="Passing pytest's -s flag makes this test fail.",
 )
 on_windows = sys.platform == "win32"
-in_github_windows_ci = in_github_CI and os.environ.get("PLATFORM") == "windows-latest"
+in_github_windows_ci = in_github_CI and on_windows
 
 P = ParamSpec("P")
 
