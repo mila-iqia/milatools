@@ -7,7 +7,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterable, Sequence
 from logging import getLogger as get_logger
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from queue import Empty, Queue
 from typing import Literal, TextIO, overload
 
@@ -389,7 +389,7 @@ class Remote:
         return self.connection.put(src, dest)
 
     def puttext(self, text: str, dest: str) -> None:
-        base = Path(dest).parent
+        base = PurePosixPath(dest).parent
         self.simple_run(f"mkdir -p {base}")
         with tempfile.NamedTemporaryFile("w") as f:
             f.write(text)
@@ -466,10 +466,13 @@ class SlurmRemote(Remote):
 
     def srun_transform_persist(self, cmd: str) -> str:
         tag = time.time_ns()
-        home = self.home()
-
-        batch_file = str(Path(home) / f".milatools/batch/batch-{tag}.sh")
-        output_file = str(Path(home) / f".milatools/batch/out-{tag}.txt")
+        remote_home = self.home()
+        batch_file = str(
+            PurePosixPath(remote_home) / f".milatools/batch/batch-{tag}.sh"
+        )
+        output_file = str(
+            PurePosixPath(remote_home) / f".milatools/batch/out-{tag}.txt"
+        )
         batch = batch_template.format(
             command=cmd,
             output_file=output_file,
