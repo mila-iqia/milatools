@@ -21,6 +21,8 @@ if typing.TYPE_CHECKING:
 in_github_CI = all(var in os.environ for var in ["CI", "GITHUB_ACTION", "GITHUB_ENV"])
 """True if this is being run inside the GitHub CI."""
 
+in_self_hosted_github_CI = in_github_CI and os.environ.get("PLATFORM") == "self-hosted"
+
 skip_if_on_github_CI = pytest.mark.skipif(
     in_github_CI, reason="This test shouldn't run on the Github CI."
 )

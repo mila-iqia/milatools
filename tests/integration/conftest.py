@@ -9,13 +9,15 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.remote import Remote
-from tests.cli.common import in_github_CI
+from tests.cli.common import in_github_CI, in_self_hosted_github_CI
 
 logger = get_logger(__name__)
 JOB_NAME = "milatools_test"
 WCKEY = "milatools_test"
 
-SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila" if not in_github_CI else None)
+SLURM_CLUSTER = os.environ.get(
+    "SLURM_CLUSTER", "mila" if in_self_hosted_github_CI or not in_github_CI else None
+)
 """The name of the slurm cluster to use for tests.
 
 When running the tests on a dev machine, this defaults to the Mila cluster. Set to
