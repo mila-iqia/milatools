@@ -12,6 +12,7 @@ from typing import Literal
 from paramiko import SSHConfig
 
 from milatools.cli import console
+from milatools.cli.remote import Hide
 from milatools.cli.utils import DRAC_CLUSTERS, MilatoolsUserError
 
 logger = get_logger(__name__)
@@ -127,7 +128,7 @@ class RemoteV2:
         assert control_socket_is_running(self.hostname, self.control_path)
 
     def run(
-        self, command: str, display: bool = True, warn: bool = False, hide: bool = False
+        self, command: str, display: bool = True, warn: bool = False, hide: Hide = False
     ):
         assert self.control_path.exists()
         run_command = ssh_command(
@@ -142,14 +143,18 @@ class RemoteV2:
             console.log(f"({self.hostname}) $ {command}", style="green")
         result = subprocess.run(
             run_command,
-            capture_output=hide,
+            capture_output=True,
             check=not warn,
             text=True,
             bufsize=1,  # 1 means line buffered
         )
         if result.stdout:
+            if hide not in [True, "out", "stdout"]:
+                print(result.stdout)
             logger.debug(f"{result.stdout}")
         if result.stderr:
+            if hide not in [True, "err", "stderr"]:
+                print(result.stderr)
             logger.debug(f"{result.stderr}")
         return result
 
