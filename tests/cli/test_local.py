@@ -12,6 +12,12 @@ from .common import (
     output_tester,
     passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
+    in_self_hosted_github_CI,
+    output_tester,
+    passwordless_ssh_connection_to_localhost_is_setup,
+    requires_no_s_flag,
+    skip_if_on_github_CI,
+    skip_param_if_on_github_ci,
     xfails_on_windows,
 )
 
@@ -126,16 +132,31 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
     )
 
 
+re_enable_once_remotev2_is_used = pytest.mark.skipif(
+    in_self_hosted_github_CI,
+    reason="TODO: Might go through 2FA, re-enable once we use RemoteV2",
+)
+
+
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
         ("localhost", passwordless_ssh_connection_to_localhost_is_setup),
         ("blablabob@localhost", False),
-        ("mila", not in_github_CI),
+        pytest.param(
+            "mila",
+            not in_github_CI,
+            marks=pytest.mark.xfail(
+                reason="TODO: Paramiko SSH protocol banner issue...", strict=False
+            ),
+        ),
         pytest.param(
             "bobobobobobo@mila",
             False,
-            marks=paramiko_openssh_key_parsing_issue(),
+            marks=[
+                skip_if_on_github_CI,
+                paramiko_openssh_key_parsing_issue(),
+            ],
         ),
         # For the clusters with 2FA, we expect `check_passwordless` to return True if
         # we've already setup the shared SSH connection.
@@ -143,23 +164,18 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
             "blablabob@narval",
             False,
             marks=[
+                skip_if_on_github_CI,
                 paramiko_openssh_key_parsing_issue(),
             ],
         ),
         *(
-            pytest.param(
-                drac_cluster,
-                True,
-                marks=pytest.mark.skip(
-                    reason="TODO: Rework this, currently might wait for 2FA input.",
-                ),
-            )
+            pytest.param(drac_cluster, True, marks=re_enable_once_remotev2_is_used)
             for drac_cluster in ["narval", "beluga", "cedar", "graham"]
         ),
         pytest.param(
             "niagara",
             False,
-            marks=paramiko_openssh_key_parsing_issue(),
+            marks=[skip_if_on_github_CI, paramiko_openssh_key_parsing_issue()],
         ),  # SSH access isn't enabled by default.
     ],
 )

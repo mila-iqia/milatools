@@ -620,23 +620,6 @@ files = [
 ]
 
 [[package]]
-name = "isort"
-version = "5.11.5"
-description = "A Python utility / library to sort Python imports."
-optional = false
-python-versions = ">=3.7.0"
-files = [
-    {file = "isort-5.11.5-py3-none-any.whl", hash = "sha256:ba1d72fb2595a01c7895a5128f9585a5cc4b6d395f1c8d514989b9a7eb2a8746"},
-    {file = "isort-5.11.5.tar.gz", hash = "sha256:6be1f76a507cb2ecf16c7cf14a37e41609ca082330be4e3436a18ef74add55db"},
-]
-
-[package.extras]
-colors = ["colorama (>=0.4.3,<0.5.0)"]
-pipfile-deprecated-finder = ["pip-shims (>=0.5.2)", "pipreqs", "requirementslib"]
-plugins = ["setuptools"]
-requirements-deprecated-finder = ["pip-api", "pipreqs"]
-
-[[package]]
 name = "jinja2"
 version = "3.1.2"
 description = "A very fast and expressive template engine."
@@ -1046,6 +1029,23 @@ dataframe = ["numpy", "pandas"]
 dev = ["matplotlib", "mypy", "numpy", "pandas", "pillow", "pre-commit", "restructuredtext-lint", "tox"]
 image = ["numpy", "pillow"]
 num = ["numpy", "pandas"]
+
+[[package]]
+name = "pytest-skip-slow"
+version = "0.0.5"
+description = "A pytest plugin to skip `@pytest.mark.slow` tests by default."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pytest-skip-slow-0.0.5.tar.gz", hash = "sha256:655ea5c748c72947e0d302334e7fa8ef99929257a2a2bc928f630ddb5a161d88"},
+    {file = "pytest_skip_slow-0.0.5-py3-none-any.whl", hash = "sha256:e2f6401d6ed0db3be1402622a7b24f7df14f61ebd26feda808a0d45433d4d474"},
+]
+
+[package.dependencies]
+pytest = ">=6.2.0"
+
+[package.extras]
+test = ["tox"]
 
 [[package]]
 name = "pytest-socket"
@@ -1573,4 +1573,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "1207c3ea6d69edb9aa6d4dd898b130cd576381ca1f8e1daacebac1dcb600267d"
+content-hash = "ee3d9cbcbc70bc1585411a3ae62f2ec6d825a6d2493764e49ef36a710797ebbf"
