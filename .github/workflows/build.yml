@@ -128,7 +128,7 @@ jobs:
           poetry install --with=dev
 
       - name: Launch integration tests
-        run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -s -vvv --log-level=DEBUG
+        run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
         timeout-minutes: 3
         env:
           SLURM_CLUSTER: localhost
@@ -169,7 +169,7 @@ jobs:
           poetry install --with=dev
 
       - name: Launch integration tests
-        run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -s -vvv --log-level=DEBUG
+        run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
         timeout-minutes: 10
         env:
           SLURM_CLUSTER: mila
