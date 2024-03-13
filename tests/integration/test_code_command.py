@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 import time
 from datetime import timedelta
 from logging import getLogger as get_logger
@@ -17,6 +18,7 @@ from ..cli.common import in_github_CI, skip_param_if_on_github_ci
 from .conftest import (
     SLURM_CLUSTER,
     hangs_in_github_CI,
+    skip_if_not_already_logged_in,
     skip_param_if_not_already_logged_in,
 )
 from .test_slurm_remote import get_recent_jobs_info_dicts
@@ -31,7 +33,17 @@ logger = get_logger(__name__)
         skip_param_if_not_already_logged_in("narval"),
         skip_param_if_not_already_logged_in("beluga"),
         skip_param_if_not_already_logged_in("cedar"),
-        skip_param_if_not_already_logged_in("graham"),
+        pytest.param(
+            "graham",
+            marks=[
+                skip_if_not_already_logged_in("graham"),
+                pytest.mark.xfail(
+                    raises=subprocess.CalledProcessError,
+                    reason="Graham doesn't use a lustre filesystem for $HOME.",
+                    strict=True,
+                ),
+            ],
+        ),
         skip_param_if_not_already_logged_in("niagara"),
     ],
     indirect=True,
@@ -66,11 +78,12 @@ def test_check_disk_quota(
             ],
         ),
         skip_param_if_on_github_ci("mila"),
-        skip_param_if_not_already_logged_in("narval"),
-        skip_param_if_not_already_logged_in("beluga"),
-        skip_param_if_not_already_logged_in("cedar"),
-        skip_param_if_not_already_logged_in("graham"),
-        skip_param_if_not_already_logged_in("niagara"),
+        # TODO: Re-enable these tests once we make `code` work with RemoteV2
+        pytest.param("narval", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("beluga", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("cedar", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("graham", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("niagara", marks=pytest.mark.skip(reason="Goes through 2FA!")),
     ],
     indirect=True,
 )
