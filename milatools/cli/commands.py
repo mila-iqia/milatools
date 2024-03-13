@@ -579,7 +579,12 @@ def code(
     except Exception as exc:
         logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
-    if no_internet_on_compute_nodes(cluster):
+    if sys.platform == "win32":
+        print(
+            "Syncing vscode extensions in the background isn't supported on "
+            "Windows. Skipping."
+        )
+    elif no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
         run_in_the_background = False  # if "pytest" not in sys.modules else True
         print(
@@ -591,7 +596,8 @@ def code(
         if run_in_the_background:
             copy_vscode_extensions_process = make_process(
                 sync_vscode_extensions_in_parallel_with_hostnames,
-                # todo: use the mila cluster as the source? Or use `localhost`?
+                # todo: use the mila cluster as the source for vscode extensions? Or
+                # `localhost`?
                 source="localhost",
                 destinations=[cluster],
             )
@@ -1208,7 +1214,7 @@ def check_disk_quota(remote: Remote | RemoteV2) -> None:
 
     console.log(
         "Disk usage:",
-        Text(f"{used_gb:.1f} / {max_gb} GiB", style=disk_usage_style),
+        Text(f"{used_gb:.2f} / {max_gb:.2f} GiB", style=disk_usage_style),
         "and",
         Text(f"{used_files} / {max_files} files", style=num_files_style),
         markup=False,
