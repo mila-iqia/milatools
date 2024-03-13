@@ -7,6 +7,7 @@ import milatools.utils.remote_v2
 from milatools.utils.remote_v2 import (
     RemoteV2,
     UnsupportedPlatformError,
+    control_socket_is_running,
     get_controlpath_for,
     is_already_logged_in,
 )
@@ -79,3 +80,8 @@ def test_is_already_logged_in(
         == already_logged_in
         == get_controlpath_for(cluster).exists()
     )
+
+
+def test_controlsocket_is_running(cluster: str, already_logged_in: bool):
+    control_path = get_controlpath_for(cluster)
+    assert control_socket_is_running(cluster, control_path) == already_logged_in

@@ -67,6 +67,26 @@ def ssh_command(
     )
 
 
+def control_socket_is_running(host: str, control_path: Path) -> bool:
+    """Check whether the control socket at the given path is running."""
+    if not control_path.exists():
+        return False
+    result = subprocess.run(
+        ("ssh", "-O", "check", f"-oControlPath={control_path}", host),
+        shell=False,
+        text=True,
+        capture_output=True,
+    )
+    if (
+        result.returncode != 0
+        or not result.stderr
+        or not result.stderr.startswith("Master running")
+    ):
+        logger.debug(f"{control_path=} doesn't exist or isn't running: {result=}.")
+        return False
+    return True
+
+
 class RemoteV2:
     """Simpler Remote where commands are run in subprocesses sharing an SSH connection.
 
@@ -91,7 +111,7 @@ class RemoteV2:
         self.hostname = hostname
         self.control_path = control_path or get_controlpath_for(hostname)
 
-        if not self.control_path.exists():
+        if not control_socket_is_running(self.hostname, self.control_path):
             logger.info(
                 f"Creating a reusable connection to the {self.hostname} cluster."
             )
@@ -104,7 +124,7 @@ class RemoteV2:
         else:
             logger.info(f"Reusing an existing SSH socket at {self.control_path}.")
 
-        assert self.control_path.exists()
+        assert control_socket_is_running(self.hostname, self.control_path)
 
     def run(
         self, command: str, display: bool = True, warn: bool = False, hide: bool = False
@@ -163,19 +183,7 @@ def is_already_logged_in(cluster: str, also_run_command_to_check: bool = False) 
         logger.debug(f"ControlPath at {control_path} doesn't exist. Not logged in.")
         return False
 
-    result = subprocess.run(
-        ("ssh", "-O", "check", f"-oControlPath={control_path}", cluster),
-        shell=False,
-        text=True,
-        capture_output=True,
-    )
-    logger.debug(f"Result: {result}")
-    if (
-        result.returncode != 0
-        or not result.stderr
-        or not result.stderr.startswith("Master running")
-    ):
-        logger.debug(f"{control_path=} doesn't exist or isn't running: {result=}.")
+    if not control_socket_is_running(cluster, control_path):
         return False
     if not also_run_command_to_check:
         return True

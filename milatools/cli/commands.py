@@ -29,6 +29,7 @@ import rich.logging
 from typing_extensions import TypedDict
 
 from milatools.cli import console
+from milatools.utils.remote_v2 import RemoteV2
 from milatools.utils.vscode_utils import (
     get_code_command,
     # install_local_vscode_extensions_on_remote,
@@ -1169,7 +1170,7 @@ def _parse_lfs_quota_output(
     return (used_gb, max_gb), (used_files, max_files)
 
 
-def check_disk_quota(remote: Remote) -> None:
+def check_disk_quota(remote: Remote | RemoteV2) -> None:
     cluster = remote.hostname
 
     # NOTE: This is what the output of the command looks like on the Mila cluster:

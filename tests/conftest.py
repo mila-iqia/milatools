@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+import sys
 import time
 from collections.abc import Generator
 from logging import getLogger as get_logger
@@ -15,7 +16,6 @@ from fabric.connection import Connection
 from milatools.cli import console
 from milatools.cli.init_command import DRAC_CLUSTERS
 from milatools.cli.remote import Remote
-from milatools.cli.utils import cluster_to_connect_kwargs
 from milatools.utils.remote_v2 import (
     RemoteV2,
     get_controlpath_for,
@@ -115,7 +115,7 @@ def remote(mock_connection: Connection):
 
 
 @pytest.fixture(scope="function")
-def login_node(cluster: str) -> Remote:
+def login_node(cluster: str) -> Remote | RemoteV2:
     """Fixture that gives a Remote connected to the login node of a slurm cluster.
 
     NOTE: Making this a function-scoped fixture because the Connection object of the
@@ -126,13 +126,14 @@ def login_node(cluster: str) -> Remote:
     compute nodes because a previous test kept the same connection object while doing
     salloc (just in case that were to happen).
     """
-
-    return Remote(
-        cluster,
-        connection=Connection(
-            cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
-        ),
-    )
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+        pytest.skip(
+            f"Requires ssh access to the login node of the {cluster} cluster, and a "
+            "prior connection to the cluster."
+        )
+    if sys.platform == "win32":
+        return Remote(cluster)
+    return RemoteV2(cluster)
 
 
 @pytest.fixture(scope="session", params=[SLURM_CLUSTER])
