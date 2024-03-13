@@ -7,7 +7,7 @@ import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from paramiko import SSHConfig
 
@@ -157,6 +157,16 @@ class RemoteV2:
                 print(result.stderr)
             logger.debug(f"{result.stderr}")
         return result
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, type(self))
+            and other.hostname == self.hostname
+            and other.control_path == self.control_path
+        )
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(hostname={self.hostname!r}, control_path={str(self.control_path)})"
 
     def get_output(
         self,

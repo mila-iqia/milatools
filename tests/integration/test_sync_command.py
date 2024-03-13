@@ -66,23 +66,15 @@ def test_sync_vscode_extensions(
     ):
         mock_kwargs["wraps"] = wraps
         mock = _mock_type(*mock_args, **mock_kwargs)
-        monkeypatch.setattr(
-            importlib.import_module(wraps.__module__), wraps.__name__, mock
-        )
+        module = importlib.import_module(wraps.__module__)
+        monkeypatch.setattr(module, wraps.__name__, mock)
         return mock
 
-    mock_task_function = _mock_and_patch(
-        wraps=install_vscode_extensions_task_function,
-        # side_effect=functools.partial(
-        #     _install_vscode_extensions_task_function, verbose=True
-        # ),
-    )
+    mock_task_function = _mock_and_patch(wraps=install_vscode_extensions_task_function)
     # Make it so we only need to install this particular extension.
-    # missing_extensions = {}
-    _mock_extensions_to_install = _mock_and_patch(
+    mock_extensions_to_install = _mock_and_patch(
         wraps=extensions_to_install, return_value={"ms-python.python": "v2024.0.1"}
     )
-
     mock_find_code_server_executable = _mock_and_patch(
         wraps=find_code_server_executable,
     )
@@ -93,5 +85,20 @@ def test_sync_vscode_extensions(
     )
 
     mock_task_function.assert_called_once()
-    _mock_extensions_to_install.assert_called_once()
-    mock_find_code_server_executable.assert_called_once()
+    mock_extensions_to_install.assert_called_once()
+    if source == "localhost":
+        mock_find_code_server_executable.assert_called_once_with(
+            RemoteV2(dest), remote_vscode_server_dir="~/.vscode-server"
+        )
+    elif dest == "localhost":
+        mock_find_code_server_executable.assert_called_once_with(
+            RemoteV2(source), remote_vscode_server_dir="~/.vscode-server"
+        )
+    else:
+        assert len(mock_find_code_server_executable.mock_calls) == 2
+        mock_find_code_server_executable.assert_any_call(
+            RemoteV2(source), remote_vscode_server_dir="~/.vscode-server"
+        )
+        mock_find_code_server_executable.assert_any_call(
+            RemoteV2(dest), remote_vscode_server_dir="~/.vscode-server"
+        )
