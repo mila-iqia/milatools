@@ -38,6 +38,11 @@ hangs_in_github_CI = pytest.mark.skipif(
 @pytest.fixture(scope="session", autouse=True)
 def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
     # Note: need to recreate this because login_node is a function-scoped fixture.
+    if cluster not in ["localhost", "mila"]:
+        # TODO: Remove this once we use RemoteV2 here.
+        pytest.skip(
+            reason="Skipping because this cluster might have us go through 2FA!"
+        )
     login_node = Remote(cluster)
     logger.info(
         f"Cancelling milatools test jobs on {cluster} before running integration tests."
