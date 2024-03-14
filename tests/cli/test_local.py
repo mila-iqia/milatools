@@ -8,9 +8,11 @@ from pytest_regressions.file_regression import FileRegressionFixture
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
 
 from .common import (
+    in_self_hosted_github_CI,
     output_tester,
     passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
+    skip_if_on_github_CI,
     skip_param_if_on_github_ci,
     xfails_on_windows,
 )
@@ -110,6 +112,12 @@ def test_popen(
     )
 
 
+re_enable_once_remotev2_is_used = pytest.mark.skipif(
+    in_self_hosted_github_CI,
+    reason="TODO: Might go through 2FA, re-enable once we use RemoteV2",
+)
+
+
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
@@ -117,12 +125,36 @@ def test_popen(
         ("blablabob@localhost", False),
         skip_param_if_on_github_ci("mila", True),
         skip_param_if_on_github_ci("bobobobobobo@mila", False),
-        skip_param_if_on_github_ci("narval", True),
-        skip_param_if_on_github_ci("blablabob@narval", False),
-        skip_param_if_on_github_ci("beluga", True),
-        skip_param_if_on_github_ci("cedar", True),
-        skip_param_if_on_github_ci("graham", True),
-        skip_param_if_on_github_ci("niagara", False),  # Not enabled by default.
+        pytest.param(
+            "narval",
+            True,
+            marks=[skip_if_on_github_CI, re_enable_once_remotev2_is_used],
+        ),
+        pytest.param(
+            "blablabob@narval",
+            False,
+            marks=[skip_if_on_github_CI, re_enable_once_remotev2_is_used],
+        ),
+        pytest.param(
+            "beluga",
+            True,
+            marks=[skip_if_on_github_CI, re_enable_once_remotev2_is_used],
+        ),
+        pytest.param(
+            "cedar",
+            True,
+            marks=[skip_if_on_github_CI, re_enable_once_remotev2_is_used],
+        ),
+        pytest.param(
+            "graham",
+            True,
+            marks=[skip_if_on_github_CI, re_enable_once_remotev2_is_used],
+        ),
+        pytest.param(
+            "niagara",
+            False,  # Not enabled by default.
+            marks=[skip_if_on_github_CI, re_enable_once_remotev2_is_used],
+        ),
     ],
 )
 def test_check_passwordless(hostname: str, expected: bool):

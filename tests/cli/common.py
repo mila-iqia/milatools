@@ -16,13 +16,19 @@ from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
 if typing.TYPE_CHECKING:
-    from typing import TypeGuard
+    from typing_extensions import TypeGuard
 
-in_github_CI = all(var in os.environ for var in ["CI", "GITHUB_ACTION", "GITHUB_ENV"])
+in_github_CI = os.environ.get("GITHUB_ACTIONS") == "true"
 """True if this is being run inside the GitHub CI."""
 
+# See https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables
+in_self_hosted_github_CI = (
+    in_github_CI and os.environ.get("GITHUB_ACTION") == "self_hosted_integration_tests"
+)
+
 skip_if_on_github_CI = pytest.mark.skipif(
-    in_github_CI, reason="This test shouldn't run on the Github CI."
+    in_github_CI and not in_self_hosted_github_CI,
+    reason="This test shouldn't run on the Github CI.",
 )
 skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_github_CI)
 

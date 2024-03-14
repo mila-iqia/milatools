@@ -9,13 +9,15 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.remote import Remote
-from tests.cli.common import in_github_CI
+from tests.cli.common import in_github_CI, in_self_hosted_github_CI
 
 logger = get_logger(__name__)
 JOB_NAME = "milatools_test"
 WCKEY = "milatools_test"
 
-SLURM_CLUSTER = os.environ.get("SLURM_CLUSTER", "mila" if not in_github_CI else None)
+SLURM_CLUSTER = os.environ.get(
+    "SLURM_CLUSTER", "mila" if in_self_hosted_github_CI or not in_github_CI else None
+)
 """The name of the slurm cluster to use for tests.
 
 When running the tests on a dev machine, this defaults to the Mila cluster. Set to
@@ -36,6 +38,11 @@ hangs_in_github_CI = pytest.mark.skipif(
 @pytest.fixture(scope="session", autouse=True)
 def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
     # Note: need to recreate this because login_node is a function-scoped fixture.
+    if cluster not in ["localhost", "mila"]:
+        # TODO: Remove this once we use RemoteV2 here.
+        pytest.skip(
+            reason="Skipping because this cluster might have us go through 2FA!"
+        )
     login_node = Remote(cluster)
     logger.info(
         f"Cancelling milatools test jobs on {cluster} before running integration tests."
