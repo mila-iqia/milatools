@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shlex
+import socket
 import subprocess
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
@@ -9,7 +11,7 @@ import fabric
 import paramiko.ssh_exception
 from typing_extensions import deprecated
 
-from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs, shjoin
+from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs
 
 logger = get_logger(__name__)
 
@@ -34,8 +36,10 @@ class Local:
         capture_output: bool = False,
         timeout: float | None = None,
         check: bool = False,
+        display_command: bool = True,
     ) -> CompletedProcess[str]:
-        display(cmd)
+        if display_command:
+            display(cmd)
         try:
             return subprocess.run(
                 cmd,
@@ -70,7 +74,7 @@ def display(split_command: list[str] | tuple[str, ...] | str) -> None:
     if isinstance(split_command, str):
         command = split_command
     else:
-        command = shjoin(split_command)
+        command = shlex.join(split_command)
     print(T.bold_green("(local) $ ", command))
 
 
@@ -93,6 +97,10 @@ def check_passwordless(host: str) -> bool:
     except (
         paramiko.ssh_exception.SSHException,
         paramiko.ssh_exception.NoValidConnectionsError,
+        socket.gaierror,
+        # BUG: Also getting ValueError("q must be exactlu 160, 224, or 256 bits long")
+        # with older versions of paramiko.
+        # ValueError,
     ) as err:
         logger.debug(f"Unable to connect to {host} without a password: {err}")
         return False

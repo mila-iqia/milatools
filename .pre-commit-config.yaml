@@ -40,11 +40,11 @@ repos:
     hooks:
       # Run the linter.
       - id: ruff
-        args: ['--line-length', '88', "--select", "I,UP", '--fix']
+        args: ['--fix']
         require_serial: true
       # Run the formatter.
       - id: ruff-format
-        args: ['--line-length', '88']
+        args: []
 
   # python docstring formatting
   - repo: https://github.com/myint/docformatter

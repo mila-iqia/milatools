@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 import time
 from datetime import timedelta
 from logging import getLogger as get_logger
@@ -11,9 +12,15 @@ import pytest
 from milatools.cli.commands import check_disk_quota, code
 from milatools.cli.remote import Remote
 from milatools.cli.utils import get_fully_qualified_hostname_of_compute_node
+from milatools.utils.remote_v2 import RemoteV2
 
 from ..cli.common import in_github_CI, skip_param_if_on_github_ci
-from .conftest import SLURM_CLUSTER, hangs_in_github_CI
+from .conftest import (
+    SLURM_CLUSTER,
+    hangs_in_github_CI,
+    skip_if_not_already_logged_in,
+    skip_param_if_not_already_logged_in,
+)
 from .test_slurm_remote import get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
@@ -23,16 +30,26 @@ logger = get_logger(__name__)
     "cluster",
     [
         skip_param_if_on_github_ci("mila"),
-        skip_param_if_on_github_ci("narval"),
-        skip_param_if_on_github_ci("beluga"),
-        skip_param_if_on_github_ci("cedar"),
-        skip_param_if_on_github_ci("graham"),
-        skip_param_if_on_github_ci("niagara"),
+        skip_param_if_not_already_logged_in("narval"),
+        skip_param_if_not_already_logged_in("beluga"),
+        skip_param_if_not_already_logged_in("cedar"),
+        pytest.param(
+            "graham",
+            marks=[
+                skip_if_not_already_logged_in("graham"),
+                pytest.mark.xfail(
+                    raises=subprocess.CalledProcessError,
+                    reason="Graham doesn't use a lustre filesystem for $HOME.",
+                    strict=True,
+                ),
+            ],
+        ),
+        skip_param_if_not_already_logged_in("niagara"),
     ],
     indirect=True,
 )
 def test_check_disk_quota(
-    login_node: Remote,
+    login_node: Remote | RemoteV2,
     capsys: pytest.LogCaptureFixture,
     caplog: pytest.LogCaptureFixture,
 ):  # noqa: F811
@@ -61,22 +78,23 @@ def test_check_disk_quota(
             ],
         ),
         skip_param_if_on_github_ci("mila"),
-        skip_param_if_on_github_ci("narval"),
-        skip_param_if_on_github_ci("beluga"),
-        skip_param_if_on_github_ci("cedar"),
-        skip_param_if_on_github_ci("graham"),
-        skip_param_if_on_github_ci("niagara"),
+        # TODO: Re-enable these tests once we make `code` work with RemoteV2
+        pytest.param("narval", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("beluga", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("cedar", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("graham", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        pytest.param("niagara", marks=pytest.mark.skip(reason="Goes through 2FA!")),
     ],
     indirect=True,
 )
 @pytest.mark.parametrize("persist", [True, False])
 def test_code(
-    login_node: Remote,
+    login_node: Remote | RemoteV2,
     persist: bool,
     capsys: pytest.CaptureFixture,
     allocation_flags: list[str],
 ):
-    home = login_node.home()
+    home = login_node.run("echo $HOME", display=False, hide=True).stdout.strip()
     scratch = login_node.get_output("echo $SCRATCH")
     relative_path = "bob"
     code(

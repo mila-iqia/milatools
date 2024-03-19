@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
+import shlex
 import socket
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Sequence
-from pathlib import Path
+from logging import getLogger as get_logger
+from pathlib import Path, PurePosixPath
 from queue import Empty, Queue
 from typing import Literal, TextIO, overload
 
@@ -24,9 +26,9 @@ from .utils import (
     cluster_to_connect_kwargs,
     control_file_var,
     here,
-    shjoin,
 )
 
+logger = get_logger(__name__)
 batch_template = """#!/bin/bash
 #SBATCH --output={output_file}
 #SBATCH --ntasks=1
@@ -125,6 +127,8 @@ class Remote:
                     _connect_kwargs = (_connect_kwargs or {}).copy()
                     _connect_kwargs.update(connect_kwargs)
 
+                logger.info(f"Opening a new connection to {hostname}")
+                logger.debug(f"Connection kwargs: {_connect_kwargs}")
                 connection = Connection(hostname, connect_kwargs=_connect_kwargs)
                 if keepalive:
                     connection.open()
@@ -156,7 +160,7 @@ class Remote:
         return self.wrap(f"source {profile} && {{}}")
 
     def with_bash(self) -> Self:
-        return self.with_transforms(lambda cmd: shjoin(["bash", "-c", cmd]))
+        return self.with_transforms(lambda cmd: shlex.join(["bash", "-c", cmd]))
 
     def display(self, cmd: str) -> None:
         print(T.bold_cyan(f"({self.hostname}) $ ", cmd))
@@ -378,18 +382,23 @@ class Remote:
         promise.join()
         return runner, results
 
-    def get(self, src: str, dest: str | None) -> fabric.transfer.Result:
-        return self.connection.get(src, dest)
+    def get(
+        self, remote: PurePosixPath | str, local: str | None
+    ) -> fabric.transfer.Result:
+        return self.connection.get(remote, local)
 
-    def put(self, src: str | Path, dest: str) -> fabric.transfer.Result:
-        return self.connection.put(src, dest)
+    def put(
+        self, local: str | Path, remote: PurePosixPath | str
+    ) -> fabric.transfer.Result:
+        return self.connection.put(local, str(remote))
 
-    def puttext(self, text: str, dest: str) -> None:
-        base = Path(dest).parent
+    def puttext(self, text: str, dest: PurePosixPath | str) -> None:
+        base = PurePosixPath(dest).parent
         self.simple_run(f"mkdir -p {base}")
         with tempfile.NamedTemporaryFile("w") as f:
             f.write(text)
             f.flush()
+            # BUG: Getting permission denied errors here on Windows!
             self.put(f.name, dest)
 
     def home(self) -> str:
@@ -416,7 +425,7 @@ class Remote:
         print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
         self.simple_run(f"mkdir -p {base}")
         self.put(here / name, dest)
-        return self.run(shjoin([dest, *args]), **kwargs)
+        return self.run(shlex.join([dest, *args]), **kwargs)
 
     @deprecated(
         "Seems to be unused, so we'll remove it. Don't start using it.", category=None
@@ -434,7 +443,7 @@ class Remote:
         print(T.bold_cyan(f"({self.hostname}) WRITE ", dest))
         self.simple_run(f"mkdir -p {base}")
         self.put(here / name, dest)
-        return self.extract(shjoin([dest, *args]), pattern=pattern, **kwargs)
+        return self.extract(shlex.join([dest, *args]), pattern=pattern, **kwargs)
 
 
 class SlurmRemote(Remote):
@@ -458,14 +467,13 @@ class SlurmRemote(Remote):
         )
 
     def srun_transform(self, cmd: str) -> str:
-        return shjoin(["srun", *self.alloc, "bash", "-c", cmd])
+        return shlex.join(["srun", *self.alloc, "bash", "-c", cmd])
 
     def srun_transform_persist(self, cmd: str) -> str:
         tag = time.time_ns()
-        home = self.home()
-
-        batch_file = str(Path(home) / f".milatools/batch/batch-{tag}.sh")
-        output_file = str(Path(home) / f".milatools/batch/out-{tag}.txt")
+        remote_home = self.home()
+        batch_file = PurePosixPath(remote_home) / f".milatools/batch/batch-{tag}.sh"
+        output_file = PurePosixPath(remote_home) / f".milatools/batch/out-{tag}.txt"
         batch = batch_template.format(
             command=cmd,
             output_file=output_file,
@@ -473,7 +481,7 @@ class SlurmRemote(Remote):
         )
         self.puttext(text=batch, dest=batch_file)
         self.simple_run(f"chmod +x {batch_file}")
-        cmd = shjoin(["sbatch", *self.alloc, batch_file])
+        cmd = shlex.join(["sbatch", *self.alloc, str(batch_file)])
 
         # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
         if self.connection.host in DRAC_CLUSTERS:
@@ -526,7 +534,7 @@ class SlurmRemote(Remote):
             }, login_node_runner
         else:
             remote = Remote(hostname=self.hostname, connection=self.connection)
-            command = shjoin(["salloc", *self.alloc])
+            command = shlex.join(["salloc", *self.alloc])
             # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or
             # /projects before submitting a job.
             if self.connection.host in DRAC_CLUSTERS:

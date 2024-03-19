@@ -1305,16 +1305,6 @@ def test_setup_passwordless_ssh_access(
 
 
 @pytest.fixture()
-def cluster(request: pytest.FixtureRequest) -> str:
-    cluster_name: str | None = getattr(
-        request, "param", os.environ.get("SLURM_CLUSTER", None)
-    )
-    if not cluster_name:
-        pytest.skip(reason="Need a real slurm cluster to be specified")
-    return cluster_name
-
-
-@pytest.fixture()
 def authorized_keys_backup(cluster: str):
     """Fixture used to backup the authorized_keys file on the remote and restore it
     after tests."""

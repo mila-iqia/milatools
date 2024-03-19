@@ -5,7 +5,6 @@ import functools
 import itertools
 import multiprocessing
 import random
-import shlex
 import shutil
 import socket
 import subprocess
@@ -15,7 +14,7 @@ import warnings
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Literal, Union, get_args
+from typing import Any, Literal, TypeVar, Union, get_args
 
 import blessed
 import paramiko
@@ -184,12 +183,6 @@ def askpath(prompt: str, remote: Remote) -> str:
         return pth
 
 
-# This is the implementation of shlex.join in Python >= 3.8
-def shjoin(split_command: Iterable[str]) -> str:
-    """Return a shell-escaped string from *split_command*."""
-    return " ".join(shlex.quote(arg) for arg in split_command)
-
-
 class SSHConfig:
     """Wrapper around sshconf with some extra niceties."""
 
@@ -310,3 +303,45 @@ def make_process(
 def currently_in_a_test() -> bool:
     """Returns True during unit tests (pytest) and False during normal execution."""
     return "pytest" in sys.modules
+
+
+V = TypeVar("V")
+
+
+def batched(
+    iterable: Iterable[V], n: int, droplast: bool = False
+) -> Iterable[tuple[V, ...]]:
+    """Yield successive n-sized chunks from iterable.
+
+    if `droplast` is True, the last batch will be dropped if it's not full.
+
+    >>> list(batched('ABCDEFG', 3))
+    [('A', 'B', 'C'), ('D', 'E', 'F'), ('G',)]
+    >>> list(batched('ABCDEFG', 3, droplast=True))
+    [('A', 'B', 'C'), ('D', 'E', 'F')]
+    """
+    if sys.version_info >= (3, 12) and not droplast:
+        return itertools.batched(iterable, n)
+    if n < 1:
+        raise ValueError("n must be at least one")
+    it = iter(iterable)
+    while batch := tuple(itertools.islice(it, n)):
+        if len(batch) < n and droplast:
+            break
+        yield batch
+
+
+def stripped_lines_of(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines()]
+
+
+if sys.version_info < (3, 9):
+
+    def removesuffix(s: str, suffix: str) -> str:
+        """Backport of `str.removesuffix` for Python<3.9."""
+        if s.endswith(suffix):
+            return s[: -len(suffix)]
+        else:
+            return s
+else:
+    removesuffix = str.removesuffix

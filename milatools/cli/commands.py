@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import logging
 import operator
-import os
 import re
 import shutil
 import socket
@@ -16,9 +15,8 @@ import sys
 import time
 import traceback
 import typing
-import warnings
 import webbrowser
-from argparse import ArgumentParser, _HelpAction
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _HelpAction
 from collections.abc import Sequence
 from contextlib import ExitStack
 from logging import getLogger as get_logger
@@ -30,9 +28,16 @@ import questionary as qn
 import rich.logging
 from typing_extensions import TypedDict
 
-from milatools.cli.vscode_utils import copy_vscode_extensions_to_remote
+from milatools.cli import console
+from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.vscode_utils import (
+    get_code_command,
+    # install_local_vscode_extensions_on_remote,
+    sync_vscode_extensions,
+    sync_vscode_extensions_with_hostnames,
+)
 
-from ..version import version as mversion
+from ..__version__ import __version__
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -91,9 +96,9 @@ def main():
         print(T.red(traceback.format_exc()), file=sys.stderr)
         command = sys.argv[1] if len(sys.argv) > 1 else None
         options = {
-            "labels": ",".join([command, mversion] if command else [mversion]),
+            "labels": ",".join([command, __version__] if command else [__version__]),
             "template": "bug_report.md",
-            "title": f"[v{mversion}] Issue running the command "
+            "title": f"[v{__version__}] Issue running the command "
             + (f"`mila {command}`" if command else "`mila`"),
         }
         github_issue_url = (
@@ -125,7 +130,7 @@ def mila():
     parser.add_argument(
         "--version",
         action="version",
-        version=f"milatools v{mversion}",
+        version=f"milatools v{__version__}",
         help="Milatools version",
     )
     parser.add_argument(
@@ -210,7 +215,7 @@ def mila():
     )
     code_parser.add_argument(
         "--command",
-        default=os.environ.get("MILATOOLS_CODE_COMMAND", "code"),
+        default=get_code_command(),
         help=(
             "Command to use to start vscode\n"
             '(defaults to "code" or the value of $MILATOOLS_CODE_COMMAND)'
@@ -237,6 +242,45 @@ def mila():
         help="Whether the server should persist or not",
     )
     code_parser.set_defaults(function=code)
+
+    # ----- mila sync vscode-extensions ------
+
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Various commands used to synchronize things between the the local machine and remote clusters.",
+        formatter_class=SortingHelpFormatter,
+    )
+    sync_subparsers = sync_parser.add_subparsers(
+        dest="<sync_subcommand>", required=True
+    )
+    sync_vscode_parser = sync_subparsers.add_parser(
+        "vscode-extensions",
+        help="Sync vscode extensions between a source and one or more target machines.",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+    )
+    sync_vscode_parser.add_argument(
+        "--source",
+        type=str,
+        default="localhost",
+        help=(
+            "Source machine whose vscode extensions should be installed on all "
+            "machines in `destinations`. This can either be a local machine or a "
+            "remote cluster. Defaults to 'localhost', assuming that your local editor "
+            "has the extensions you want to have on other machines."
+        ),
+    )
+    sync_vscode_parser.add_argument(
+        "--destinations",
+        type=str,
+        default=CLUSTERS,
+        nargs="+",
+        help=(
+            "hostnames of target machines on which vscode extensions from `source` "
+            "should be installed. These can also include 'localhost' to install remote "
+            "extensions locally. Defaults to all the available SLURM clusters."
+        ),
+    )
+    sync_vscode_parser.set_defaults(function=sync_vscode_extensions_with_hostnames)
 
     # ----- mila serve ------
 
@@ -378,6 +422,7 @@ def mila():
     function = args_dict.pop("function")
     _ = args_dict.pop("<command>")
     _ = args_dict.pop("<serve_subcommand>", None)
+    _ = args_dict.pop("<sync_subcommand>", None)
     setup_logging(verbose)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
@@ -513,19 +558,17 @@ def code(
 
     if cluster != "mila" and job is None and node is None:
         if not any("--account" in flag for flag in alloc):
-            warnings.warn(
-                T.orange(
-                    "Warning: When using the DRAC clusters, you usually need to "
-                    "specify the account to use when submitting a job. You can specify "
-                    "this in the job resources with `--alloc`, like so: "
-                    "`--alloc --account=<account_to_use>`, for example:\n"
-                    f"mila code {path} --cluster {cluster} --alloc "
-                    f"--account=your-account-here"
-                )
+            logger.warning(
+                "Warning: When using the DRAC clusters, you usually need to "
+                "specify the account to use when submitting a job. You can specify "
+                "this in the job resources with `--alloc`, like so: "
+                "`--alloc --account=<account_to_use>`, for example:\n"
+                f"mila code {path} --cluster {cluster} --alloc "
+                f"--account=your-account-here"
             )
 
     if command is None:
-        command = os.environ.get("MILATOOLS_CODE_COMMAND", "code")
+        command = get_code_command()
 
     try:
         check_disk_quota(remote)
@@ -534,29 +577,34 @@ def code(
     except Exception as exc:
         logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
 
-    vscode_extensions_folder = Path.home() / ".vscode/extensions"
-    if vscode_extensions_folder.exists() and no_internet_on_compute_nodes(cluster):
-        # Sync the VsCode extensions from the local machine over to the target cluster.
+    if sys.platform == "win32":
         print(
-            T.bold_cyan(
-                f"Copying VSCode extensions from local machine to {cluster} in the "
-                f"background..."
+            "Syncing vscode extensions in the background isn't supported on "
+            "Windows. Skipping."
+        )
+    elif no_internet_on_compute_nodes(cluster):
+        # Sync the VsCode extensions from the local machine over to the target cluster.
+        run_in_the_background = False  # if "pytest" not in sys.modules else True
+        print(
+            console.log(
+                f"[cyan]Installing VSCode extensions that are on the local machine on "
+                f"{cluster}" + (" in the background." if run_in_the_background else ".")
             )
         )
-        # Async:
-        copy_vscode_extensions_process = make_process(
-            copy_vscode_extensions_to_remote,
-            cluster,
-            vscode_extensions_folder,
-        )
-        copy_vscode_extensions_process.start()
-
-        # Sync:
-        # copy_vscode_extensions_to_remote(
-        #     cluster,
-        #     local_vscode_extensions_dir=vscode_extensions_folder,
-        #     remote=remote,
-        # )
+        if run_in_the_background:
+            copy_vscode_extensions_process = make_process(
+                sync_vscode_extensions_with_hostnames,
+                # todo: use the mila cluster as the source for vscode extensions? Or
+                # `localhost`?
+                source="localhost",
+                destinations=[cluster],
+            )
+            copy_vscode_extensions_process.start()
+        else:
+            sync_vscode_extensions(
+                Local(),
+                [cluster],
+            )
 
     if node is None:
         cnode = _find_allocation(
@@ -1126,7 +1174,7 @@ def _parse_lfs_quota_output(
     return (used_gb, max_gb), (used_files, max_files)
 
 
-def check_disk_quota(remote: Remote) -> None:
+def check_disk_quota(remote: Remote | RemoteV2) -> None:
     cluster = remote.hostname
 
     # NOTE: This is what the output of the command looks like on the Mila cluster:
@@ -1144,7 +1192,7 @@ def check_disk_quota(remote: Remote) -> None:
         logger.debug("Cluster doesn't have the lfs command. Skipping check.")
         return
 
-    logger.debug("Checking disk quota on $HOME...")
+    console.log("Checking disk quota on $HOME...")
 
     home_disk_quota_output = remote.get_output("lfs quota -u $USER $HOME", hide=True)
     if "not on a mounted Lustre filesystem" in home_disk_quota_output:
@@ -1154,8 +1202,20 @@ def check_disk_quota(remote: Remote) -> None:
     (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
         home_disk_quota_output
     )
-    logger.debug(
-        f"Disk usage: {used_gb:.1f} / {max_gb} GiB and {used_files} / {max_files} files"
+
+    def get_colour(used: float, max: float) -> str:
+        return "red" if used >= max else "orange" if used / max > 0.7 else "green"
+
+    disk_usage_style = get_colour(used_gb, max_gb)
+    num_files_style = get_colour(used_files, max_files)
+    from rich.text import Text
+
+    console.log(
+        "Disk usage:",
+        Text(f"{used_gb:.2f} / {max_gb:.2f} GiB", style=disk_usage_style),
+        "and",
+        Text(f"{used_files} / {max_files} files", style=num_files_style),
+        markup=False,
     )
     size_ratio = used_gb / max_gb
     files_ratio = used_files / max_files

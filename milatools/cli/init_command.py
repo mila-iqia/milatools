@@ -15,13 +15,13 @@ from typing import Any
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 
-from .local import Local, check_passwordless, display
-from .remote import Remote
-from .utils import SSHConfig, T, running_inside_WSL, yn
-from .vscode_utils import (
+from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
+from .local import Local, check_passwordless, display
+from .remote import Remote
+from .utils import SSHConfig, T, running_inside_WSL, yn
 
 logger = get_logger(__name__)
 
@@ -296,6 +296,7 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
+    # TODO: This will fail for clusters with 2FA.
     if check_passwordless(cluster):
         logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
         return True

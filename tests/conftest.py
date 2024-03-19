@@ -1,16 +1,29 @@
 from __future__ import annotations
 
+import contextlib
+import shutil
+import sys
+import time
 from collections.abc import Generator
+from logging import getLogger as get_logger
+from pathlib import Path
 from unittest.mock import Mock
 
 import paramiko.ssh_exception
 import pytest
 from fabric.connection import Connection
 
+from milatools.cli import console
+from milatools.cli.init_command import DRAC_CLUSTERS
 from milatools.cli.remote import Remote
-from milatools.cli.utils import cluster_to_connect_kwargs
+from milatools.utils.remote_v2 import (
+    RemoteV2,
+    get_controlpath_for,
+    is_already_logged_in,
+)
 from tests.integration.conftest import SLURM_CLUSTER
 
+logger = get_logger(__name__)
 passwordless_ssh_connection_to_localhost_is_setup = False
 
 try:
@@ -102,7 +115,7 @@ def remote(mock_connection: Connection):
 
 
 @pytest.fixture(scope="function")
-def login_node(cluster: str) -> Remote:
+def login_node(cluster: str) -> Remote | RemoteV2:
     """Fixture that gives a Remote connected to the login node of a slurm cluster.
 
     NOTE: Making this a function-scoped fixture because the Connection object of the
@@ -113,13 +126,14 @@ def login_node(cluster: str) -> Remote:
     compute nodes because a previous test kept the same connection object while doing
     salloc (just in case that were to happen).
     """
-
-    return Remote(
-        cluster,
-        connection=Connection(
-            cluster, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
-        ),
-    )
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+        pytest.skip(
+            f"Requires ssh access to the login node of the {cluster} cluster, and a "
+            "prior connection to the cluster."
+        )
+    if sys.platform == "win32":
+        return Remote(cluster)
+    return RemoteV2(cluster)
 
 
 @pytest.fixture(scope="session", params=[SLURM_CLUSTER])
@@ -134,8 +148,105 @@ def cluster(request: pytest.FixtureRequest) -> str:
         ...  # here the remote is connected to the cluster specified above!
     ```
     """
+
     slurm_cluster_hostname = request.param
 
     if not slurm_cluster_hostname:
         pytest.skip("Requires ssh access to a SLURM cluster.")
+
+    # TODO: Re-enable this, but only on tests that say that they run jobs on the
+    # cluster.
+    # with cancel_all_milatools_jobs_before_and_after_tests(slurm_cluster_hostname):
     return slurm_cluster_hostname
+
+
+@contextlib.contextmanager
+def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
+    login_node = Remote(cluster)
+    from .integration.conftest import WCKEY
+
+    logger.info(
+        f"Cancelling milatools test jobs on {cluster} before running integration tests."
+    )
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
+    time.sleep(1)
+    # Note: need to recreate this because login_node is a function-scoped fixture.
+    yield
+    logger.info(
+        f"Cancelling milatools test jobs on {cluster} after running integration tests."
+    )
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
+    time.sleep(1)
+    # Display the output of squeue just to be sure that the jobs were cancelled.
+    logger.info(f"Checking that all jobs have been cancelked on {cluster}...")
+    login_node._run("squeue --me", echo=True, in_stream=False)
+
+
+@pytest.fixture(
+    scope="session", params=[True, False], ids=["already_logged_in", "not_logged_in"]
+)
+def already_logged_in(
+    cluster: str,
+    request: pytest.FixtureRequest,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[bool, None, None]:
+    # TODO: Make a fixture that goes through 2FA on all the DRAC clusters, then runs
+    # all integration tests with and without existing connections already setup.
+    # saves those controlpaths (by moving them?) into a temp directory of some sort,
+    # then runs all the integration tests with "no initial connection", then runs them
+    # again with the controlpaths at the right place again connections to the DRAC cluster, then, go through 2FA on the clusters
+    should_already_be_logged_in_during_tests = request.param
+    assert isinstance(should_already_be_logged_in_during_tests, bool)
+
+    logged_in_before_tests = is_already_logged_in(cluster)
+    control_path = get_controlpath_for(cluster)
+    if logged_in_before_tests and should_already_be_logged_in_during_tests:
+        # All good.
+        console.log(f"Reusing an existing connection to {cluster} in tests.")
+        yield True
+        return
+
+    if not logged_in_before_tests and not should_already_be_logged_in_during_tests:
+        # All good.
+        console.log(
+            f"No prior connection to {cluster} before running tests, as desired."
+        )
+        yield False
+        return
+
+    if not logged_in_before_tests and should_already_be_logged_in_during_tests:
+        console.log(
+            f"No prior connection to {cluster} before running tests, creating one."
+        )
+
+        if cluster in DRAC_CLUSTERS:
+            # todo: Seems like logger.warning is not being displayed in the test output
+            # somehow?
+            console.log(
+                f"Going through 2FA with cluster {cluster} only once before tests."
+            )
+
+        RemoteV2(cluster)
+        assert is_already_logged_in(cluster, also_run_command_to_check=True)
+        yield True
+        # TODO: Should we remove the connection after running the tests?
+        return
+
+    control_path = get_controlpath_for(cluster)
+    assert control_path.exists()
+    backup_dir = tmp_path_factory.mktemp("backup")
+
+    console.log(
+        f"Temporarily moving {control_path} to {backup_dir} so tests are run without "
+        f"an existing connection."
+    )
+    moved_path = shutil.move(str(control_path), str(backup_dir))
+    moved_path = Path(moved_path)
+    try:
+        yield False
+    finally:
+        console.log(f"Restoring the Control socket from {moved_path} to {control_path}")
+        assert moved_path.exists()
+        if control_path.exists():
+            control_path.unlink()
+        shutil.move(moved_path, control_path)

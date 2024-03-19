@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import inspect
 import os
+import subprocess
 import sys
 import typing
 from collections.abc import Callable
@@ -14,6 +15,9 @@ import paramiko.ssh_exception
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
+
+from milatools.cli.utils import MilatoolsUserError, removesuffix
+from milatools.utils.remote_v2 import RemoteV2
 
 if typing.TYPE_CHECKING:
     from typing import TypeGuard
@@ -30,16 +34,22 @@ skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_gi
 passwordless_ssh_connection_to_localhost_is_setup = False
 
 try:
-    _connection = fabric.Connection("localhost")
-    _connection.open()
+    localhost_remote = RemoteV2("localhost")
 except (
-    paramiko.ssh_exception.SSHException,
-    paramiko.ssh_exception.NoValidConnectionsError,
+    subprocess.CalledProcessError,
+    subprocess.TimeoutExpired,
+    RuntimeError,
+    MilatoolsUserError,
 ):
-    pass
+    try:
+        connection = fabric.Connection("localhost")
+    except (
+        paramiko.ssh_exception.SSHException,
+        paramiko.ssh_exception.NoValidConnectionsError,
+    ):
+        passwordless_ssh_connection_to_localhost_is_setup = True
 else:
     passwordless_ssh_connection_to_localhost_is_setup = True
-    _connection.close()
 
 requires_ssh_to_localhost = pytest.mark.skipif(
     not passwordless_ssh_connection_to_localhost_is_setup,
@@ -52,7 +62,7 @@ requires_no_s_flag = pytest.mark.skipif(
     reason="Passing pytest's -s flag makes this test fail.",
 )
 on_windows = sys.platform == "win32"
-in_github_windows_ci = in_github_CI and os.environ.get("PLATFORM") == "windows-latest"
+in_github_windows_ci = in_github_CI and on_windows
 
 P = ParamSpec("P")
 
@@ -175,12 +185,4 @@ def _lambda_to_str(lambda_: Callable) -> str:
     #    lambda x: x + 1,
     # ]
     # a trailing comma is returned by `inspect.getsource`, which we want to remove.
-    return _removesuffix(lambda_body, ",")
-
-
-def _removesuffix(s: str, suffix: str) -> str:
-    """Backport of `str.removesuffix` for Python<3.9."""
-    if s.endswith(suffix):
-        return s[: -len(suffix)]
-    else:
-        return s
+    return removesuffix(lambda_body, ",")

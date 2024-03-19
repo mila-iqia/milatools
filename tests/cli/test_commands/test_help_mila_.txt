@@ -1,16 +1,19 @@
-usage: mila [-h] [--version] [-v] {docs,intranet,init,forward,code,serve} ...
+usage: mila [-h] [--version] [-v]
+            {docs,intranet,init,forward,code,sync,serve} ...
 
 Tools to connect to and interact with the Mila cluster. Cluster documentation:
 https://docs.mila.quebec/
 
 positional arguments:
-  {docs,intranet,init,forward,code,serve}
+  {docs,intranet,init,forward,code,sync,serve}
     docs                Open the Mila cluster documentation.
     intranet            Open the Mila intranet in a browser.
     init                Set up your configuration and credentials.
     forward             Forward a port on a compute node to your local
                         machine.
     code                Open a remote VSCode session on a compute node.
+    sync                Various commands used to synchronize things between
+                        the the local machine and remote clusters.
     serve               Start services on compute nodes and forward them to
                         your local machine.
 

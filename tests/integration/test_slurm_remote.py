@@ -15,7 +15,9 @@ import pytest
 
 from milatools.cli.remote import Remote, SlurmRemote
 from milatools.cli.utils import CLUSTERS
+from milatools.utils.remote_v2 import RemoteV2
 
+from ..cli.common import on_windows
 from .conftest import JOB_NAME, MAX_JOB_DURATION, SLURM_CLUSTER, hangs_in_github_CI
 
 logger = get_logger(__name__)
@@ -43,7 +45,7 @@ def can_run_on_all_clusters():
 
 
 def get_recent_jobs_info_dicts(
-    login_node: Remote,
+    login_node: Remote | RemoteV2,
     since=datetime.timedelta(minutes=5),
     fields=("JobID", "JobName", "Node", "State"),
 ) -> list[dict[str, str]]:
@@ -54,7 +56,7 @@ def get_recent_jobs_info_dicts(
 
 
 def get_recent_jobs_info(
-    login_node: Remote,
+    login_node: Remote | RemoteV2,
     since=datetime.timedelta(minutes=5),
     fields=("JobID", "JobName", "Node", "State"),
 ) -> list[tuple[str, ...]]:
@@ -65,8 +67,7 @@ def get_recent_jobs_info(
         f"sacct --noheader --allocations "
         f"--starttime=now-{int(since.total_seconds())}seconds "
         "--format=" + ",".join(f"{field}%40" for field in fields),
-        echo=True,
-        in_stream=False,
+        display=True,
     ).stdout.splitlines()
     # note: using maxsplit because the State field can contain spaces: "canceled by ..."
     return [tuple(line.strip().split(maxsplit=len(fields))) for line in lines]
@@ -78,7 +79,7 @@ def sleep_so_sacct_can_update():
 
 
 @requires_access_to_slurm_cluster
-def test_cluster_setup(login_node: Remote, allocation_flags: list[str]):
+def test_cluster_setup(login_node: Remote | RemoteV2, allocation_flags: list[str]):
     """Sanity Checks for the SLURM cluster of the CI: checks that `srun` works.
 
     NOTE: This is more-so a test to check that the slurm cluster used in the GitHub CI
@@ -104,7 +105,23 @@ def test_cluster_setup(login_node: Remote, allocation_flags: list[str]):
 
 
 @pytest.fixture
-def salloc_slurm_remote(login_node: Remote, allocation_flags: list[str]):
+def connection_to_login_node(login_node: Remote | RemoteV2):
+    if isinstance(login_node, Remote):
+        return login_node.connection
+    if login_node.hostname not in ["localhost", "mila"]:
+        pytest.skip(
+            reason=(
+                f"Not making a fabric.Connection to {login_node.hostname} since it "
+                f"might go through 2FA!"
+            )
+        )
+    return Remote(login_node.hostname).connection
+
+
+@pytest.fixture
+def salloc_slurm_remote(
+    connection_to_login_node: fabric.Connection, allocation_flags: list[str]
+):
     """Fixture that creates a `SlurmRemote` that uses `salloc` (persist=False).
 
     The SlurmRemote is essentially just a Remote with an added `ensure_allocation`
@@ -112,16 +129,18 @@ def salloc_slurm_remote(login_node: Remote, allocation_flags: list[str]):
     flags before a command is run.
     """
     return SlurmRemote(
-        connection=login_node.connection,
+        connection=connection_to_login_node,
         alloc=allocation_flags,
     )
 
 
 @pytest.fixture
-def sbatch_slurm_remote(login_node: Remote, allocation_flags: list[str]):
+def sbatch_slurm_remote(
+    connection_to_login_node: fabric.Connection, allocation_flags: list[str]
+):
     """Fixture that creates a `SlurmRemote` that uses `sbatch` (persist=True)."""
     return SlurmRemote(
-        connection=login_node.connection,
+        connection=connection_to_login_node,
         alloc=allocation_flags,
         persist=True,
     )
@@ -132,7 +151,7 @@ def sbatch_slurm_remote(login_node: Remote, allocation_flags: list[str]):
 
 @requires_access_to_slurm_cluster
 def test_run(
-    login_node: Remote,
+    login_node: Remote | RemoteV2,
     salloc_slurm_remote: SlurmRemote,
 ):
     """Test for `SlurmRemote.run` with persist=False without an initial call to
@@ -175,7 +194,7 @@ def test_run(
 @hangs_in_github_CI
 @requires_access_to_slurm_cluster
 def test_ensure_allocation(
-    login_node: Remote,
+    login_node: Remote | RemoteV2,
     salloc_slurm_remote: SlurmRemote,
     capsys: pytest.CaptureFixture[str],
 ):
@@ -222,10 +241,17 @@ def test_ensure_allocation(
     result = remote_runner.run("hostname", echo=True, in_stream=False)
     assert result
     hostname_from_remote_runner = result.stdout.strip()
-    result2 = login_node.run("hostname", echo=True, in_stream=False)
+    # BUG: If the `login_node` is a RemoteV2, then this will fail because the hostname
+    # might differ between the two (multiple login nodes in the Mila cluster).
+    result2 = login_node.run("hostname", display=True, hide=False)
     assert result2
     hostname_from_login_node_runner = result2.stdout.strip()
-    assert hostname_from_remote_runner == hostname_from_login_node_runner
+
+    if isinstance(login_node, RemoteV2) and login_node.hostname == "mila":
+        assert hostname_from_remote_runner.startswith("login-")
+        assert hostname_from_login_node_runner.startswith("login-")
+    elif isinstance(login_node, Remote):
+        assert hostname_from_remote_runner == hostname_from_login_node_runner
 
     # TODO: IF the remote runner was to be connected to the compute node through the
     # same interactive terminal, then we'd use this:
@@ -261,9 +287,16 @@ def test_ensure_allocation(
     assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output
 
 
+@pytest.mark.xfail(
+    on_windows,
+    raises=PermissionError,
+    reason="BUG: Getting permission denied while reading a NamedTemporaryFile?",
+)
 @hangs_in_github_CI
 @requires_access_to_slurm_cluster
-def test_ensure_allocation_sbatch(login_node: Remote, sbatch_slurm_remote: SlurmRemote):
+def test_ensure_allocation_sbatch(
+    login_node: Remote | RemoteV2, sbatch_slurm_remote: SlurmRemote
+):
     job_data, login_node_remote_runner = sbatch_slurm_remote.ensure_allocation()
     print(job_data, login_node_remote_runner)
     assert isinstance(login_node_remote_runner, fabric.runners.Remote)
