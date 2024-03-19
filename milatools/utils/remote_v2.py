@@ -216,7 +216,7 @@ def get_controlpath_for(
     the string with user, hostname, port already resolved (based on the values in the
     config).
 
-    If the `ControlPath` option doesn't doesn't apply for that host in the SSH config
+    If the `ControlPath` option doesn't apply for that host in the SSH config
     and `ssh_cache_dir` is set, a path of the form
     '{ssh_cache_dir}/{user}@{qualified_hostname}:{port}' is returned, with values based
     on the values in the SSH config for that host if present.
