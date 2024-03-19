@@ -231,7 +231,6 @@ def get_controlpath_for(
     values = ssh_config.lookup(cluster)
     if not (control_path := values.get("controlpath")):
         if ssh_cache_dir is None:
-            raise_error_if_running_on_windows()
             raise RuntimeError(
                 f"ControlPath isn't set in the ssh config for {cluster}, and "
                 "ssh_cache_dir isn't set."
@@ -331,7 +330,7 @@ def setup_connection_with_controlpath(
             text=True,
             bufsize=1,  # line buffered
             timeout=timeout,
-            capture_output=True,  # don't show output (login can print lots of stuff).
+            capture_output=True,
             check=True,
         )
         first_connection_output = first_connection_result.stdout
