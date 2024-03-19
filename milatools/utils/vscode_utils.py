@@ -68,7 +68,7 @@ def vscode_installed() -> bool:
     return bool(get_vscode_executable_path())
 
 
-def sync_vscode_extensions_in_parallel_with_hostnames(
+def sync_vscode_extensions_with_hostnames(
     source: str,
     destinations: list[str],
 ):
@@ -86,10 +86,10 @@ def sync_vscode_extensions_in_parallel_with_hostnames(
         raise ValueError(f"{destinations=} contains duplicate hostnames!")
 
     source_obj = Local() if source == "localhost" else RemoteV2(source)
-    return sync_vscode_extensions_in_parallel(source_obj, destinations)
+    return sync_vscode_extensions(source_obj, destinations)
 
 
-def sync_vscode_extensions_in_parallel(
+def sync_vscode_extensions(
     source: str | Local | RemoteV2,
     dest_clusters: Sequence[str | Local | RemoteV2],
 ):

@@ -33,8 +33,8 @@ from milatools.utils.remote_v2 import RemoteV2
 from milatools.utils.vscode_utils import (
     get_code_command,
     # install_local_vscode_extensions_on_remote,
-    sync_vscode_extensions_in_parallel,
-    sync_vscode_extensions_in_parallel_with_hostnames,
+    sync_vscode_extensions,
+    sync_vscode_extensions_with_hostnames,
 )
 
 from ..__version__ import __version__
@@ -280,9 +280,7 @@ def mila():
             "extensions locally. Defaults to all the available SLURM clusters."
         ),
     )
-    sync_vscode_parser.set_defaults(
-        function=sync_vscode_extensions_in_parallel_with_hostnames
-    )
+    sync_vscode_parser.set_defaults(function=sync_vscode_extensions_with_hostnames)
 
     # ----- mila serve ------
 
@@ -595,7 +593,7 @@ def code(
         )
         if run_in_the_background:
             copy_vscode_extensions_process = make_process(
-                sync_vscode_extensions_in_parallel_with_hostnames,
+                sync_vscode_extensions_with_hostnames,
                 # todo: use the mila cluster as the source for vscode extensions? Or
                 # `localhost`?
                 source="localhost",
@@ -603,7 +601,7 @@ def code(
             )
             copy_vscode_extensions_process.start()
         else:
-            sync_vscode_extensions_in_parallel(
+            sync_vscode_extensions(
                 Local(),
                 [cluster],
             )

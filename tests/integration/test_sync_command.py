@@ -14,7 +14,7 @@ from milatools.utils.vscode_utils import (
     extensions_to_install,
     find_code_server_executable,
     install_vscode_extensions_task_function,
-    sync_vscode_extensions_in_parallel,
+    sync_vscode_extensions,
 )
 from tests.integration.conftest import skip_param_if_not_already_logged_in
 
@@ -79,7 +79,7 @@ def test_sync_vscode_extensions(
         wraps=find_code_server_executable,
     )
 
-    sync_vscode_extensions_in_parallel(
+    sync_vscode_extensions(
         source=Local() if source == "localhost" else RemoteV2(source),
         dest_clusters=[dest],
     )
