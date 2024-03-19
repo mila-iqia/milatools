@@ -241,10 +241,17 @@ def test_ensure_allocation(
     result = remote_runner.run("hostname", echo=True, in_stream=False)
     assert result
     hostname_from_remote_runner = result.stdout.strip()
+    # BUG: If the `login_node` is a RemoteV2, then this will fail because the hostname
+    # might differ between the two (multiple login nodes in the Mila cluster).
     result2 = login_node.run("hostname", display=True, hide=False)
     assert result2
     hostname_from_login_node_runner = result2.stdout.strip()
-    assert hostname_from_remote_runner == hostname_from_login_node_runner
+
+    if isinstance(login_node, RemoteV2) and login_node.hostname == "mila":
+        assert hostname_from_remote_runner.startswith("login-")
+        assert hostname_from_login_node_runner.startswith("login-")
+    elif isinstance(login_node, Remote):
+        assert hostname_from_remote_runner == hostname_from_login_node_runner
 
     # TODO: IF the remote runner was to be connected to the compute node through the
     # same interactive terminal, then we'd use this:
