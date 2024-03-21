@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -5,15 +8,21 @@ import pytest
 
 import milatools.utils.remote_v2
 from milatools.utils.remote_v2 import (
+    ComputeNodeRemote,
     RemoteV2,
     UnsupportedPlatformError,
     control_socket_is_running,
     get_controlpath_for,
     is_already_logged_in,
+    salloc,
+    sbatch,
 )
 from tests.integration.conftest import skip_param_if_not_already_logged_in
 
-from ..cli.common import requires_ssh_to_localhost, xfails_on_windows
+from ..cli.common import (
+    requires_ssh_to_localhost,
+    xfails_on_windows,
+)
 
 pytestmark = [xfails_on_windows(raises=UnsupportedPlatformError, strict=True)]
 
@@ -85,3 +94,41 @@ def test_is_already_logged_in(
 def test_controlsocket_is_running(cluster: str, already_logged_in: bool):
     control_path = get_controlpath_for(cluster)
     assert control_socket_is_running(cluster, control_path) == already_logged_in
+
+
+# make it last a bit longer here so we don't confuse end of command/test with end of job.
+@pytest.mark.parametrize("allocation_flags", [{"time": "00:01:00"}], indirect=True)
+def test_salloc(login_node_v2: RemoteV2, allocation_flags: list[str]):
+    compute_node = salloc(login_node_v2, allocation_flags)
+    assert isinstance(compute_node, ComputeNodeRemote)
+    assert compute_node.hostname != login_node_v2.hostname
+
+    job_id = compute_node.get_output("echo $SLURM_JOB_ID")
+    assert job_id.isdigit()
+    assert compute_node.job_id == int(job_id)
+
+    all_slurm_env_vars = {
+        (split := line.split("="))[0]: split[1]
+        for line in compute_node.get_output("env | grep SLURM").splitlines()
+    }
+    # NOTE: We don't yet have all the other SLURM env variables here yet because we're
+    # only ssh-ing into the compute node.
+    assert all_slurm_env_vars["SLURM_JOB_ID"] == str(compute_node.job_id)
+    assert len(all_slurm_env_vars) > 1
+
+
+def test_sbatch(login_node_v2: RemoteV2, allocation_flags: list[str]):
+    compute_node = asyncio.run(sbatch(login_node_v2, allocation_flags))
+    assert isinstance(compute_node, ComputeNodeRemote)
+
+    assert compute_node.hostname != login_node_v2.hostname
+    job_id = compute_node.get_output("echo $SLURM_JOB_ID")
+    assert job_id.isdigit()
+    assert compute_node.job_id == int(job_id)
+    # Same here, only get SLURM_JOB_ID atm because we're ssh-ing into the node.
+    all_slurm_env_vars = {
+        (split := line.split("="))[0]: split[1]
+        for line in compute_node.get_output("env | grep SLURM").splitlines()
+    }
+    assert all_slurm_env_vars["SLURM_JOB_ID"] == str(compute_node.job_id)
+    assert len(all_slurm_env_vars) > 1

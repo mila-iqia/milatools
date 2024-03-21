@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import shutil
 import sys
 import time
@@ -21,7 +22,12 @@ from milatools.utils.remote_v2 import (
     get_controlpath_for,
     is_already_logged_in,
 )
-from tests.integration.conftest import SLURM_CLUSTER
+from tests.integration.conftest import (
+    JOB_NAME,
+    MAX_JOB_DURATION,
+    SLURM_CLUSTER,
+    WCKEY,
+)
 
 logger = get_logger(__name__)
 passwordless_ssh_connection_to_localhost_is_setup = False
@@ -136,6 +142,18 @@ def login_node(cluster: str) -> Remote | RemoteV2:
     return RemoteV2(cluster)
 
 
+@pytest.fixture(scope="function")
+def login_node_v2(cluster: str) -> RemoteV2:
+    if sys.platform == "win32":
+        pytest.skip("Test uses RemoteV2.")
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+        pytest.skip(
+            f"Requires ssh access to the login node of the {cluster} cluster, and a "
+            "prior connection to the cluster."
+        )
+    return RemoteV2(cluster)
+
+
 @pytest.fixture(scope="session", params=[SLURM_CLUSTER])
 def cluster(request: pytest.FixtureRequest) -> str:
     """Fixture that gives the hostname of the slurm cluster to use for tests.
@@ -160,26 +178,35 @@ def cluster(request: pytest.FixtureRequest) -> str:
     return slurm_cluster_hostname
 
 
+@pytest.fixture(scope="session")
+def lauches_jobs_fixture(cluster: str):
+    with cancel_all_milatools_jobs_before_and_after_tests(cluster):
+        yield
+
+
+launches_jobs = pytest.mark.usefixtures(lauches_jobs_fixture.__name__)
+
+
 @contextlib.contextmanager
 def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
-    login_node = Remote(cluster)
+    login_node = RemoteV2(cluster)
     from .integration.conftest import WCKEY
 
     logger.info(
         f"Cancelling milatools test jobs on {cluster} before running integration tests."
     )
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}", display=False, hide=True)
     time.sleep(1)
     # Note: need to recreate this because login_node is a function-scoped fixture.
     yield
     logger.info(
         f"Cancelling milatools test jobs on {cluster} after running integration tests."
     )
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
+    login_node.run(f"scancel -u $USER --wckey={WCKEY}", display=False, hide=True)
     time.sleep(1)
     # Display the output of squeue just to be sure that the jobs were cancelled.
     logger.info(f"Checking that all jobs have been cancelked on {cluster}...")
-    login_node._run("squeue --me", echo=True, in_stream=False)
+    login_node.run("squeue --me")
 
 
 @pytest.fixture(
@@ -250,3 +277,72 @@ def already_logged_in(
         if control_path.exists():
             control_path.unlink()
         shutil.move(moved_path, control_path)
+
+
+@functools.lru_cache
+def get_slurm_account(cluster: str) -> str:
+    """Gets the SLURM account of the user using sacctmgr on the slurm cluster.
+
+    When there are multiple accounts, this selects the first account, alphabetically.
+
+    On DRAC cluster, this uses the `def` allocations instead of `rrg`, and when
+    the rest of the accounts are the same up to a '_cpu' or '_gpu' suffix, it uses
+    '_cpu'.
+
+    For example:
+
+    ```text
+    def-someprofessor_cpu  <-- this one is used.
+    def-someprofessor_gpu
+    rrg-someprofessor_cpu
+    rrg-someprofessor_gpu
+    ```
+    """
+    logger.info(
+        f"Fetching the list of SLURM accounts available on the {cluster} cluster."
+    )
+    assert cluster in ["mila", "localhost"] or is_already_logged_in(cluster)
+    result = RemoteV2(cluster).run(
+        "sacctmgr --noheader show associations where user=$USER format=Account%50"
+    )
+    accounts = [line.strip() for line in result.stdout.splitlines()]
+    assert accounts
+    logger.info(f"Accounts on the slurm cluster {cluster}: {accounts}")
+    account = sorted(accounts)[0]
+    logger.info(f"Using account {account} to launch jobs in tests.")
+    return account
+
+
+@pytest.fixture(scope="session")
+def slurm_account_on_cluster(cluster: str) -> str:
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+        # avoid test hanging on 2FA prompt.
+        pytest.skip(reason=f"Test needs an existing connection to {cluster} to run.")
+    return get_slurm_account(cluster)
+
+
+@pytest.fixture()
+def allocation_flags(
+    cluster: str, slurm_account_on_cluster: str, request: pytest.FixtureRequest
+) -> list[str]:
+    account = slurm_account_on_cluster
+    allocation_options = {
+        "job-name": JOB_NAME,
+        "wckey": WCKEY,
+        "account": account,
+        "nodes": 1,
+        "ntasks": 1,
+        "cpus-per-task": 1,
+        "mem": "1G",
+        "time": MAX_JOB_DURATION,
+        "oversubscribe": None,  # allow multiple such jobs to share resources.
+    }
+    overrides = getattr(request, "param", {})
+    assert isinstance(overrides, dict)
+    if overrides:
+        print(f"Overriding allocation options with {overrides}")
+        allocation_options.update(overrides)
+    return [
+        f"--{key}={value}" if value is not None else f"--{key}"
+        for key, value in allocation_options.items()
+    ]

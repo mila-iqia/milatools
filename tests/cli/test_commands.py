@@ -8,7 +8,8 @@ import textwrap
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.commands import _parse_lfs_quota_output, main
+from milatools.cli.commands import main
+from milatools.cli.common import _parse_lfs_quota_output
 
 from .common import requires_no_s_flag
 
