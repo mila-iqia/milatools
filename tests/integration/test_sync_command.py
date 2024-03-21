@@ -81,7 +81,7 @@ def test_sync_vscode_extensions(
 
     sync_vscode_extensions(
         source=Local() if source == "localhost" else RemoteV2(source),
-        dest_clusters=[dest],
+        destinations=[dest],
     )
 
     mock_task_function.assert_called_once()

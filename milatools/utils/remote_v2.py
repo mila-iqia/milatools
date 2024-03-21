@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+import asyncio
+import asyncio.subprocess
 import getpass
+import inspect
+import itertools
 import shlex
 import shutil
 import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from paramiko import SSHConfig
 
 from milatools.cli import console
 from milatools.cli.remote import Hide
-from milatools.cli.utils import DRAC_CLUSTERS, MilatoolsUserError
+from milatools.cli.utils import (
+    DRAC_CLUSTERS,
+    MilatoolsUserError,
+    get_fully_qualified_hostname_of_compute_node,
+)
 
 logger = get_logger(__name__)
 
@@ -43,6 +51,7 @@ def ssh_command(
     command: str,
     control_master: Literal["yes", "no", "auto", "ask", "autoask"] = "auto",
     control_persist: int | str | Literal["yes", "no"] = "yes",
+    other_ssh_options: dict[str, str] | None = None,
 ):
     """Returns a tuple of strings to be used as the command to be run in a subprocess.
 
@@ -63,6 +72,11 @@ def ssh_command(
         f"-oControlMaster={control_master}",
         f"-oControlPersist={control_persist}",
         f"-oControlPath={control_path}",
+        *(
+            [f"-o{key}={value}" for key, value in other_ssh_options.items()]
+            if other_ssh_options
+            else []
+        ),
         hostname,
         command,
     )
@@ -72,11 +86,45 @@ def control_socket_is_running(host: str, control_path: Path) -> bool:
     """Check whether the control socket at the given path is running."""
     if not control_path.exists():
         return False
+
     result = subprocess.run(
-        ("ssh", "-O", "check", f"-oControlPath={control_path}", host),
-        shell=False,
-        text=True,
+        (
+            "ssh",
+            "-O",
+            "check",
+            f"-oControlPath={control_path}",
+            host,
+        ),
+        check=False,
         capture_output=True,
+        text=True,
+        shell=False,
+    )
+    if (
+        result.returncode != 0
+        or not result.stderr
+        or not result.stderr.startswith("Master running")
+    ):
+        logger.debug(f"{control_path=} doesn't exist or isn't running: {result=}.")
+        return False
+    return True
+
+
+async def control_socket_is_running_async(host: str, control_path: Path) -> bool:
+    """Check whether the control socket at the given path is running asynchronously."""
+    if not control_path.exists():
+        return False
+
+    result = await run(
+        (
+            "ssh",
+            "-O",
+            "check",
+            f"-oControlPath={control_path}",
+            host,
+        ),
+        warn=True,
+        hide=True,
     )
     if (
         result.returncode != 0
@@ -98,7 +146,9 @@ class RemoteV2:
     def __init__(
         self,
         hostname: str,
+        *,
         control_path: Path | None = None,
+        ssh_options: dict[str, str] | None = None,
     ):
         """Create an SSH connection using this control_path, creating it if necessary.
 
@@ -111,6 +161,7 @@ class RemoteV2:
         """
         self.hostname = hostname
         self.control_path = control_path or get_controlpath_for(hostname)
+        self.ssh_options = ssh_options or {}
 
         if not control_socket_is_running(self.hostname, self.control_path):
             logger.info(
@@ -121,6 +172,7 @@ class RemoteV2:
                 self.control_path,
                 timeout=None,
                 display=False,
+                other_ssh_options=ssh_options,
             )
         else:
             logger.info(f"Reusing an existing SSH socket at {self.control_path}.")
@@ -130,6 +182,23 @@ class RemoteV2:
     def run(
         self, command: str, display: bool = True, warn: bool = False, hide: Hide = False
     ):
+        """Runs the given command on the remote and returns the result.
+
+        This executes the command in an ssh subprocess, which, thanks to the
+        ControlMaster/ControlPath/ControlPersist options, will reuse the existing
+        connection to the remote.
+
+        Parameters
+        ----------
+        command: The command to run.
+        display: Display the command on the console before it is run.
+        warn: If `true` and an exception occurs, warn instead of raising the exception.
+        hide: Controls the printing of the subprocess' stdout and stderr.
+
+        Returns
+        -------
+        A `subprocess.CompletedProcess` object with the output of the subprocess.
+        """
         assert self.control_path.exists()
         run_command = ssh_command(
             hostname=self.hostname,
@@ -137,6 +206,7 @@ class RemoteV2:
             control_master="auto",
             control_persist="yes",
             command=command,
+            other_ssh_options=self.ssh_options,
         )
         logger.debug(f"(local) $ {shlex.join(run_command)}")
         if display:
@@ -158,16 +228,6 @@ class RemoteV2:
             logger.debug(f"{result.stderr}")
         return result
 
-    def __eq__(self, other: Any) -> bool:
-        return (
-            isinstance(other, type(self))
-            and other.hostname == self.hostname
-            and other.control_path == self.control_path
-        )
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}(hostname={self.hostname!r}, control_path={str(self.control_path)})"
-
     def get_output(
         self,
         command: str,
@@ -175,7 +235,326 @@ class RemoteV2:
         warn=False,
         hide=True,
     ):
+        """Runs the command and returns the stripped output as a string."""
         return self.run(command, display=display, warn=warn, hide=hide).stdout.strip()
+
+    async def run_async(
+        self, command: str, display: bool = True, warn: bool = False, hide: Hide = False
+    ):
+        """Runs the given command on the remote asynchronously and returns the result.
+
+        This executes the command over ssh in an asyncio subprocess, which reuses the
+        existing connection to the remote.
+
+        Parameters
+        ----------
+        command: The command to run.
+        display: Display the command on the console before it is run.
+        warn: If `true` and an exception occurs, warn instead of raising the exception.
+        hide: Controls the printing of the subprocess' stdout and stderr.
+
+        Returns
+        -------
+        A `subprocess.CompletedProcess` object with the output of the subprocess.
+        """
+        assert self.control_path.exists()
+        run_command = ssh_command(
+            hostname=self.hostname,
+            control_path=self.control_path,
+            control_master="auto",
+            control_persist="yes",
+            command=command,
+            other_ssh_options=self.ssh_options,
+        )
+        if display:
+            console.log(f"({self.hostname}) $ {command}", style="green")
+        result = await run(run_command, warn=warn, hide=hide)
+        return result
+
+    async def get_output_async(
+        self,
+        command: str,
+        display=False,
+        warn=False,
+        hide=True,
+    ):
+        """Runs the command and returns the stripped output as a string."""
+        return (
+            await self.run_async(command, display=display, warn=warn, hide=hide)
+        ).stdout.strip()
+
+    def __repr__(self) -> str:
+        params = ", ".join(
+            f"{k}={repr(getattr(self, k))}"
+            for k in inspect.signature(type(self)).parameters
+        )
+        return f"{type(self).__name__}({params})"
+
+
+def salloc(login_node: RemoteV2, salloc_flags: list[str]) -> InteractiveRemote:
+    """Runs `salloc` and returns a remote connected to the compute node."""
+    salloc_command = "salloc " + shlex.join(salloc_flags)
+    command = ssh_command(
+        hostname=login_node.hostname,
+        control_path=login_node.control_path,
+        control_master="auto",
+        control_persist="yes",
+        other_ssh_options=login_node.ssh_options,
+        command=salloc_command,
+    )
+    logger.debug(f"(local) $ {shlex.join(command)}")
+    console.log(f"({login_node.hostname}) $ {salloc_command}", style="green")
+    proc = subprocess.Popen(
+        command,
+        text=True,
+        shell=False,
+        bufsize=1,  # line buffered
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+    # TODO: Waiting for the first line of output effectively waits until the job is
+    # allocated, however maybe the "allocated job (...)" that is on stderr on the
+    # Mila cluster could be printed in stdout on some other clusters.
+    # TODO: Check this assumption holds for all clusters we care about, and if not,
+    # devise a better way to wait until the job is running (perhaps using sacct as
+    # done in `sbatch` below).
+    # the allocation is done
+
+    # Get the job id and the node hostname from the job.
+    proc.stdin.write("echo $SLURM_JOB_ID,`hostname`\n")
+
+    response = proc.stdout.readline().strip()
+
+    # NOTE: the hostname of the compute node is actually fully-qualified here.
+    job_id, _, compute_node_hostname = response.partition(",")
+    job_id = int(job_id)
+    logger.info(f"Was allocated node {compute_node_hostname} with job id {job_id}.")
+    return InteractiveRemote(
+        hostname=compute_node_hostname, job_id=job_id, salloc_subprocess=proc
+    )
+
+
+async def sbatch(login_node: RemoteV2, sbatch_flags: list[str]) -> PersistentRemote:
+    """Runs `sbatch` and returns a remote connected to the compute node.
+
+    The job script is actually the `sleep` command wrapped in an sbatch script thanks to
+    [the '--wrap' argument of sbatch](https://slurm.schedmd.com/sbatch.html#OPT_wrap)
+
+    This then waits asynchronously until the job show us as RUNNING in the output of the
+    `sacct` command.
+    """
+    # idea: Find the job length from the sbatch flags if possible so we can do
+    # --wrap='sleep {job_duration}' instead of 'sleep 7d' so the job doesn't look
+    # like it failed or was interrupted, just cleanly exits before the end time.
+    sbatch_command = shlex.join(
+        ["sbatch", "--parsable"] + sbatch_flags + ["--wrap", "srun sleep 7d"]
+    )
+    job_id = await login_node.get_output_async(sbatch_command, display=True, hide=False)
+    job_id = int(job_id)
+
+    node_name, state = await get_node_of_job(login_node, job_id)
+    # We need to get the hostname of the compute node that was allocated.
+    # NOTE: in SlurmRemote it was extracted somehow. Here we'll query sacct for it
+    # instead.
+
+    # TODO: Add a job step in the wrapped command (if needed) that runs some interactive
+    # terminal or something, then `sattach` to it on the login node over SSH, instead of
+    # ssh-ing to the compute node. This way we're sure we land in the right job.
+    fully_qualified_node_name = get_fully_qualified_hostname_of_compute_node(
+        node_name, cluster=login_node.hostname
+    )
+    return PersistentRemote(hostname=fully_qualified_node_name, job_id=job_id)
+
+
+async def get_node_of_job(login_node: RemoteV2, job_id: int) -> tuple[str, str]:
+    """Waits until a job show up in `sacct` then waits until its state is not PENDING.
+
+    Returns the `Node` and `State` from `sacct` after the job is no longer pending.
+    """
+    node: str | None = None
+    state: str | None = None
+    wait_time = 1
+    for attempt in itertools.count(1):
+        result = await login_node.run_async(
+            f"sacct --jobs {job_id} --format=Node,State --allocations --noheader",
+            warn=True,  # don't raise an error if the command fails.
+            hide=True,
+            display=False,
+        )
+        logger.debug(f"{result=}")
+        stdout = result.stdout.strip()
+
+        node, _, state = stdout.rpartition(" ")
+        node = node.strip()
+
+        logger.debug(f"{node=}, {state=}")
+
+        if result.returncode != 0:
+            logger.debug(f"Job {job_id} doesn't show up yet in the output of `sacct`.")
+        elif node == "None assigned":
+            logger.debug(
+                f"Job {job_id} is in state {state!r} and has not yet been allocated a node."
+            )
+        elif state == "PENDING":
+            logger.debug(f"Job {job_id} is still pending.")
+        elif node and state:
+            logger.info(
+                f"Job {job_id} was allocated node {node!r} and is in state {state!r}."
+            )
+            break
+
+        logger.info(
+            f"Waiting {wait_time} seconds until job starts (attempt #{attempt}, {state=!r})"
+        )
+        await asyncio.sleep(wait_time)
+        wait_time *= 2
+        wait_time = min(30, wait_time)  # wait at most 30 seconds for each attempt.
+    assert node is not None
+    assert state is not None
+    if state == "FAILED":
+        logger.warning(RuntimeWarning(f"Seems like job {job_id} failed!"))
+    return node, state
+
+
+def option_dict_to_flags(options: dict[str, str]) -> list[str]:
+    return [
+        (
+            f"--{key.removeprefix('--')}={value}"
+            if value is not None
+            else f"--{key.removeprefix('--')}"
+        )
+        for key, value in options.items()
+    ]
+
+
+class InteractiveRemote(RemoteV2):
+    """A Remote connected to a compute node allocated with `salloc`."""
+
+    def __init__(
+        self,
+        hostname: str,
+        job_id: int,
+        salloc_subprocess: subprocess.Popen,
+        control_path: Path | None = None,
+        ssh_options: dict[str, str] = {"StrictHostKeyChecking": "no"},
+    ):
+        # make a connection to the compute node through regular SSH
+        # TODO: !! We don't know if we're landing in the right job !! (if there are
+        # multiple of our jobs on the same node, we can't tell which one we'll land in!)
+        # perhaps we should use an sbatch argument that prevents more than one of our
+        # jobs to land on the same node if such an argument exists?
+        super().__init__(
+            hostname,
+            control_path=control_path,
+            ssh_options=ssh_options.copy(),
+        )
+        self.job_id = job_id
+        self.salloc_subprocess = salloc_subprocess
+
+    def run(
+        self,
+        command: str,
+        display: bool = True,
+        warn: bool = False,
+        hide: Hide = False,
+    ):
+        # note: in order to get the slurm env variables, we should prepend `srun` to
+        # the command.
+        return super().run(command=command, display=display, warn=warn, hide=hide)
+
+    def close(self) -> None:
+        # note, could also do:
+        # _out = self.get_output(f"scancel {self.job_id}")
+        assert self.salloc_subprocess.stdin is not None
+        _out, _err = self.salloc_subprocess.communicate("exit\n")
+        self.salloc_subprocess.wait()
+
+
+class PersistentRemote(RemoteV2):
+    def __init__(
+        self,
+        hostname: str,
+        job_id: int,
+        *,
+        control_path: Path | None = None,
+        ssh_options: dict[str, str] | None = {"StrictHostKeyChecking": "no"},
+    ):
+        super().__init__(hostname, control_path=control_path, ssh_options=ssh_options)
+        self.job_id = job_id
+
+
+async def get_output(
+    command: tuple[str, ...],
+    warn: bool = False,
+    hide: Hide = True,
+):
+    """Runs the command asynchronously in a subprocess and returns stripped output.
+
+    The `hide` and `warn` parameters are the same as in `run`.
+    """
+    return (await run(command, warn=warn, hide=hide)).stdout.strip()
+
+
+async def run(command: tuple[str, ...], warn: bool = False, hide: Hide = False):
+    """Runs the command asynchronously in a subprocess and returns the result.
+
+    Parameters
+    ----------
+    command: The command to run. (a tuple of strings, same as in subprocess.Popen).
+    warn: When `True` and an exception occurs, warn instead of raising the exception.
+    hide: Controls the printing of the subprocess' stdout and stderr.
+
+    Returns
+    -------
+    The `subprocess.CompletedProcess` object with the result of the subprocess.
+
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If an error occurs when running the command and `warn` is `False`.
+    """
+    logger.debug(f"(local) $ {shlex.join(command)}")
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+
+    assert proc.returncode is not None
+    logger.debug(f"[{command!r} exited with {proc.returncode}]")
+    if proc.returncode != 0:
+        if not warn:
+            raise subprocess.CalledProcessError(
+                returncode=proc.returncode,
+                cmd=command,
+                output=stdout,
+                stderr=stderr,
+            )
+        if hide is not True:  # don't warn if hide is True.
+            logger.warning(
+                RuntimeWarning(
+                    f"Command {command!r} returned non-zero exit code {proc.returncode}: {stderr}"
+                )
+            )
+    result = subprocess.CompletedProcess(
+        args=command,
+        returncode=proc.returncode,
+        stdout=stdout.decode(),
+        stderr=stderr.decode(),
+    )
+    if result.stdout:
+        if hide not in [True, "out", "stdout"]:
+            print(result.stdout)
+        logger.debug(f"{result.stdout}")
+    if result.stderr:
+        if hide not in [True, "err", "stderr"]:
+            print(result.stderr)
+        logger.debug(f"{result.stderr}")
+    return result
 
 
 def is_already_logged_in(cluster: str, also_run_command_to_check: bool = False) -> bool:
@@ -251,6 +630,7 @@ def setup_connection_with_controlpath(
     control_path: Path,
     display: bool = True,
     timeout: int | None = None,
+    other_ssh_options: dict[str, str] | None = None,
 ) -> None:
     """Setup (or test) an SSH connection to this cluster using this control path.
 
@@ -285,6 +665,7 @@ def setup_connection_with_controlpath(
         control_master="auto",
         control_persist="yes",
         command=command,
+        other_ssh_options=other_ssh_options,
     )
     if cluster in DRAC_CLUSTERS:
         console.log(

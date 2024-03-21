@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import contextvars
 import functools
 import itertools
 import multiprocessing
+import operator
 import random
 import shutil
 import socket
@@ -11,6 +13,7 @@ import subprocess
 import sys
 import typing
 import warnings
+from argparse import _HelpAction
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from pathlib import Path
@@ -252,10 +255,22 @@ class SSHConfig:
 def get_fully_qualified_hostname_of_compute_node(
     node_name: str, cluster: str = "mila"
 ) -> str:
-    """Return the fully qualified name corresponding to this node name."""
+    """Return the fully qualified name corresponding to this node name.
+
+    TODO: We should keep the hostname the same in the case where there is a match in
+    the user's SSH config (e.g. if they already setup an ssh config for `cn-a****`).
+    """
     if cluster == "mila":
+        ssh_config_path = Path.home() / ".ssh" / "config"
         if node_name.endswith(".server.mila.quebec"):
             return node_name
+
+        if ssh_config_path.exists():
+            ssh_config = paramiko.SSHConfig.from_path(str(ssh_config_path))
+            if len(ssh_config.lookup(node_name)) < len(
+                ssh_config.lookup(f"{node_name}.server.mila.quebec")
+            ):
+                return node_name + ".server.mila.quebec"
         return f"{node_name}.server.mila.quebec"
     if cluster in CLUSTERS:
         # For the other explicitly supported clusters in the SSH config, the node name
@@ -343,5 +358,18 @@ if sys.version_info < (3, 9):
             return s[: -len(suffix)]
         else:
             return s
+
 else:
     removesuffix = str.removesuffix
+
+
+class SortingHelpFormatter(argparse.HelpFormatter):
+    """Taken and adapted from https://stackoverflow.com/a/12269143/6388696."""
+
+    def add_arguments(self, actions):
+        actions = sorted(actions, key=operator.attrgetter("option_strings"))
+        # put help actions first.
+        actions = sorted(
+            actions, key=lambda action: not isinstance(action, _HelpAction)
+        )
+        super().add_arguments(actions)

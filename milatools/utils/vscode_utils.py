@@ -15,6 +15,7 @@ from milatools.cli.local import Local
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     CLUSTERS,
+    CommandNotFoundError,
     batched,
     stripped_lines_of,
 )
@@ -60,12 +61,22 @@ def get_code_command() -> str:
     return os.environ.get("MILATOOLS_CODE_COMMAND", "code")
 
 
-def get_vscode_executable_path() -> str | None:
-    return shutil.which(get_code_command())
+def get_vscode_executable_path(code_command: str | None = None) -> str:
+    if code_command is None:
+        code_command = get_code_command()
+
+    code_command_path = shutil.which(code_command)
+    if not code_command_path:
+        raise CommandNotFoundError(code_command)
+    return code_command_path
 
 
 def vscode_installed() -> bool:
-    return bool(get_vscode_executable_path())
+    try:
+        _ = get_vscode_executable_path()
+    except CommandNotFoundError:
+        return False
+    return True
 
 
 def sync_vscode_extensions_with_hostnames(
@@ -78,7 +89,7 @@ def sync_vscode_extensions_with_hostnames(
             logger.info("Assuming you want to sync from mila to all DRAC/CC clusters.")
         else:
             logger.warning(
-                f"{source=} is also in the destinations to sync to. " f"Removing it."
+                f"{source=} is also in the destinations to sync to. Removing it."
             )
         destinations.remove(source)
 
@@ -91,12 +102,12 @@ def sync_vscode_extensions_with_hostnames(
 
 def sync_vscode_extensions(
     source: str | Local | RemoteV2,
-    dest_clusters: Sequence[str | Local | RemoteV2],
+    destinations: Sequence[str | Local | RemoteV2],
 ):
-    """Syncs vscode extensions between `source` all all the clusters in `dest`.
+    """Syncs vscode extensions between `source` all all the destination clusters.
 
-    This spawns a thread for each cluster in `dest` and displays a parallel progress bar
-    for the syncing of vscode extensions to each cluster.
+    This spawns a thread for each cluster and displays a parallel progress bar for the
+    syncing of vscode extensions to each cluster.
     """
     if isinstance(source, Local):
         source_hostname = "localhost"
@@ -120,7 +131,7 @@ def sync_vscode_extensions(
     task_fns: list[TaskFn[ProgressDict]] = []
     task_descriptions: list[str] = []
 
-    for dest_remote in dest_clusters:
+    for dest_remote in destinations:
         dest_hostname: str
 
         if dest_remote == "localhost":
@@ -217,7 +228,6 @@ def install_vscode_extensions_task_function(
     if isinstance(remote, Local):
         assert dest_hostname == "localhost"
         code_server_executable = get_vscode_executable_path()
-        assert code_server_executable
         extensions_on_dest = get_local_vscode_extensions()
     else:
         dest_hostname = remote.hostname
@@ -318,10 +328,10 @@ def install_vscode_extension(
     return result
 
 
-def get_local_vscode_extensions() -> dict[str, str]:
+def get_local_vscode_extensions(code_command: str | None = None) -> dict[str, str]:
     output = subprocess.run(
         (
-            get_vscode_executable_path() or get_code_command(),
+            get_vscode_executable_path(code_command=code_command),
             "--list-extensions",
             "--show-versions",
         ),

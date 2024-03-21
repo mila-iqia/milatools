@@ -4,6 +4,7 @@ The cluster to use can be specified by setting the SLURM_CLUSTER environment var
 During the CI on GitHub, a small local slurm cluster is setup with a GitHub Action, and
 SLURM_CLUSTER is set to "localhost".
 """
+
 from __future__ import annotations
 
 import datetime
@@ -18,6 +19,7 @@ from milatools.cli.utils import CLUSTERS
 from milatools.utils.remote_v2 import RemoteV2
 
 from ..cli.common import on_windows
+from ..conftest import launches_jobs
 from .conftest import JOB_NAME, MAX_JOB_DURATION, SLURM_CLUSTER, hangs_in_github_CI
 
 logger = get_logger(__name__)
@@ -78,8 +80,9 @@ def sleep_so_sacct_can_update():
     time.sleep(_SACCT_UPDATE_DELAY.total_seconds())
 
 
+@launches_jobs
 @requires_access_to_slurm_cluster
-def test_cluster_setup(login_node: Remote | RemoteV2, allocation_flags: list[str]):
+def test_cluster_setup(login_node: RemoteV2, allocation_flags: list[str]):
     """Sanity Checks for the SLURM cluster of the CI: checks that `srun` works.
 
     NOTE: This is more-so a test to check that the slurm cluster used in the GitHub CI
@@ -149,6 +152,7 @@ def sbatch_slurm_remote(
 ## Tests for the SlurmRemote class:
 
 
+@launches_jobs
 @requires_access_to_slurm_cluster
 def test_run(
     login_node: Remote | RemoteV2,
@@ -191,6 +195,7 @@ def test_run(
     assert (job_id, JOB_NAME, compute_node) in sacct_output
 
 
+@launches_jobs
 @hangs_in_github_CI
 @requires_access_to_slurm_cluster
 def test_ensure_allocation(
@@ -287,6 +292,7 @@ def test_ensure_allocation(
     assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output
 
 
+@launches_jobs
 @pytest.mark.xfail(
     on_windows,
     raises=PermissionError,
