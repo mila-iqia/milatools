@@ -47,14 +47,14 @@ Host mila
   ServerAliveCountMax 5
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
+  ControlPersist yes
 
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   ProxyJump mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
+  ControlPersist yes
   User bob
 
 
@@ -64,7 +64,7 @@ Host beluga cedar graham narval niagara
   User bob
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
+  ControlPersist yes
 Host mist
   Hostname mist.scinet.utoronto.ca
   User bob
