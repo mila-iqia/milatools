@@ -35,7 +35,7 @@ Host mila
   ServerAliveCountMax 5
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
+  ControlPersist yes
   User bob
 
 Host mila-cpu
@@ -56,6 +56,6 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   ProxyJump mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist 600
+  ControlPersist yes
   User bob
 ```

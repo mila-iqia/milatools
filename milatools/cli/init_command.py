@@ -38,8 +38,8 @@ else:
         # This makes a file per connection, like
         # normandf@login.server.mila.quebec:2222
         "ControlPath": r"~/.cache/ssh/%r@%h:%p",
-        # persist for 10 minutes after the last connection ends.
-        "ControlPersist": 600,
+        # persist forever (at least while the local machine is turned on).
+        "ControlPersist": "yes",
     }
 
 
