@@ -8,6 +8,7 @@ SLURM_CLUSTER is set to "localhost".
 from __future__ import annotations
 
 import datetime
+import sys
 import time
 from logging import getLogger as get_logger
 
@@ -131,6 +132,10 @@ def salloc_slurm_remote(
     method as well as a transform that does `salloc` or `sbatch` with some allocation
     flags before a command is run.
     """
+    if sys.platform != "win32":
+        pytest.skip(
+            reason="Test for deprecated SlurmRemote class.",
+        )
     return SlurmRemote(
         connection=connection_to_login_node,
         alloc=allocation_flags,
@@ -142,6 +147,10 @@ def sbatch_slurm_remote(
     connection_to_login_node: fabric.Connection, allocation_flags: list[str]
 ):
     """Fixture that creates a `SlurmRemote` that uses `sbatch` (persist=True)."""
+    if sys.platform != "win32":
+        pytest.skip(
+            reason="Test for deprecated SlurmRemote class.",
+        )
     return SlurmRemote(
         connection=connection_to_login_node,
         alloc=allocation_flags,
@@ -195,6 +204,10 @@ def test_run(
     assert (job_id, JOB_NAME, compute_node) in sacct_output
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="Test for deprecated Remote.ensure_allocation method.",
+)
 @launches_jobs
 @hangs_in_github_CI
 @requires_access_to_slurm_cluster

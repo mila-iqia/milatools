@@ -29,7 +29,7 @@ from milatools.utils.vscode_utils import (
 
 from ..__version__ import __version__
 from .code_command import add_mila_code_arguments
-from .common import forward, standard_server
+from .common import forward, standard_server_v1
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -581,7 +581,7 @@ def lab(path: str | None, **kwargs: Unpack[StandardServerArgs]):
     if path and path.endswith(".ipynb"):
         exit("Only directories can be given to the mila serve lab command")
 
-    standard_server(
+    standard_server_v1(
         path,
         program="jupyter-lab",
         installers={
@@ -604,7 +604,7 @@ def notebook(path: str | None, **kwargs: Unpack[StandardServerArgs]):
     if path and path.endswith(".ipynb"):
         exit("Only directories can be given to the mila serve notebook command")
 
-    standard_server(
+    standard_server_v1(
         path,
         program="jupyter-notebook",
         installers={
@@ -625,7 +625,7 @@ def tensorboard(logdir: str, **kwargs: Unpack[StandardServerArgs]):
         logdir: Path to the experiment logs
     """
 
-    standard_server(
+    standard_server_v1(
         logdir,
         program="tensorboard",
         installers={
@@ -645,7 +645,7 @@ def mlflow(logdir: str, **kwargs: Unpack[StandardServerArgs]):
         logdir: Path to the experiment logs
     """
 
-    standard_server(
+    standard_server_v1(
         logdir,
         program="mlflow",
         installers={
@@ -663,7 +663,7 @@ def aim(logdir: str, **kwargs: Unpack[StandardServerArgs]):
     Arguments:
         logdir: Path to the experiment logs
     """
-    standard_server(
+    standard_server_v1(
         logdir,
         program="aim",
         installers={

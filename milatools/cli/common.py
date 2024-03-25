@@ -10,6 +10,7 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from urllib.parse import urlencode
 
+import invoke
 import questionary as qn
 from rich.text import Text
 
@@ -21,7 +22,6 @@ from milatools.cli.utils import (
     Cluster,
     MilatoolsUserError,
     T,
-    cluster_to_connect_kwargs,
     get_fully_qualified_hostname_of_compute_node,
     randname,
     with_control_file,
@@ -159,34 +159,6 @@ def check_disk_quota(remote: Remote | RemoteV2) -> None:
         logger.warning(UserWarning(warning_message))
 
 
-def find_allocation(
-    remote: Remote,
-    node: str | None,
-    job: int | None,
-    alloc: list[str],
-    cluster: Cluster = "mila",
-    job_name: str = "mila-tools",
-):
-    if (node is not None) + (job is not None) + bool(alloc) > 1:
-        exit("ERROR: --node, --job and --alloc are mutually exclusive")
-
-    if node is not None:
-        node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
-        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
-
-    elif job is not None:
-        node_name = remote.get_output(f"squeue --jobs {job} -ho %N")
-        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
-
-    else:
-        alloc = ["-J", job_name, *alloc]
-        return SlurmRemote(
-            connection=remote.connection,
-            alloc=alloc,
-            hostname=remote.hostname,
-        )
-
-
 def forward(
     local: Local,
     node: str,
@@ -256,7 +228,7 @@ def forward(
     return proc, port
 
 
-def standard_server(
+def standard_server_v1(
     path: str | None,
     *,
     program: str,
@@ -321,7 +293,183 @@ def standard_server(
         ):
             exit(f"Exit: {program} is not installed.")
 
-        cnode = find_allocation(
+        from milatools.cli.code_command import find_allocation_v1
+
+        cnode = find_allocation_v1(
+            remote,
+            job_name=f"mila-serve-{program}",
+            node=node,
+            job=job,
+            alloc=alloc,
+            cluster="mila",
+        )
+
+        patterns = {
+            "node_name": "#### ([A-Za-z0-9_-]+)",
+        }
+
+        if port_pattern:
+            patterns["port"] = port_pattern
+        elif share:
+            exit(
+                "Server cannot be shared because it is serving over a Unix domain "
+                "socket"
+            )
+        else:
+            remote.run("mkdir -p ~/.milatools/sockets", hide=True)
+
+        if share:
+            host = "0.0.0.0"
+        else:
+            host = "localhost"
+
+        sock_name = name or randname()
+        command = command.format(
+            path=path,
+            sock=f"~/.milatools/sockets/{sock_name}.sock",
+            host=host,
+        )
+
+        if token_pattern:
+            patterns["token"] = token_pattern
+
+        if persist:
+            cnode = cnode.persist()
+
+        proc, results = (
+            cnode.with_profile(prof)
+            .with_precommand("echo '####' $(hostname)")
+            .extract(
+                command,
+                patterns=patterns,
+            )
+        )
+        node_name = results["node_name"]
+
+        if port_pattern:
+            to_forward = int(results["port"])
+        else:
+            to_forward = f"{remote.home()}/.milatools/sockets/{sock_name}.sock"
+
+        if cf is not None:
+            remote.simple_run(f"echo program = {program} >> {cf}")
+            remote.simple_run(f"echo node_name = {results['node_name']} >> {cf}")
+            remote.simple_run(f"echo host = {host} >> {cf}")
+            remote.simple_run(f"echo to_forward = {to_forward} >> {cf}")
+            if token_pattern:
+                remote.simple_run(f"echo token = {results['token']} >> {cf}")
+
+    assert results is not None
+    assert node_name is not None
+    assert to_forward is not None
+    assert proc is not None
+    if token_pattern:
+        options = {"token": results["token"]}
+    else:
+        options = {}
+
+    local_proc, local_port = forward(
+        local=Local(),
+        node=get_fully_qualified_hostname_of_compute_node(node_name, cluster="mila"),
+        to_forward=to_forward,
+        options=options,
+        port=port,
+    )
+
+    if cf is not None:
+        remote.simple_run(f"echo local_port = {local_port} >> {cf}")
+
+    try:
+        local_proc.wait()
+    except KeyboardInterrupt:
+        qn.print("Terminated by user.")
+        if cf is not None:
+            name = Path(cf).name
+            qn.print("To reconnect to this server, use the command:")
+            qn.print(f"  mila serve connect {name}", style="bold yellow")
+            qn.print("To kill this server, use the command:")
+            qn.print(f"  mila serve kill {name}", style="bold red")
+    finally:
+        local_proc.kill()
+        proc.kill()
+
+
+def standard_server_v2(
+    path: str | None,
+    *,
+    program: str,
+    installers: dict[str, str],
+    command: str,
+    profile: str | None,
+    persist: bool,
+    port: int | None,
+    name: str | None,
+    node: str | None,
+    job: int | None,
+    alloc: list[str],
+    port_pattern=None,
+    token_pattern=None,
+    cluster: Cluster = "mila",
+):
+    # Make the server visible from the login node (other users will be able to connect)
+    # Temporarily disabled
+    share = False
+
+    if name is not None:
+        persist = True
+    elif persist:
+        name = program
+
+    remote = RemoteV2(cluster)
+
+    path = path or "~"
+    if path == "~" or path.startswith("~/"):
+        path = remote.get_output("echo $HOME", display=False, hide=True) + path[1:]
+
+    results: dict | None = None
+    node_name: str | None = None
+    to_forward: int | str | None = None
+    cf: str | None = None
+    proc = None
+    raise NotImplementedError("TODO: adapt the rest of this to work with RemoteV2")
+
+    with ExitStack() as stack:
+        if persist:
+            cf = stack.enter_context(with_control_file(remote, name=name))
+        else:
+            cf = None
+
+        if profile:
+            prof = f"~/.milatools/profiles/{profile}.bash"
+        else:
+            prof = setup_profile(remote, path)
+
+        qn.print(f"Using profile: {prof}")
+        cat_result = remote.run(f"cat {prof}", hide=True, warn=True)
+        if (
+            isinstance(cat_result, invoke.runners.Result)
+            and cat_result.return_code == 0
+        ) or (
+            isinstance(cat_result, subprocess.CompletedProcess)
+            and cat_result.returncode == 0
+        ):
+            qn.print("=" * 50)
+            qn.print(cat_result.stdout.rstrip())
+            qn.print("=" * 50)
+        else:
+            exit(f"Could not find or load profile: {prof}")
+
+        premote = remote.with_profile(prof)
+
+        if not ensure_program(
+            remote=premote,
+            program=program,
+            installers=installers,
+        ):
+            exit(f"Exit: {program} is not installed.")
+        from milatools.cli.code_command import find_allocation_v1
+
+        cnode = find_allocation_v1(
             remote,
             job_name=f"mila-serve-{program}",
             node=node,

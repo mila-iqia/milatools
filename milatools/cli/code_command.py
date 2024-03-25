@@ -11,17 +11,17 @@ from typing_extensions import deprecated
 from milatools.cli import console
 from milatools.cli.common import (
     check_disk_quota,
-    find_allocation,
 )
 from milatools.cli.init_command import DRAC_CLUSTERS
 from milatools.cli.local import Local
-from milatools.cli.remote import Remote
+from milatools.cli.remote import Remote, SlurmRemote
 from milatools.cli.utils import (
     CLUSTERS,
     Cluster,
     CommandNotFoundError,
     MilatoolsUserError,
     SortingHelpFormatter,
+    cluster_to_connect_kwargs,
     currently_in_a_test,
     get_fully_qualified_hostname_of_compute_node,
     make_process,
@@ -211,6 +211,34 @@ async def code(
         return
 
 
+def find_allocation_v1(
+    remote: Remote,
+    node: str | None,
+    job: int | None,
+    alloc: list[str],
+    cluster: Cluster = "mila",
+    job_name: str = "mila-tools",
+):
+    if (node is not None) + (job is not None) + bool(alloc) > 1:
+        exit("ERROR: --node, --job and --alloc are mutually exclusive")
+
+    if node is not None:
+        node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
+        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
+
+    elif job is not None:
+        node_name = remote.get_output(f"squeue --jobs {job} -ho %N")
+        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
+
+    else:
+        alloc = ["-J", job_name, *alloc]
+        return SlurmRemote(
+            connection=remote.connection,
+            alloc=alloc,
+            hostname=remote.hostname,
+        )
+
+
 @deprecated(
     "Support for the `mila code` command is now deprecated on Windows machines, as it "
     "does not support ssh keys with passphrases or clusters where 2FA is enabled. "
@@ -288,7 +316,7 @@ def code_v1(
             )
 
     if node is None:
-        cnode = find_allocation(
+        cnode = find_allocation_v1(
             remote,
             job_name="mila-code",
             job=job,

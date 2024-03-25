@@ -28,6 +28,7 @@ from typing_extensions import ParamSpec, TypeGuard
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
+    from milatools.utils.remote_v2 import RemoteV2
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
@@ -99,15 +100,18 @@ def randname():
 
 
 @contextmanager
-def with_control_file(remote: Remote, name=None):
+def with_control_file(remote: RemoteV2 | Remote, name=None):
     name = name or randname()
     pth = f".milatools/control/{name}"
     remote.run("mkdir -p ~/.milatools/control", hide=True)
 
     try:
-        remote.simple_run(f"[ -f {pth} ]")
+        if isinstance(remote, Remote):
+            remote.simple_run(f"[ -f {pth} ]")
+        else:
+            remote.run(f"[ -f {pth} ]", hide=True, display=False)
         exit(f"Server {name} already exists. You may use mila serve kill to remove it.")
-    except UnexpectedExit:
+    except (UnexpectedExit, subprocess.CalledProcessError):
         pass
 
     token = control_file_var.set(pth)
@@ -175,12 +179,12 @@ def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
 
 
-def askpath(prompt: str, remote: Remote) -> str:
+def askpath(prompt: str, remote: RemoteV2 | Remote) -> str:
     while True:
         pth = qn.text(prompt).unsafe_ask()
         try:
-            remote.simple_run(f"[ -d {pth} ]")
-        except UnexpectedExit:
+            remote.run(f"[ -d {pth} ]", hide=True, display=False)
+        except (UnexpectedExit, subprocess.CalledProcessError):
             qn.print(f"Path {pth} does not exist")
             continue
         return pth
