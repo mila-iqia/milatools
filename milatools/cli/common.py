@@ -94,13 +94,15 @@ def check_disk_quota(remote: Remote | RemoteV2) -> None:
 
     # Need to assert this, otherwise .get_output calls .run which would spawn a job!
     assert not isinstance(remote, SlurmRemote)
-    if not remote.get_output("which lfs", hide=True):
+    if not remote.get_output("which lfs", display=False, hide=True):
         logger.debug("Cluster doesn't have the lfs command. Skipping check.")
         return
 
     console.log("Checking disk quota on $HOME...")
 
-    home_disk_quota_output = remote.get_output("lfs quota -u $USER $HOME", hide=True)
+    home_disk_quota_output = remote.get_output(
+        "lfs quota -u $USER $HOME", display=False, hide=True
+    )
     if "not on a mounted Lustre filesystem" in home_disk_quota_output:
         logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
         return

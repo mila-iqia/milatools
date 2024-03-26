@@ -69,7 +69,8 @@ def get_recent_jobs_info(
         f"sacct --noheader --allocations "
         f"--starttime=now-{int(since.total_seconds())}seconds "
         "--format=" + ",".join(f"{field}%40" for field in fields),
-        display=True,
+        display=False,
+        hide=True,
     ).stdout.splitlines()
     # note: using maxsplit because the State field can contain spaces: "canceled by ..."
     return [tuple(line.strip().split(maxsplit=len(fields))) for line in lines]

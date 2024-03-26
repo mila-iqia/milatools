@@ -490,7 +490,6 @@ async def wait_while_job_is_pending(
             hide=True,
             display=False,
         )
-        logger.debug(f"{result=}")
         stdout = result.stdout.strip()
         node, _, state = stdout.rpartition(" ")
         node = node.strip()
@@ -584,8 +583,8 @@ async def run(command: tuple[str, ...], warn: bool = False, hide: Hide = False):
     stdout, stderr = await proc.communicate()
 
     assert proc.returncode is not None
-    logger.debug(f"[{command!r} exited with {proc.returncode}]")
     if proc.returncode != 0:
+        logger.debug(f"[{command!r} exited with {proc.returncode}]")
         if not warn:
             raise subprocess.CalledProcessError(
                 returncode=proc.returncode,

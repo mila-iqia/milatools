@@ -177,6 +177,11 @@ async def code(
     # Connect to the cluster's login node (TODO: only if necessary).
     login_node = RemoteV2(cluster)
 
+    if not path.startswith("/"):
+        # Get $HOME because we have to give the full path to code
+        home = login_node.get_output("echo $HOME", display=False, hide=True)
+        path = home if path == "." else f"{home}/{path}"
+
     try:
         check_disk_quota(login_node)
     except MilatoolsUserError:
@@ -222,7 +227,7 @@ async def code(
                 code_command,
                 "-nw",
                 "--remote",
-                f"ssh-remote+{node}",
+                f"ssh-remote+{compute_node.hostname}",
                 path,
             )
             console.log(

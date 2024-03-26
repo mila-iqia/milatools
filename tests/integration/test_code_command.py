@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import shutil
 import subprocess
 import time
 from datetime import timedelta
@@ -108,6 +109,10 @@ async def test_code(
     jobs_before = {int(job_info["JobID"]): job_info for job_info in jobs_before}
 
     relative_path = "bob"
+    from milatools.cli import console
+
+    console.begin_capture()
+
     await code(
         path=relative_path,
         command="echo",  # replace the usual `code` with `echo` for testing.
@@ -140,16 +145,19 @@ async def test_code(
     )
     assert node_hostname and node_hostname != "None"
 
-    # TODO: This check doesn't work anymore.
     # Get the output that was printed while running that command.
+    captured_output = console.end_capture()
     # We expect our fake vscode command (with 'code' replaced with 'echo') to have been
     # executed.
-    # captured_output: str = capsys.readouterr().out
-    # expected_line = f"(local) $ /usr/bin/echo -nw --remote ssh-remote+{node_hostname} {home}/{relative_path}"
-    # assert any((expected_line in line) for line in captured_output.splitlines()), (
-    #     captured_output,
-    #     expected_line,
-    # )
+    expected_line = f"(local) $ {shutil.which('echo')} -nw --remote ssh-remote+{node_hostname} {home}/{relative_path}"
+    captured_output_lines = captured_output.splitlines()
+    print(captured_output_lines)
+    # FIXME: Ok it seems like the output is being cut into two different lines, doesn't
+    # really matter.
+    assert any((expected_line in line) for line in captured_output_lines), (
+        captured_output_lines,
+        expected_line,
+    )
     # Check that on the DRAC clusters, the workdir is the scratch directory (because we
     # cd'ed to $SCRATCH before submitting the job)
     workdir = job_info["WorkDir"]
