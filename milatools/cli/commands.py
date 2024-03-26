@@ -308,7 +308,7 @@ def mila():
         help="Path to open on the remote machine",
     )
     _add_standard_server_args(serve_notebook_parser)
-    serve_notebook_parser.set_defaults(function=notebook)
+    serve_notebook_parser.set_defaults(function=serve_notebook)
 
     # ----- mila serve tensorboard ------
 
@@ -321,7 +321,7 @@ def mila():
         "LOGDIR", type=str, help="Path to the experiment logs"
     )
     _add_standard_server_args(serve_tensorboard_parser)
-    serve_tensorboard_parser.set_defaults(function=tensorboard)
+    serve_tensorboard_parser.set_defaults(function=serve_tensorboard)
 
     # ----- mila serve mlflow ------
 
@@ -595,7 +595,7 @@ def lab(path: str | None, **kwargs: Unpack[StandardServerArgs]):
     )
 
 
-def notebook(path: str | None, **kwargs: Unpack[StandardServerArgs]):
+def serve_notebook(path: str | None, **kwargs: Unpack[StandardServerArgs]):
     """Start a Jupyter Notebook server.
 
     Arguments:
@@ -618,7 +618,7 @@ def notebook(path: str | None, **kwargs: Unpack[StandardServerArgs]):
     )
 
 
-def tensorboard(logdir: str, **kwargs: Unpack[StandardServerArgs]):
+def serve_tensorboard(logdir: str, **kwargs: Unpack[StandardServerArgs]):
     """Start a Tensorboard server.
 
     Arguments:
