@@ -13,10 +13,10 @@ import questionary as qn
 from questionary import Style
 from questionary.prompts.common import FormattedText
 
-from .utils import askpath, yn
+from milatools.cli.remote import Remote
+from milatools.utils.remote_v2 import RemoteV2
 
-if typing.TYPE_CHECKING:
-    from milatools.cli.remote import Remote
+from .utils import askpath, yn
 
 style = qn.Style(
     [
@@ -38,7 +38,7 @@ def _ask_name(message: str, default: str = "") -> str:
             qn.print(f"Invalid name: {name}", style="bold red")
 
 
-def setup_profile(remote: Remote, path: str) -> str:
+def setup_profile(remote: RemoteV2 | Remote, path: str) -> str:
     profile = select_preferred(remote, path)
     preferred = profile is not None
     if not preferred:
@@ -53,12 +53,15 @@ def setup_profile(remote: Remote, path: str) -> str:
             default=False,
         )
         if save:
-            remote.puttext(profile, str(profile_file))
+            if isinstance(remote, Remote):
+                remote.puttext(profile, str(profile_file))
+            else:
+                remote.run(f"echo {profile} > {profile_file}")
 
     return profile
 
 
-def select_preferred(remote: Remote, path: str) -> str | None:
+def select_preferred(remote: RemoteV2 | Remote, path: str) -> str | None:
     preferred = f"{path}/.milatools-profile"
     qn.print(f"Checking for preferred profile in {preferred}")
 
@@ -71,12 +74,12 @@ def select_preferred(remote: Remote, path: str) -> str | None:
     return preferred
 
 
-def select_profile(remote: Remote) -> str | None:
+def select_profile(remote: RemoteV2 | Remote) -> str | None:
     profdir = "~/.milatools/profiles"
 
     qn.print(f"Fetching profiles in {profdir}")
 
-    profiles = remote.get_lines(f"ls {profdir}/*.bash", hide=True, warn=True)
+    profiles = remote.get_output(f"ls {profdir}/*.bash", hide=True, warn=True).split()
 
     if not profiles:
         qn.print("None found.", style="grey")
@@ -109,7 +112,7 @@ def select_profile(remote: Remote) -> str | None:
     return profile
 
 
-def create_profile(remote: Remote, path: str = "~"):
+def create_profile(remote: RemoteV2 | Remote, path: str = "~"):
     modules = select_modules(remote)
 
     mload = f"module load {' '.join(modules)}"
@@ -117,12 +120,12 @@ def create_profile(remote: Remote, path: str = "~"):
 
     default_profname = ""
     if any("conda" in m for m in modules):
-        env = select_conda_environment(remote.with_precommand(mload))
+        env = select_conda_environment(remote, precommand=mload)
         lines.append(f"conda activate {env}")
         default_profname = _env_basename(env)
 
     elif any("python" in m for m in modules):
-        vpath = select_virtual_environment(remote.with_precommand(mload), path)
+        vpath = select_virtual_environment(remote, path=path, precommand=mload)
         lines.append(f"source {vpath}/bin/activate")
         default_profname = _env_basename(vpath)
 
@@ -134,12 +137,15 @@ def create_profile(remote: Remote, path: str = "~"):
     qn.print("==========")
     qn.print(profcontents)
     qn.print("==========")
-    remote.puttext(f"{profcontents}\n", prof_file)
+    if isinstance(remote, Remote):
+        remote.puttext(f"{profcontents}\n", prof_file)
+    else:
+        remote.run(f"echo {profcontents}\n > {prof_file}")
 
     return prof_file
 
 
-def select_modules(remote: Remote):
+def select_modules(remote: RemoteV2 | Remote):
     choices = [
         Choice(
             title="miniconda/3",
@@ -202,9 +208,11 @@ def _env_basename(pth: str) -> str | None:
     return base
 
 
-def select_conda_environment(remote: Remote, loader: str = "module load miniconda/3"):
+def select_conda_environment(
+    remote: Remote | RemoteV2, precommand: str = "module load miniconda/3"
+):
     qn.print("Fetching the list of conda environments...")
-    envstr = remote.get_output("conda env list --json", hide=True)
+    envstr = remote.get_output(precommand + "&& conda env list --json", hide=True)
     envlist: list[str] = json.loads(envstr)["envs"]
     choices: list[Choice[str]] = [
         Choice(
@@ -254,7 +262,7 @@ def select_conda_environment(remote: Remote, loader: str = "module load minicond
     return env
 
 
-def select_virtual_environment(remote: Remote, path):
+def select_virtual_environment(remote: RemoteV2 | Remote, path: str, precommand: str):
     envstr = remote.get_output(
         (
             f"ls -d {path}/venv {path}/.venv {path}/virtualenv ~/virtualenvs/* "

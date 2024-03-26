@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import contextvars
 import functools
 import itertools
 import multiprocessing
+import operator
 import random
 import shutil
 import socket
@@ -11,6 +13,7 @@ import subprocess
 import sys
 import typing
 import warnings
+from argparse import _HelpAction
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,6 +28,7 @@ from typing_extensions import ParamSpec, TypeGuard
 
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
+    from milatools.utils.remote_v2 import RemoteV2
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
@@ -96,15 +100,18 @@ def randname():
 
 
 @contextmanager
-def with_control_file(remote: Remote, name=None):
+def with_control_file(remote: RemoteV2 | Remote, name=None):
     name = name or randname()
     pth = f".milatools/control/{name}"
     remote.run("mkdir -p ~/.milatools/control", hide=True)
 
     try:
-        remote.simple_run(f"[ -f {pth} ]")
+        if isinstance(remote, Remote):
+            remote.simple_run(f"[ -f {pth} ]")
+        else:
+            remote.run(f"[ -f {pth} ]", hide=True, display=False)
         exit(f"Server {name} already exists. You may use mila serve kill to remove it.")
-    except UnexpectedExit:
+    except (UnexpectedExit, subprocess.CalledProcessError):
         pass
 
     token = control_file_var.set(pth)
@@ -172,12 +179,12 @@ def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
 
 
-def askpath(prompt: str, remote: Remote) -> str:
+def askpath(prompt: str, remote: RemoteV2 | Remote) -> str:
     while True:
         pth = qn.text(prompt).unsafe_ask()
         try:
-            remote.simple_run(f"[ -d {pth} ]")
-        except UnexpectedExit:
+            remote.run(f"[ -d {pth} ]", hide=True, display=False)
+        except (UnexpectedExit, subprocess.CalledProcessError):
             qn.print(f"Path {pth} does not exist")
             continue
         return pth
@@ -252,10 +259,22 @@ class SSHConfig:
 def get_fully_qualified_hostname_of_compute_node(
     node_name: str, cluster: str = "mila"
 ) -> str:
-    """Return the fully qualified name corresponding to this node name."""
+    """Return the fully qualified name corresponding to this node name.
+
+    TODO: We should keep the hostname the same in the case where there is a match in
+    the user's SSH config (e.g. if they already setup an ssh config for `cn-a****`).
+    """
     if cluster == "mila":
+        ssh_config_path = Path.home() / ".ssh" / "config"
         if node_name.endswith(".server.mila.quebec"):
             return node_name
+
+        if ssh_config_path.exists():
+            ssh_config = paramiko.SSHConfig.from_path(str(ssh_config_path))
+            if len(ssh_config.lookup(node_name)) < len(
+                ssh_config.lookup(f"{node_name}.server.mila.quebec")
+            ):
+                return node_name + ".server.mila.quebec"
         return f"{node_name}.server.mila.quebec"
     if cluster in CLUSTERS:
         # For the other explicitly supported clusters in the SSH config, the node name
@@ -343,5 +362,18 @@ if sys.version_info < (3, 9):
             return s[: -len(suffix)]
         else:
             return s
+
 else:
     removesuffix = str.removesuffix
+
+
+class SortingHelpFormatter(argparse.HelpFormatter):
+    """Taken and adapted from https://stackoverflow.com/a/12269143/6388696."""
+
+    def add_arguments(self, actions):
+        actions = sorted(actions, key=operator.attrgetter("option_strings"))
+        # put help actions first.
+        actions = sorted(
+            actions, key=lambda action: not isinstance(action, _HelpAction)
+        )
+        super().add_arguments(actions)

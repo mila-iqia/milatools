@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import datetime
-import functools
 import os
 from logging import getLogger as get_logger
 
 import pytest
 
-from milatools.cli.remote import Remote
 from milatools.utils.remote_v2 import (
     SSH_CONFIG_FILE,
     is_already_logged_in,
@@ -63,62 +61,3 @@ def skip_param_if_not_already_logged_in(cluster: str):
             skip_if_not_already_logged_in(cluster),
         ],
     )
-
-
-@functools.lru_cache
-def get_slurm_account(cluster: str) -> str:
-    """Gets the SLURM account of the user using sacctmgr on the slurm cluster.
-
-    When there are multiple accounts, this selects the first account, alphabetically.
-
-    On DRAC cluster, this uses the `def` allocations instead of `rrg`, and when
-    the rest of the accounts are the same up to a '_cpu' or '_gpu' suffix, it uses
-    '_cpu'.
-
-    For example:
-
-    ```text
-    def-someprofessor_cpu  <-- this one is used.
-    def-someprofessor_gpu
-    rrg-someprofessor_cpu
-    rrg-someprofessor_gpu
-    ```
-    """
-    logger.info(
-        f"Fetching the list of SLURM accounts available on the {cluster} cluster."
-    )
-    result = Remote(cluster).run(
-        "sacctmgr --noheader show associations where user=$USER format=Account%50"
-    )
-    accounts = [line.strip() for line in result.stdout.splitlines()]
-    assert accounts
-    logger.info(f"Accounts on the slurm cluster {cluster}: {accounts}")
-    account = sorted(accounts)[0]
-    logger.info(f"Using account {account} to launch jobs in tests.")
-    return account
-
-
-@pytest.fixture()
-def allocation_flags(cluster: str, request: pytest.FixtureRequest) -> list[str]:
-    # note: thanks to lru_cache, this is only making one ssh connection per cluster.
-    account = get_slurm_account(cluster)
-    allocation_options = {
-        "job-name": JOB_NAME,
-        "wckey": WCKEY,
-        "account": account,
-        "nodes": 1,
-        "ntasks": 1,
-        "cpus-per-task": 1,
-        "mem": "1G",
-        "time": MAX_JOB_DURATION,
-        "oversubscribe": None,  # allow multiple such jobs to share resources.
-    }
-    overrides = getattr(request, "param", {})
-    assert isinstance(overrides, dict)
-    if overrides:
-        print(f"Overriding allocation options with {overrides}")
-        allocation_options.update(overrides)
-    return [
-        f"--{key}={value}" if value is not None else f"--{key}"
-        for key, value in allocation_options.items()
-    ]
