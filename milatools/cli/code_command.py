@@ -29,12 +29,12 @@ from milatools.cli.utils import (
     running_inside_WSL,
 )
 from milatools.utils.remote_v2 import (
-    InteractiveRemote,
+    ComputeNodeRemote,
     RemoteV2,
-    get_node_of_job,
     run,
     salloc,
     sbatch,
+    wait_while_job_is_pending,
 )
 from milatools.utils.vscode_utils import (
     get_code_command,
@@ -101,6 +101,53 @@ def add_mila_code_arguments(subparsers: argparse._SubParsersAction):
         code_parser.set_defaults(function=code)
 
 
+async def get_or_allocate_compute_node(
+    login_node: RemoteV2,
+    job: int | None,
+    node: str | None,
+    alloc: list[str],
+    persist: bool,
+) -> ComputeNodeRemote:
+    cluster = login_node.hostname
+
+    if job is not None:
+        await wait_while_job_is_pending(login_node, job_id=job)
+        return ComputeNodeRemote(login_node, job_id=job)
+
+    if node:
+        # we have to find the job id to use on the given node.
+        jobs_on_node = await login_node.get_output_async(
+            f"squeue --me --node {node} --noheader --format=%A"
+        )
+        jobs_on_node = [int(job_id.strip()) for job_id in jobs_on_node.splitlines()]
+        if len(jobs_on_node) == 0:
+            raise MilatoolsUserError(
+                f"You don't appear to have any jobs currently running on node {node}. "
+                "Please check again or specify the job id to connect to."
+            )
+        if len(jobs_on_node) > 1:
+            raise MilatoolsUserError(
+                f"You have more than one job running on node {node}: {jobs_on_node}.\n"
+                "please use the `--job` flag to specify which job to connect to."
+            )
+        assert len(jobs_on_node) == 1
+        return ComputeNodeRemote(login_node=login_node, job_id=jobs_on_node[0])
+
+    if cluster in DRAC_CLUSTERS and not any("--account" in flag for flag in alloc):
+        logger.warning(
+            "Warning: When using the DRAC clusters, you usually need to "
+            "specify the account to use when submitting a job. You can specify "
+            "this in the job resources with `--alloc`, like so: "
+            "`--alloc --account=<account_to_use>`, for example:\n"
+            f"mila code some_path --cluster {cluster} --alloc "
+            f"--account=your-account-here"
+        )
+
+    if persist:
+        return await sbatch(login_node, sbatch_flags=alloc)
+    return salloc(login_node, salloc_flags=alloc)
+
+
 async def code(
     path: str,
     command: str,
@@ -129,27 +176,6 @@ async def code(
 
     # Connect to the cluster's login node (TODO: only if necessary).
     login_node = RemoteV2(cluster)
-
-    if job is not None:
-        node, _state = await get_node_of_job(login_node, job_id=job)
-
-    if node:
-        node = get_fully_qualified_hostname_of_compute_node(node)
-        compute_node = RemoteV2(hostname=node)
-    else:
-        if cluster in DRAC_CLUSTERS and not any("--account" in flag for flag in alloc):
-            logger.warning(
-                "Warning: When using the DRAC clusters, you usually need to "
-                "specify the account to use when submitting a job. You can specify "
-                "this in the job resources with `--alloc`, like so: "
-                "`--alloc --account=<account_to_use>`, for example:\n"
-                f"mila code {path} --cluster {cluster} --alloc "
-                f"--account=your-account-here"
-            )
-        if persist:
-            compute_node = await sbatch(login_node, sbatch_flags=alloc)
-        else:
-            compute_node = salloc(login_node, salloc_flags=alloc)
 
     try:
         check_disk_quota(login_node)
@@ -184,6 +210,11 @@ async def code(
                 Local(),
                 [cluster],
             )
+    # todo: could potentially do this at the same time as the blocks above and just wait
+    # for the result here
+    compute_node = await get_or_allocate_compute_node(
+        login_node=login_node, job=job, node=node, alloc=alloc, persist=persist
+    )
 
     try:
         while True:
@@ -199,16 +230,24 @@ async def code(
             )
             await run(code_command_to_run)
             print(
-                "The editor was closed. Reopen it with <Enter>"
-                " or terminate the process with <Ctrl+C>"
+                "The editor was closed. Reopen it with <Enter> or terminate the "
+                "process with <Ctrl+C>"
             )
             if currently_in_a_test():
                 break
             input()
     except KeyboardInterrupt:
-        if isinstance(compute_node, InteractiveRemote):
+        if not persist:
+            # Cancel the job.
             compute_node.close()
         return
+
+    if persist:
+        console.print("This allocation is persistent and is still active.")
+        console.print("To reconnect to this node:")
+        console.print(f"  mila code {path} --job {compute_node.job_id}", style="bold")
+        console.print("To kill this allocation:")
+        console.print(f"  ssh mila scancel {compute_node.job_id}", style="bold")
 
 
 @deprecated(
