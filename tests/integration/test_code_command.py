@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import re
 import subprocess
@@ -8,13 +9,17 @@ from datetime import timedelta
 from logging import getLogger as get_logger
 
 import pytest
+from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.commands import check_disk_quota, code
+from milatools.cli import console
+from milatools.cli.code_command import code
+from milatools.cli.common import check_disk_quota
 from milatools.cli.remote import Remote
 from milatools.cli.utils import get_fully_qualified_hostname_of_compute_node
 from milatools.utils.remote_v2 import RemoteV2
 
 from ..cli.common import in_github_CI, skip_param_if_on_github_ci
+from ..conftest import launches_jobs
 from .conftest import (
     SLURM_CLUSTER,
     hangs_in_github_CI,
@@ -79,69 +84,89 @@ def test_check_disk_quota(
         ),
         skip_param_if_on_github_ci("mila"),
         # TODO: Re-enable these tests once we make `code` work with RemoteV2
-        pytest.param("narval", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("beluga", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("cedar", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("graham", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("niagara", marks=pytest.mark.skip(reason="Goes through 2FA!")),
+        skip_param_if_not_already_logged_in("narval"),
+        skip_param_if_not_already_logged_in("beluga"),
+        skip_param_if_not_already_logged_in("cedar"),
+        skip_param_if_not_already_logged_in("graham"),
+        skip_param_if_not_already_logged_in("niagara"),
     ],
     indirect=True,
 )
+@launches_jobs
+@pytest.mark.asyncio
 @pytest.mark.parametrize("persist", [True, False])
-def test_code(
-    login_node: Remote | RemoteV2,
+async def test_code(
+    login_node: RemoteV2,
     persist: bool,
     capsys: pytest.CaptureFixture,
     allocation_flags: list[str],
+    file_regression: FileRegressionFixture,
 ):
     home = login_node.run("echo $HOME", display=False, hide=True).stdout.strip()
     scratch = login_node.get_output("echo $SCRATCH")
-    relative_path = "bob"
-    code(
-        path=relative_path,
-        command="echo",  # replace the usual `code` with `echo` for testing.
-        persist=persist,
-        job=None,
-        node=None,
-        alloc=allocation_flags,
-        cluster=login_node.hostname,  # type: ignore
+
+    start = datetime.datetime.now() - timedelta(minutes=5)
+    jobs_before = get_recent_jobs_info_dicts(
+        login_node, since=datetime.datetime.now() - start
     )
+    jobs_before = {int(job_info["JobID"]): job_info for job_info in jobs_before}
+
+    relative_path = "bob"
+
+    with console.capture() as captured_output:
+        await code(
+            path=relative_path,
+            command="echo",  # replace the usual `code` with `echo` for testing.
+            persist=persist,
+            job=None,
+            node=None,
+            alloc=allocation_flags,
+            cluster=login_node.hostname,  # type: ignore
+        )
 
     # Get the output that was printed while running that command.
-    # We expect our fake vscode command (with 'code' replaced with 'echo') to have been
-    # executed.
-    captured_output: str = capsys.readouterr().out
-
-    # Get the job id from the output just so we can more easily check the command output
-    # with sacct below.
-    if persist:
-        m = re.search(r"Submitted batch job ([0-9]+)", captured_output)
-        assert m
-        job_id = int(m.groups()[0])
-    else:
-        m = re.search(r"salloc: Granted job allocation ([0-9]+)", captured_output)
-        assert m
-        job_id = int(m.groups()[0])
+    captured_output = captured_output.get()
 
     time.sleep(5)  # give a chance to sacct to update.
-    recent_jobs = get_recent_jobs_info_dicts(
-        since=timedelta(minutes=5),
-        login_node=login_node,
+
+    jobs_after = get_recent_jobs_info_dicts(
+        login_node,
+        since=datetime.datetime.now() - start,
         fields=("JobID", "JobName", "Node", "WorkDir", "State"),
     )
-    job_id_to_job_info = {int(job_info["JobID"]): job_info for job_info in recent_jobs}
-    assert job_id in job_id_to_job_info, (job_id, job_id_to_job_info)
-    job_info = job_id_to_job_info[job_id]
+    jobs_after = {int(job_info["JobID"]): job_info for job_info in jobs_after}
+
+    assert all(
+        job_id_before in jobs_after.keys() for job_id_before in jobs_before.keys()
+    )
+    assert len(jobs_after) - len(jobs_before) == 1
+
+    job_id = next(iter(jobs_after.keys() - jobs_before.keys()))
+    job_info = jobs_after[job_id]
 
     node = job_info["Node"]
     node_hostname = get_fully_qualified_hostname_of_compute_node(
         node, cluster=login_node.hostname
     )
-    expected_line = f"(local) $ /usr/bin/echo -nw --remote ssh-remote+{node_hostname} {home}/{relative_path}"
-    assert any((expected_line in line) for line in captured_output.splitlines()), (
-        captured_output,
-        expected_line,
-    )
+    assert node_hostname and node_hostname != "None"
+
+    def filter_captured_output(captured_output: str) -> str:
+        def filter_line(line: str) -> str:
+            # IDEA: Use regex to go from this:
+            # Disk usage: 66.56 / 100.00 GiB and 789192 / 1048576 files
+            # to this:
+            # Disk usage: X / LIMIT GiB and X / LIMIT files
+            if (
+                regex := re.compile(
+                    r"Disk usage: \d+\.\d+ / \d+\.\d+ GiB and \d+ / \d+ files"
+                )
+            ).match(line):
+                line = regex.sub("Disk usage: X / LIMIT GiB and X / LIMIT files", line)
+            return line.rstrip().replace(str(job_id), "JOB_ID").replace(home, "$HOME")
+
+        return "\n".join(filter_line(line) for line in captured_output.splitlines())
+
+    file_regression.check(filter_captured_output(captured_output))
 
     # Check that on the DRAC clusters, the workdir is the scratch directory (because we
     # cd'ed to $SCRATCH before submitting the job)
@@ -154,6 +179,8 @@ def test_code(
     if persist:
         # Job should still be running since we're using `persist` (that's the whole
         # point.)
+        # NOTE: There's a fixture that scancel's all our jobs spawned during unit tests
+        # so there's no issue of lingering jobs on the cluster after the tests run/fail.
         assert job_info["State"] == "RUNNING"
     else:
         # Job should have been cancelled by us after the `echo` process finished.

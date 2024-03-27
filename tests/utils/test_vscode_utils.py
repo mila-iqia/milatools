@@ -13,7 +13,7 @@ import pytest
 
 from milatools.cli.local import Local
 from milatools.cli.remote import Remote
-from milatools.cli.utils import running_inside_WSL
+from milatools.cli.utils import MilatoolsUserError, running_inside_WSL
 from milatools.utils.parallel_progress import ProgressDict
 from milatools.utils.remote_v2 import RemoteV2, UnsupportedPlatformError
 from milatools.utils.vscode_utils import (
@@ -87,11 +87,14 @@ def test_running_inside_WSL():
 
 
 def test_get_vscode_executable_path():
-    code = get_vscode_executable_path()
     if vscode_installed():
-        assert code is not None and Path(code).exists()
+        code = get_vscode_executable_path()
+        assert Path(code).exists()
     else:
-        assert code is None
+        with pytest.raises(
+            MilatoolsUserError, match="Command 'code' does not exist locally."
+        ):
+            get_vscode_executable_path()
 
 
 @pytest.fixture
@@ -137,7 +140,7 @@ def test_sync_vscode_extensions_in_parallel_with_hostnames(
 @requires_vscode
 @requires_ssh_to_localhost
 def test_sync_vscode_extensions_in_parallel():
-    results = sync_vscode_extensions(Local(), dest_clusters=[Local()])
+    results = sync_vscode_extensions(Local(), destinations=[Local()])
     assert results == {"localhost": {"info": "Done.", "progress": 0, "total": 0}}
 
 
