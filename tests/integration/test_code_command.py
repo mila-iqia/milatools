@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import datetime
 import logging
-import shutil
+import re
 import subprocess
 import time
 from datetime import timedelta
 from logging import getLogger as get_logger
 
 import pytest
+from pytest_regressions.file_regression import FileRegressionFixture
 
+from milatools.cli import console
 from milatools.cli.code_command import code
 from milatools.cli.common import check_disk_quota
 from milatools.cli.remote import Remote
@@ -98,6 +100,7 @@ async def test_code(
     persist: bool,
     capsys: pytest.CaptureFixture,
     allocation_flags: list[str],
+    file_regression: FileRegressionFixture,
 ):
     home = login_node.run("echo $HOME", display=False, hide=True).stdout.strip()
     scratch = login_node.get_output("echo $SCRATCH")
@@ -109,19 +112,21 @@ async def test_code(
     jobs_before = {int(job_info["JobID"]): job_info for job_info in jobs_before}
 
     relative_path = "bob"
-    from milatools.cli import console
 
-    console.begin_capture()
+    with console.capture() as captured_output:
+        await code(
+            path=relative_path,
+            command="echo",  # replace the usual `code` with `echo` for testing.
+            persist=persist,
+            job=None,
+            node=None,
+            alloc=allocation_flags,
+            cluster=login_node.hostname,  # type: ignore
+        )
 
-    await code(
-        path=relative_path,
-        command="echo",  # replace the usual `code` with `echo` for testing.
-        persist=persist,
-        job=None,
-        node=None,
-        alloc=allocation_flags,
-        cluster=login_node.hostname,  # type: ignore
-    )
+    # Get the output that was printed while running that command.
+    captured_output = captured_output.get()
+
     time.sleep(5)  # give a chance to sacct to update.
 
     jobs_after = get_recent_jobs_info_dicts(
@@ -145,19 +150,24 @@ async def test_code(
     )
     assert node_hostname and node_hostname != "None"
 
-    # Get the output that was printed while running that command.
-    captured_output = console.end_capture()
-    # We expect our fake vscode command (with 'code' replaced with 'echo') to have been
-    # executed.
-    expected_line = f"(local) $ {shutil.which('echo')} -nw --remote ssh-remote+{node_hostname} {home}/{relative_path}"
-    captured_output_lines = captured_output.splitlines()
-    print(captured_output_lines)
-    # FIXME: Ok it seems like the output is being cut into two different lines, doesn't
-    # really matter.
-    assert any((expected_line in line) for line in captured_output_lines), (
-        captured_output_lines,
-        expected_line,
-    )
+    def filter_captured_output(captured_output: str) -> str:
+        def filter_line(line: str) -> str:
+            # IDEA: Use regex to go from this:
+            # Disk usage: 66.56 / 100.00 GiB and 789192 / 1048576 files
+            # to this:
+            # Disk usage: X / LIMIT GiB and X / LIMIT files
+            if (
+                regex := re.compile(
+                    r"Disk usage: \d+\.\d+ / \d+\.\d+ GiB and \d+ / \d+ files"
+                )
+            ).match(line):
+                line = regex.sub("Disk usage: X / LIMIT GiB and X / LIMIT files", line)
+            return line.rstrip().replace(str(job_id), "JOB_ID").replace(home, "$HOME")
+
+        return "\n".join(filter_line(line) for line in captured_output.splitlines())
+
+    file_regression.check(filter_captured_output(captured_output))
+
     # Check that on the DRAC clusters, the workdir is the scratch directory (because we
     # cd'ed to $SCRATCH before submitting the job)
     workdir = job_info["WorkDir"]
@@ -169,6 +179,8 @@ async def test_code(
     if persist:
         # Job should still be running since we're using `persist` (that's the whole
         # point.)
+        # NOTE: There's a fixture that scancel's all our jobs spawned during unit tests
+        # so there's no issue of lingering jobs on the cluster after the tests run/fail.
         assert job_info["State"] == "RUNNING"
     else:
         # Job should have been cancelled by us after the `echo` process finished.

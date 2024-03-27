@@ -12,7 +12,7 @@ import subprocess
 import sys
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Literal, Mapping, MutableMapping, Protocol
+from typing import Literal, Mapping, Protocol
 
 from paramiko import SSHConfig
 
@@ -220,7 +220,7 @@ class RemoteV2(RemoteLike):
         hostname: str,
         *,
         control_path: Path | None = None,
-        ssh_options: MutableMapping[str, str | None] | None = None,
+        ssh_options: Mapping[str, str | None] | None = None,
     ):
         """Create an SSH connection using this control_path, creating it if necessary.
 
@@ -250,6 +250,32 @@ class RemoteV2(RemoteLike):
             logger.info(f"Reusing an existing SSH socket at {self.control_path}.")
 
         assert control_socket_is_running(self.hostname, self.control_path)
+
+    @staticmethod
+    async def connect(
+        hostname: str,
+        *,
+        control_path: Path | None = None,
+        ssh_options: Mapping[str, str | None] | None = None,
+    ) -> RemoteV2:
+        """Async constructor for `RemoteV2`."""
+        control_path = control_path or get_controlpath_for(hostname)
+        ssh_options = ssh_options or {}
+
+        if not await control_socket_is_running_async(hostname, control_path):
+            logger.info(f"Creating a reusable connection to the {hostname} cluster.")
+            setup_connection_with_controlpath(
+                hostname,
+                control_path,
+                timeout=None,
+                display=False,
+                other_ssh_options=ssh_options,
+            )
+        else:
+            logger.info(f"Reusing an existing SSH socket at {control_path}.")
+
+        assert await control_socket_is_running_async(hostname, control_path)
+        return RemoteV2(hostname, control_path=control_path, ssh_options=ssh_options)
 
     def run(
         self, command: str, display: bool = True, warn: bool = False, hide: Hide = False
@@ -341,7 +367,7 @@ class RemoteV2(RemoteLike):
         return f"{type(self).__name__}({params})"
 
 
-def salloc(login_node: RemoteV2, salloc_flags: list[str]) -> ComputeNodeRemote:
+async def salloc(login_node: RemoteV2, salloc_flags: list[str]) -> ComputeNodeRemote:
     """Runs `salloc` and returns a remote connected to the compute node."""
     salloc_command = "salloc " + shlex.join(salloc_flags)
     command = ssh_command(
@@ -354,14 +380,12 @@ def salloc(login_node: RemoteV2, salloc_flags: list[str]) -> ComputeNodeRemote:
     )
     logger.debug(f"(local) $ {shlex.join(command)}")
     console.log(f"({login_node.hostname}) $ {salloc_command}", style="green")
-    salloc_subprocess = subprocess.Popen(
-        command,
-        text=True,
+    salloc_subprocess = await asyncio.subprocess.create_subprocess_exec(
+        *command,
         shell=False,
-        bufsize=1,  # line buffered
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
     assert salloc_subprocess.stdin is not None
     assert salloc_subprocess.stdout is not None
@@ -370,13 +394,12 @@ def salloc(login_node: RemoteV2, salloc_flags: list[str]) -> ComputeNodeRemote:
     # would break this? TODO: Check that this also works for all clusters we care about,
     # and if not, think of a better way to wait until the job is running (perhaps using
     # sacct as done in `sbatch` below).
+    salloc_subprocess.stdin.write("echo $SLURM_JOB_ID\n".encode())  # noqa: UP012
 
-    salloc_subprocess.stdin.write("echo $SLURM_JOB_ID\n")
-
-    job_id = salloc_subprocess.stdout.readline().strip()
+    job_id = (await salloc_subprocess.stdout.readline()).decode().strip()
     job_id = int(job_id)
-    # todo: need to pass the subprocess to this ComputeNodeRemote so it doesn't die when
-    # it goes out of scope, right?
+    # NOTE: passing the process handle to this ComputeNodeRemote so it doesn't die when
+    # it goes out of scope (which would kill the job).
     return ComputeNodeRemote(
         job_id=job_id, login_node=login_node, salloc_subprocess=salloc_subprocess
     )
@@ -420,18 +443,21 @@ class ComputeNodeRemote(RemoteLike):
         login_node: RemoteV2,
         job_id: int,
         *,
-        salloc_subprocess: subprocess.Popen | None = None,
+        salloc_subprocess: asyncio.subprocess.Process | None = None,
     ):
         self.job_id = job_id
         # We want to add the `-tt` ssh option to this login node, so copy it first to
         # avoid changing the given object.
         self.login_node = copy.deepcopy(login_node)
-        self.login_node.ssh_options.update(
+
+        new_ssh_options = dict(self.login_node.ssh_options)
+        new_ssh_options.update(
             {
                 "StrictHostKeyChecking": "no",
-                "-tt": None,
+                "-tt": None,  # so commands are run in an interactive terminal
             }
         )
+        self.login_node.ssh_options = new_ssh_options
         # The hostname will be of the compute node.
         # todo: should we wait until the job is running here? or before?
         self.hostname = self.get_output("hostname")
@@ -440,13 +466,18 @@ class ComputeNodeRemote(RemoteLike):
     def wrap_command(self, command: str) -> str:
         return f"srun --pty --overlap --jobid {self.job_id} {command}"
 
-    def close(self):
+    async def close(self):
         logger.info(f"Stopping job {self.job_id}.")
         if self.salloc_subprocess is not None:
             assert self.salloc_subprocess.stdin is not None
-            _out, _err = self.salloc_subprocess.communicate("exit\n")
-            self.salloc_subprocess.wait()
-        self.login_node.run(f"scancel {self.job_id}", display=True, hide=False)
+            await self.salloc_subprocess.communicate("exit\n".encode())  # noqa: UP012
+            # note: This should work, because we're not doing something like
+            # `srun --pty /bin/bash` in the salloc terminal, which, when exiting once,
+            # would only exit the bash shell, not the interactive job.
+            await self.salloc_subprocess.wait()
+        await self.login_node.run_async(
+            f"scancel {self.job_id}", display=True, hide=False
+        )
 
     def run(
         self, command: str, display: bool = True, warn: bool = False, hide: Hide = False

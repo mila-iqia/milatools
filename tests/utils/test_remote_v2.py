@@ -97,9 +97,10 @@ def test_controlsocket_is_running(cluster: str, already_logged_in: bool):
 
 
 # make it last a bit longer here so we don't confuse end of command/test with end of job.
+@pytest.mark.asyncio
 @pytest.mark.parametrize("allocation_flags", [{"time": "00:01:00"}], indirect=True)
-def test_salloc(login_node_v2: RemoteV2, allocation_flags: list[str]):
-    compute_node = salloc(login_node_v2, allocation_flags)
+async def test_salloc(login_node_v2: RemoteV2, allocation_flags: list[str]):
+    compute_node = await salloc(login_node_v2, allocation_flags)
     assert isinstance(compute_node, ComputeNodeRemote)
     assert compute_node.hostname != login_node_v2.hostname
 

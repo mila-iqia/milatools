@@ -101,53 +101,6 @@ def add_mila_code_arguments(subparsers: argparse._SubParsersAction):
         code_parser.set_defaults(function=code)
 
 
-async def get_or_allocate_compute_node(
-    login_node: RemoteV2,
-    job: int | None,
-    node: str | None,
-    alloc: list[str],
-    persist: bool,
-) -> ComputeNodeRemote:
-    cluster = login_node.hostname
-
-    if job is not None:
-        await wait_while_job_is_pending(login_node, job_id=job)
-        return ComputeNodeRemote(login_node, job_id=job)
-
-    if node:
-        # we have to find the job id to use on the given node.
-        jobs_on_node = await login_node.get_output_async(
-            f"squeue --me --node {node} --noheader --format=%A"
-        )
-        jobs_on_node = [int(job_id.strip()) for job_id in jobs_on_node.splitlines()]
-        if len(jobs_on_node) == 0:
-            raise MilatoolsUserError(
-                f"You don't appear to have any jobs currently running on node {node}. "
-                "Please check again or specify the job id to connect to."
-            )
-        if len(jobs_on_node) > 1:
-            raise MilatoolsUserError(
-                f"You have more than one job running on node {node}: {jobs_on_node}.\n"
-                "please use the `--job` flag to specify which job to connect to."
-            )
-        assert len(jobs_on_node) == 1
-        return ComputeNodeRemote(login_node=login_node, job_id=jobs_on_node[0])
-
-    if cluster in DRAC_CLUSTERS and not any("--account" in flag for flag in alloc):
-        logger.warning(
-            "Warning: When using the DRAC clusters, you usually need to "
-            "specify the account to use when submitting a job. You can specify "
-            "this in the job resources with `--alloc`, like so: "
-            "`--alloc --account=<account_to_use>`, for example:\n"
-            f"mila code some_path --cluster {cluster} --alloc "
-            f"--account=your-account-here"
-        )
-
-    if persist:
-        return await sbatch(login_node, sbatch_flags=alloc)
-    return salloc(login_node, salloc_flags=alloc)
-
-
 async def code(
     path: str,
     command: str,
@@ -161,11 +114,11 @@ async def code(
 
     Arguments:
         path: Path to open on the remote machine
-        command: Command to use to start vscode
-            (defaults to "code" or the value of $MILATOOLS_CODE_COMMAND)
-        persist: Whether the server should persist or not
-        job: Job ID to connect to
-        node: Node to connect to
+        command: Command to use to start vscode (defaults to "code" or the value of \
+            $MILATOOLS_CODE_COMMAND)
+        persist: Whether the server should persist or not after exiting the terminal.
+        job: ID of the job to connect to
+        node: Name of the node to connect to
         alloc: Extra options to pass to slurm
     """
     # Check that the `code` command is in the $PATH so that we can use just `code` as
@@ -194,38 +147,57 @@ async def code(
     # unknown cluster?
     if no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
-        run_in_the_background = True if not currently_in_a_test() else False
         console.log(
             f"Installing VSCode extensions that are on the local machine on "
-            f"{cluster}" + (" in the background." if run_in_the_background else "."),
+            f"{cluster} in the background.",
             style="cyan",
         )
 
-        if run_in_the_background:
-            # todo: use the mila or the local machine as the reference for vscode
-            # extensions?
-            copy_vscode_extensions_process = make_process(
-                sync_vscode_extensions,
-                Local(),
-                [login_node],
+        # todo: use the mila or the local machine as the reference for vscode
+        # extensions?
+        # todo: could also perhaps make this function asynchronous instead of using a
+        # multiprocessing process for it?
+        copy_vscode_extensions_process = make_process(
+            sync_vscode_extensions,
+            Local(),
+            [login_node],
+        )
+        copy_vscode_extensions_process.start()
+        # todo: could potentially do this at the same time as the blocks above and just wait
+        # for the result here
+        if currently_in_a_test():
+            copy_vscode_extensions_process.join()
+
+    if job or node:
+        if job and node:
+            logger.warning(
+                "Both job ID and node name were specified. Ignoring the node name and "
+                "only using the job id."
             )
-            copy_vscode_extensions_process.start()
+        job_id_or_node = job or node
+        assert job_id_or_node is not None
+        compute_node = await connect_to_running_job(job_id_or_node, login_node)
+    else:
+        if cluster in DRAC_CLUSTERS and not any("--account" in flag for flag in alloc):
+            logger.warning(
+                "Warning: When using the DRAC clusters, you usually need to "
+                "specify the account to use when submitting a job. You can specify "
+                "this in the job resources with `--alloc`, like so: "
+                "`--alloc --account=<account_to_use>`, for example:\n"
+                f"mila code some_path --cluster {cluster} --alloc "
+                f"--account=your-account-here"
+            )
+        if persist:
+            compute_node = await sbatch(login_node, sbatch_flags=alloc)
         else:
-            sync_vscode_extensions(
-                Local(),
-                [cluster],
-            )
-    # todo: could potentially do this at the same time as the blocks above and just wait
-    # for the result here
-    compute_node = await get_or_allocate_compute_node(
-        login_node=login_node, job=job, node=node, alloc=alloc, persist=persist
-    )
+            compute_node = await salloc(login_node, salloc_flags=alloc)
 
     try:
         while True:
             code_command_to_run = (
                 code_command,
-                "-nw",
+                "--new-window",
+                "--wait",
                 "--remote",
                 f"ssh-remote+{compute_node.hostname}",
                 path,
@@ -243,16 +215,49 @@ async def code(
             input()
     except KeyboardInterrupt:
         if not persist:
-            # Cancel the job.
-            compute_node.close()
-        return
+            # Cancel the job explicitly.
+            await compute_node.close()
 
     if persist:
         console.print("This allocation is persistent and is still active.")
-        console.print("To reconnect to this node:")
-        console.print(f"  mila code {path} --job {compute_node.job_id}", style="bold")
+        console.print("To reconnect to this job, run the following:")
+        console.print(
+            f"  mila code {path} "
+            + (f"--cluster {cluster} " if cluster != "mila" else "")
+            + f"--job {compute_node.job_id}",
+            style="bold",
+        )
         console.print("To kill this allocation:")
-        console.print(f"  ssh mila scancel {compute_node.job_id}", style="bold")
+        console.print(f"  ssh {cluster} scancel {compute_node.job_id}", style="bold")
+
+
+async def connect_to_running_job(
+    jobid_or_nodename: int | str,
+    login_node: RemoteV2,
+) -> ComputeNodeRemote:
+    if isinstance(jobid_or_nodename, int):
+        job_id = jobid_or_nodename
+        await wait_while_job_is_pending(login_node, job_id=job_id)
+        return ComputeNodeRemote(login_node, job_id=job_id)
+
+    node_name = jobid_or_nodename
+    # we have to find the job id to use on the given node.
+    jobs_on_node = await login_node.get_output_async(
+        f"squeue --me --node {node_name} --noheader --format=%A"
+    )
+    jobs_on_node = [int(job_id.strip()) for job_id in jobs_on_node.splitlines()]
+    if len(jobs_on_node) == 0:
+        raise MilatoolsUserError(
+            f"You don't appear to have any jobs currently running on node {node_name}. "
+            "Please check again or specify the job id to connect to."
+        )
+    if len(jobs_on_node) > 1:
+        raise MilatoolsUserError(
+            f"You have more than one job running on node {node_name}: {jobs_on_node}.\n"
+            "please use the `--job` flag to specify which job to connect to."
+        )
+    assert len(jobs_on_node) == 1
+    return ComputeNodeRemote(login_node=login_node, job_id=jobs_on_node[0])
 
 
 @deprecated(

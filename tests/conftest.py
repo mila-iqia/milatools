@@ -323,13 +323,21 @@ def slurm_account_on_cluster(cluster: str) -> str:
 
 @pytest.fixture()
 def allocation_flags(
-    cluster: str, slurm_account_on_cluster: str, request: pytest.FixtureRequest
+    slurm_account_on_cluster: str, request: pytest.FixtureRequest
 ) -> list[str]:
-    account = slurm_account_on_cluster
+    """Flags passed to salloc or sbatch during tests.
+
+    Any of these flags can be overridden for specific tests using something like:
+    ```python
+    @pytest.mark.parametrize("allocation_flags", [{"some_flag": "some_value"}], indirect=True)
+    def some_test(...)
+        ...
+    ```
+    """
     allocation_options = {
         "job-name": JOB_NAME,
         "wckey": WCKEY,
-        "account": account,
+        "account": slurm_account_on_cluster,
         "nodes": 1,
         "ntasks": 1,
         "cpus-per-task": 1,
