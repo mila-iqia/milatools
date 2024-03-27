@@ -309,20 +309,28 @@ class RemoteV2(RemoteLike):
         logger.debug(f"(local) $ {shlex.join(run_command)}")
         if display:
             console.log(f"({self.hostname}) $ {command}", style="green")
+        logger.debug(f"Warn={warn}, check={not warn}")
         result = subprocess.run(
             run_command,
             capture_output=True,
             check=not warn,
+            shell=False,
             text=True,
             bufsize=1,  # 1 means line buffered
         )
+        if warn and result.returncode != 0 and hide is not True:
+            logger.warning(
+                RuntimeWarning(
+                    f"Command {command!r} returned non-zero exit code {result.returncode}: {result.stderr}"
+                )
+            )
         if result.stdout:
             if hide not in [True, "out", "stdout"]:
                 print(result.stdout)
             logger.debug(f"{result.stdout}")
         if result.stderr:
             if hide not in [True, "err", "stderr"]:
-                print(result.stderr)
+                print(result.stderr, file=sys.stderr)
             logger.debug(f"{result.stderr}")
         return result
 
@@ -432,7 +440,7 @@ class ComputeNodeRemote(RemoteLike):
     """Runs commands on a compute node with `srun --jobid {job_id}` from the login node.
 
     This essentially runs this:
-    `ssh -tt {cluster} {ssh options} srun --jobid {job_id} {command}`
+    `ssh -tt {ssh options} {cluster} srun --jobid {job_id} {command}`
     in a subprocess each time `run` is called.
 
     Based on https://hpc.fau.de/faq/how-can-i-attach-to-a-running-slurm-job/
@@ -464,20 +472,14 @@ class ComputeNodeRemote(RemoteLike):
         self.salloc_subprocess = salloc_subprocess
 
     def wrap_command(self, command: str) -> str:
+        # TODO: Need to properly quote the command so the variables are evaluated on the
+        # remote and not locally.
+        # TODO: Look into the difference between
+        # `ssh mila 'srun --pty --overlap --jobid {jobid} "echo $SLURM_JOB_ID"'`
+        # vs
+        # `ssh mila srun --pty --overlap --jobid {jobid} 'echo $SLURM_JOB_ID'`
+        # (putting the quotes around the entire program vs just the command to run.)
         return f"srun --pty --overlap --jobid {self.job_id} {command}"
-
-    async def close(self):
-        logger.info(f"Stopping job {self.job_id}.")
-        if self.salloc_subprocess is not None:
-            assert self.salloc_subprocess.stdin is not None
-            await self.salloc_subprocess.communicate("exit\n".encode())  # noqa: UP012
-            # note: This should work, because we're not doing something like
-            # `srun --pty /bin/bash` in the salloc terminal, which, when exiting once,
-            # would only exit the bash shell, not the interactive job.
-            await self.salloc_subprocess.wait()
-        await self.login_node.run_async(
-            f"scancel {self.job_id}", display=True, hide=False
-        )
 
     def run(
         self, command: str, display: bool = True, warn: bool = False, hide: Hide = False
@@ -485,9 +487,58 @@ class ComputeNodeRemote(RemoteLike):
         if display:
             # Show the compute node hostname instead of the login node.
             console.log(f"({self.hostname}) $ {command}", style="green")
+
         return self.login_node.run(
-            command=self.wrap_command(command), display=False, warn=warn, hide=hide
+            command=self.wrap_command(command),
+            display=False,
+            warn=warn,
+            hide=hide,
         )
+
+        assert self.login_node.control_path.exists()
+        run_command = (
+            "ssh",
+            "-oControlMaster=auto",
+            "-oControlPersist=yes",
+            f"-oControlPath={self.login_node.control_path}",
+            "-oStrictHostKeyChecking=no",
+            "-tt",  # so commands are run in an interactive terminal
+            self.login_node.hostname,
+            # f"srun --pty --overlap --jobid {self.job_id} {command}",
+            "srun",
+            "--pty",
+            "--overlap",
+            "--jobid",
+            str(self.job_id),
+            *shlex.split(command),
+        )
+        logger.debug(f"(local) $ {run_command}")
+        if display:
+            console.log(f"({self.login_node.hostname}) $ {command}", style="green")
+        logger.debug(f"Warn={warn}, check={not warn}")
+        result = subprocess.run(
+            run_command,
+            capture_output=True,
+            check=not warn,
+            shell=False,
+            text=True,
+            bufsize=1,  # line buffered
+        )
+        if warn and result.returncode != 0 and hide is not True:
+            logger.warning(
+                RuntimeWarning(
+                    f"Command {command!r} returned non-zero exit code {result.returncode}: {result.stderr}"
+                )
+            )
+        if result.stdout:
+            if hide not in [True, "out", "stdout"]:
+                print(result.stdout)
+            logger.debug(f"{result.stdout}")
+        if result.stderr:
+            if hide not in [True, "err", "stderr"]:
+                print(result.stderr, file=sys.stderr)
+            logger.debug(f"{result.stderr}")
+        return result
 
     async def run_async(
         self,
@@ -501,6 +552,19 @@ class ComputeNodeRemote(RemoteLike):
             console.log(f"({self.hostname}) $ {command}", style="green")
         return await self.login_node.run_async(
             command=self.wrap_command(command), display=False, warn=warn, hide=hide
+        )
+
+    async def close(self):
+        logger.info(f"Stopping job {self.job_id}.")
+        if self.salloc_subprocess is not None:
+            assert self.salloc_subprocess.stdin is not None
+            await self.salloc_subprocess.communicate("exit\n".encode())  # noqa: UP012
+            # note: This should work, because we're not doing something like
+            # `srun --pty /bin/bash` in the salloc terminal, which, when exiting once,
+            # would only exit the bash shell, not the interactive job.
+            await self.salloc_subprocess.wait()
+        await self.login_node.run_async(
+            f"scancel {self.job_id}", display=True, hide=False
         )
 
 
@@ -743,6 +807,10 @@ def setup_connection_with_controlpath(
         receive the output we expected from running the command.
     """
     raise_error_if_running_on_windows()
+
+    # if control_socket_is_running(cluster, control_path):
+    #     logger.debug(f"Connection to {cluster} is already running.")
+    #     return
 
     if not control_path.exists():
         control_path.parent.mkdir(parents=True, exist_ok=True)
