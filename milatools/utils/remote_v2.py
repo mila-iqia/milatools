@@ -494,6 +494,8 @@ class ComputeNodeRemote(RemoteLike):
             warn=warn,
             hide=hide,
         )
+        # TODO: Trying to fix a big issue which is that environment variable lookups
+        # don't work :*(
 
         assert self.login_node.control_path.exists()
         run_command = (

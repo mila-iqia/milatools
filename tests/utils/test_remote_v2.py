@@ -111,6 +111,58 @@ class TestRemoteV2:
         ("command", "expected_output", "expected_err"),
         [
             ("echo OK", "OK", ""),
+            # TODO: Test the proper escaping of variables.
+            # ("echo $USER", "todo", ""),
+        ],
+    )
+    @pytest.mark.parametrize("display", [True, False])
+    @pytest.mark.parametrize("hide", [True, False, "out", "err", "stdout", "stderr"])
+    def test_run(
+        self,
+        remote: RemoteV2,
+        command: str,
+        expected_output: str | type[Exception],
+        expected_err: str,
+        hide: bool,
+        display: bool,
+        capsys: pytest.CaptureFixture,
+    ):
+        result = remote.run(command, display=display, hide=hide)
+        assert result.stdout.strip() == expected_output
+
+        assert result.stdout.strip() == expected_output
+        assert result.stderr.strip() == expected_err
+
+        printed_output, printed_err = capsys.readouterr()
+        assert isinstance(printed_output, str)
+        assert isinstance(printed_err, str)
+
+        assert (f"({remote.hostname}) $ {command}" in printed_output) == display
+
+        if result.stdout:
+            stdout_should_be_printed = hide not in [
+                True,
+                "out",
+                "stdout",
+            ]
+            stdout_was_printed = result.stdout in printed_output
+            assert stdout_was_printed == stdout_should_be_printed
+
+        if result.stderr:
+            error_should_be_printed = hide not in [
+                True,
+                "err",
+                "stderr",
+            ]
+            error_was_printed = result.stderr in printed_err
+            assert error_was_printed == error_should_be_printed, (
+                result.stderr,
+                printed_err,
+            )
+
+    @pytest.mark.parametrize(
+        ("command", "expected_exception", "expected_err"),
+        [
             (
                 "cat /does/not/exist",
                 subprocess.CalledProcessError,
@@ -121,11 +173,11 @@ class TestRemoteV2:
     @pytest.mark.parametrize("warn", [True, False])
     @pytest.mark.parametrize("display", [True, False])
     @pytest.mark.parametrize("hide", [True, False, "out", "err", "stdout", "stderr"])
-    def test_run(
+    def test_run_with_error(
         self,
         remote: RemoteV2,
         command: str,
-        expected_output: str | type[Exception],
+        expected_exception: type[Exception],
         expected_err: str,
         hide: bool,
         warn: bool,
@@ -133,33 +185,32 @@ class TestRemoteV2:
         capsys: pytest.CaptureFixture,
         caplog: pytest.LogCaptureFixture,
     ):
-        if isinstance(expected_output, type) and issubclass(expected_output, Exception):
-            if not warn:
-                # Should raise an exception of this type.
-                with pytest.raises(expected_exception=expected_output):
-                    _ = remote.run(command, display=display, hide=hide, warn=warn)
-                # unreachable code here, so just pretend like it returns directly.
-                return
+        assert isinstance(expected_exception, type) and issubclass(
+            expected_exception, Exception
+        )
 
-            with caplog.at_level(logging.WARNING):
-                result = remote.run(command, display=display, hide=hide, warn=warn)
+        if not warn:
+            # Should raise an exception of this type.
+            with pytest.raises(expected_exception=expected_exception):
+                _ = remote.run(command, display=display, hide=hide, warn=warn)
+            # unreachable code here, so just pretend like it returns directly.
+            return
 
-            if hide is True:
-                # Warnings not logged at all (because `warn=True` and `hide=True`).
-                assert caplog.records == []
-            else:
-                assert len(caplog.records) == 1
-                assert (
-                    caplog.records[0].message.strip()
-                    == f"Command {command!r} returned non-zero exit code 1: {expected_err}"
-                )
-            expected_output = ""
-        else:
+        with caplog.at_level(logging.WARNING):
             result = remote.run(command, display=display, hide=hide, warn=warn)
-            assert result.stdout.strip() == expected_output
 
-        assert result.stdout.strip() == expected_output
+        assert result.stdout == ""
         assert result.stderr.strip() == expected_err
+
+        if hide is True:
+            # Warnings not logged at all (because `warn=True` and `hide=True`).
+            assert caplog.records == []
+        else:
+            assert len(caplog.records) == 1
+            assert (
+                caplog.records[0].message.strip()
+                == f"Command {command!r} returned non-zero exit code 1: {expected_err}"
+            )
 
         printed_output, printed_err = capsys.readouterr()
         assert isinstance(printed_output, str)
