@@ -9,15 +9,11 @@ from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
 
 from .common import (
     in_github_CI,
-    output_tester,
-    passwordless_ssh_connection_to_localhost_is_setup,
-    requires_no_s_flag,
     in_self_hosted_github_CI,
     output_tester,
     passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
     skip_if_on_github_CI,
-    skip_param_if_on_github_ci,
     xfails_on_windows,
 )
 
