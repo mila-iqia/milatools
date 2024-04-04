@@ -11,6 +11,7 @@ import pytest
 from milatools.cli.remote import Remote
 from milatools.utils.remote_v2 import (
     SSH_CONFIG_FILE,
+    RemoteV2,
     is_already_logged_in,
 )
 from tests.cli.common import in_github_CI, in_self_hosted_github_CI
@@ -92,9 +93,14 @@ def get_slurm_account(cluster: str) -> str:
     logger.info(
         f"Fetching the list of SLURM accounts available on the {cluster} cluster."
     )
-    result = Remote(cluster).run(
-        "sacctmgr --noheader show associations where user=$USER format=Account%50"
-    )
+    if sys.platform == "win32":
+        result = Remote(cluster).run(
+            "sacctmgr --noheader show associations where user=$USER format=Account%50"
+        )
+    else:
+        result = RemoteV2(cluster).run(
+            "sacctmgr --noheader show associations where user=$USER format=Account%50"
+        )
     accounts = [line.strip() for line in result.stdout.splitlines()]
     assert accounts
     logger.info(f"Accounts on the slurm cluster {cluster}: {accounts}")
@@ -103,14 +109,20 @@ def get_slurm_account(cluster: str) -> str:
     return account
 
 
+@pytest.fixture(scope="session")
+def slurm_account(cluster: str):
+    return get_slurm_account(cluster)
+
+
 @pytest.fixture()
-def allocation_flags(cluster: str, request: pytest.FixtureRequest) -> list[str]:
+def allocation_flags(
+    cluster: str, slurm_account: str, request: pytest.FixtureRequest
+) -> list[str]:
     # note: thanks to lru_cache, this is only making one ssh connection per cluster.
-    account = get_slurm_account(cluster)
     allocation_options = {
         "job-name": JOB_NAME,
         "wckey": WCKEY,
-        "account": account,
+        "account": slurm_account,
         "nodes": 1,
         "ntasks": 1,
         "cpus-per-task": 1,
