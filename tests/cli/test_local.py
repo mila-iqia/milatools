@@ -6,6 +6,7 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
+from tests.integration.conftest import skip_if_not_already_logged_in
 
 from .common import (
     in_github_CI,
@@ -128,12 +129,6 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
     )
 
 
-re_enable_once_remotev2_is_used = pytest.mark.skipif(
-    in_self_hosted_github_CI,
-    reason="TODO: Might go through 2FA, re-enable once we use RemoteV2",
-)
-
-
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
@@ -141,9 +136,11 @@ re_enable_once_remotev2_is_used = pytest.mark.skipif(
         ("blablabob@localhost", False),
         pytest.param(
             "mila",
-            not in_github_CI,
+            True if (in_self_hosted_github_CI or not in_github_CI) else False,
             marks=pytest.mark.xfail(
-                reason="TODO: Paramiko SSH protocol banner issue...", strict=False
+                reason="TODO: Paramiko SSH protocol banner issue!",
+                # raises=paramiko.ssh_exception.SSHException,
+                strict=False,
             ),
         ),
         pytest.param(
@@ -165,7 +162,9 @@ re_enable_once_remotev2_is_used = pytest.mark.skipif(
             ],
         ),
         *(
-            pytest.param(drac_cluster, True, marks=re_enable_once_remotev2_is_used)
+            pytest.param(
+                drac_cluster, True, marks=skip_if_not_already_logged_in(drac_cluster)
+            )
             for drac_cluster in ["narval", "beluga", "cedar", "graham"]
         ),
         pytest.param(

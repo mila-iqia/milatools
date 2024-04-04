@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import functools
 import os
+import sys
 from logging import getLogger as get_logger
 
 import pytest
@@ -45,7 +46,9 @@ def skip_if_not_already_logged_in(cluster: str) -> pytest.MarkDecorator:
     we only want to go through 2FA once.
     """
     return pytest.mark.skipif(
-        not SSH_CONFIG_FILE.exists() or not is_already_logged_in(cluster),
+        sys.platform == "win32"
+        or not SSH_CONFIG_FILE.exists()
+        or not is_already_logged_in(cluster),
         reason=(
             f"Logging into {cluster} might go through 2FA. It should be done "
             "in advance."
