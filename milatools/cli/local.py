@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 import socket
 import subprocess
+import sys
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import IO, Any
@@ -10,6 +11,8 @@ from typing import IO, Any
 import fabric
 import paramiko.ssh_exception
 from typing_extensions import deprecated
+
+from milatools.utils.remote_v2 import is_already_logged_in
 
 from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs
 
@@ -79,6 +82,9 @@ def display(split_command: list[str] | tuple[str, ...] | str) -> None:
 
 
 def check_passwordless(host: str) -> bool:
+    if sys.platform != "win32" and is_already_logged_in(host):
+        return True
+
     try:
         connect_kwargs_for_host = {"allow_agent": False}
         if host in cluster_to_connect_kwargs:
