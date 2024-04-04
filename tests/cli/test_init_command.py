@@ -45,6 +45,7 @@ from milatools.cli.utils import (
 
 from .common import (
     in_github_CI,
+    in_self_hosted_github_CI,
     on_windows,
     passwordless_ssh_connection_to_localhost_is_setup,
     xfails_on_windows,
@@ -1170,7 +1171,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
 
 @pytest.mark.timeout(10)
 @pytest.mark.skipif(
-    not (in_github_CI or USE_MY_REAL_SSH_DIR),
+    not ((in_github_CI and not in_self_hosted_github_CI) or USE_MY_REAL_SSH_DIR),
     reason=(
         "It's a bit risky to actually change the SSH config directory on a dev "
         "machine. Only doing it in the CI or if the USE_MY_REAL_SSH_DIR env var is set."
