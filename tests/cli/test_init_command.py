@@ -1077,7 +1077,7 @@ def backup_ssh_dir():
 
 @pytest.mark.skipif(
     not (
-        (in_github_CI or USE_MY_REAL_SSH_DIR)
+        ((in_github_CI and not in_self_hosted_github_CI) or USE_MY_REAL_SSH_DIR)
         and passwordless_ssh_connection_to_localhost_is_setup
     ),
     reason=(
@@ -1111,7 +1111,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
     set the `USE_MY_REAL_SSH_DIR` env variable to '1'.
     """
     assert passwordless_ssh_connection_to_localhost_is_setup
-    assert in_github_CI or USE_MY_REAL_SSH_DIR
+    assert (in_github_CI and not in_self_hosted_github_CI) or USE_MY_REAL_SSH_DIR
 
     ssh_dir = Path.home() / ".ssh"
     authorized_keys_file = ssh_dir / "authorized_keys"
@@ -1148,11 +1148,15 @@ def test_setup_passwordless_ssh_access_to_cluster(
         .ssh directory.
         """
         logger.debug(f"Running: {command} {args} {kwargs}")
-        if sys.platform == "linux":
-            assert command[0] == "ssh-copy-id"
-        ssh_dir.mkdir(exist_ok=True, mode=0o700)
-        shutil.copy(backup_authorized_keys_file, authorized_keys_file)
-        return subprocess.CompletedProcess(command, 0, "", "")
+        if sys.platform == "linux" and command[0] == "ssh-copy-id":
+            ssh_dir.mkdir(exist_ok=True, mode=0o700)
+            # Re-enable ssh-ing without a password, by restoring the authorized_keys
+            # file.
+            shutil.copy(backup_authorized_keys_file, authorized_keys_file)
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[:2] == ["ssh", "-O", "check"]:
+            # Return this so it doesn't look like we're already logged into that cluster.
+            return subprocess.CompletedProcess(command, 1, "", "")
 
     mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
 
