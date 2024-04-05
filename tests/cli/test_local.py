@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import sys
 from subprocess import PIPE
 
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
-from tests.integration.conftest import skip_if_not_already_logged_in
+from milatools.utils.remote_v2 import is_already_logged_in
+from tests.integration.test_slurm_remote import PARAMIKO_SSH_BANNER_BUG
 
 from .common import (
     in_github_CI,
@@ -137,11 +139,7 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
         pytest.param(
             "mila",
             True if (in_self_hosted_github_CI or not in_github_CI) else False,
-            marks=pytest.mark.xfail(
-                reason="TODO: Paramiko SSH protocol banner issue!",
-                # raises=paramiko.ssh_exception.SSHException,
-                strict=False,
-            ),
+            marks=PARAMIKO_SSH_BANNER_BUG,
         ),
         pytest.param(
             "bobobobobobo@mila",
@@ -162,8 +160,15 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
             ],
         ),
         *(
+            # note: can't properly test for the False case because of the 2FA
+            # prompt!
             pytest.param(
-                drac_cluster, True, marks=skip_if_not_already_logged_in(drac_cluster)
+                drac_cluster,
+                True,
+                marks=pytest.mark.skipif(
+                    sys.platform != "win32" and not is_already_logged_in(drac_cluster),
+                    reason="Should give True when we're already logged in.",
+                ),
             )
             for drac_cluster in ["narval", "beluga", "cedar", "graham"]
         ),

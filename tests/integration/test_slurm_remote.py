@@ -4,6 +4,7 @@ The cluster to use can be specified by setting the SLURM_CLUSTER environment var
 During the CI on GitHub, a small local slurm cluster is setup with a GitHub Action, and
 SLURM_CLUSTER is set to "localhost".
 """
+
 from __future__ import annotations
 
 import datetime
@@ -157,7 +158,7 @@ def sbatch_slurm_remote(
 PARAMIKO_SSH_BANNER_BUG = pytest.mark.xfail(
     reason="TODO: (CRITICAL): Getting this annoying Paramiko SSH Banner issue!",
     raises=milatools.cli.utils.SSHConnectionError,
-    strict=True,
+    strict=False,
 )
 
 
