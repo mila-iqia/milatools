@@ -7,7 +7,7 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
-from milatools.utils.remote_v2 import SSH_CONFIG_FILE, is_already_logged_in
+from milatools.utils.remote_v2 import is_already_logged_in
 from tests.integration.test_slurm_remote import PARAMIKO_SSH_BANNER_BUG
 
 from .common import (
@@ -134,12 +134,20 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
-        ("localhost", passwordless_ssh_connection_to_localhost_is_setup),
+        pytest.param(
+            "localhost",
+            passwordless_ssh_connection_to_localhost_is_setup,
+            marks=(
+                [PARAMIKO_SSH_BANNER_BUG]
+                if not passwordless_ssh_connection_to_localhost_is_setup
+                else []
+            ),
+        ),
         ("blablabob@localhost", False),
         pytest.param(
             "mila",
             True if (in_self_hosted_github_CI or not in_github_CI) else False,
-            marks=PARAMIKO_SSH_BANNER_BUG,
+            marks=[PARAMIKO_SSH_BANNER_BUG] if not is_already_logged_in("mila") else [],
         ),
         pytest.param(
             "bobobobobobo@mila",
@@ -166,9 +174,7 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
                 drac_cluster,
                 True,
                 marks=pytest.mark.skipif(
-                    sys.platform == "win32"
-                    or not SSH_CONFIG_FILE.exists()
-                    or not is_already_logged_in(drac_cluster),
+                    sys.platform == "win32" or not is_already_logged_in(drac_cluster),
                     reason="Should give True when we're already logged in.",
                 ),
             )
@@ -177,7 +183,11 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
         pytest.param(
             "niagara",
             False,
-            marks=[skip_if_on_github_CI, paramiko_openssh_key_parsing_issue()],
+            marks=[
+                skip_if_on_github_CI,
+                paramiko_openssh_key_parsing_issue(),
+                PARAMIKO_SSH_BANNER_BUG,
+            ],
         ),  # SSH access isn't enabled by default.
     ],
 )
