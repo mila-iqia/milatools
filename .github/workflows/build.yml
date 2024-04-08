@@ -43,7 +43,7 @@ jobs:
 
     - name: Setup passwordless SSH access to localhost for tests
       # Adapted from https://stackoverflow.com/a/60367309/6388696
-      if: runner.os == 'Linux'
+      if: runner.os != 'Windows'
       run: |
         ssh-keygen -t ed25519 -f ~/.ssh/testkey -N ''
         cat > ~/.ssh/config <<EOF
