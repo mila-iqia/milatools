@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import getpass
 import json
 import os
 import shutil
@@ -1455,26 +1456,29 @@ def test_setup_passwordless_ssh_access_to_cluster(
         )
         for call in mock_subprocess_run.call_args_list
     ]
+    regression_text = "\n".join(
+        [
+            f"Calling {function_call_string(setup_passwordless_ssh_access_to_cluster, cluster)}",
+        ]
+        + [
+            f"with passwordless SSH access to {cluster} already setup"
+            if passwordless_ssh_was_previously_setup
+            else "without having setup passwordless SSH access to the cluster beforehand",
+        ]
+        + [
+            f"and the user {'accepting' if user_accepts_registering_key else 'rejecting'} "
+            f"to register the new public key on the remote"
+        ]
+        + [
+            "leads to the following commands being executed locally:",
+        ]
+        + [f"- {call}" for call in subprocess_run_calls]
+        + [""],
+    )
+    regression_text = regression_text.replace(str(SSH_CACHE_DIR), "~/.cache/ssh")
+    regression_text = regression_text.replace(str(getpass.getuser()), "<USER>")
     file_regression.check(
-        "\n".join(
-            [
-                f"Calling {function_call_string(setup_passwordless_ssh_access_to_cluster, cluster)} ",
-            ]
-            + [
-                f"with passwordless SSH access to {cluster} already setup "
-                if passwordless_ssh_was_previously_setup
-                else "without having setup passwordless SSH access to the cluster beforehand ",
-            ]
-            + [
-                f"and the user {'accepting' if user_accepts_registering_key else 'rejecting'} "
-                f"to register the new public key on the remote "
-            ]
-            + [
-                "leads to the following commands being executed locally:",
-            ]
-            + [f"- {call}" for call in subprocess_run_calls]
-            + [""],
-        ),
+        regression_text,
         extension=".md",
     )
 
