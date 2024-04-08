@@ -1052,8 +1052,6 @@ A backup is saved in `BACKUP_SSH_DIR`.
 
 @contextlib.contextmanager
 def backup_dir(directory: Path, backup_directory: Path):
-    # IDEA: Make the equivalent function, but that backs up a directory on a remote
-    # machine.
     dir_existed_before = directory.exists()
 
     # make hard links to the files in the backup directory.
