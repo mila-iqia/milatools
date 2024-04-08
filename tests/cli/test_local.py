@@ -7,7 +7,7 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
-from milatools.utils.remote_v2 import is_already_logged_in
+from milatools.utils.remote_v2 import SSH_CONFIG_FILE, is_already_logged_in
 from tests.integration.test_slurm_remote import PARAMIKO_SSH_BANNER_BUG
 
 from .common import (
@@ -166,7 +166,9 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
                 drac_cluster,
                 True,
                 marks=pytest.mark.skipif(
-                    sys.platform == "win32" or not is_already_logged_in(drac_cluster),
+                    sys.platform == "win32"
+                    or not SSH_CONFIG_FILE.exists()
+                    or not is_already_logged_in(drac_cluster),
                     reason="Should give True when we're already logged in.",
                 ),
             )
