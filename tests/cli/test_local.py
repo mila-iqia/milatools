@@ -166,7 +166,7 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
                 drac_cluster,
                 True,
                 marks=pytest.mark.skipif(
-                    sys.platform != "win32" and not is_already_logged_in(drac_cluster),
+                    sys.platform == "win32" or not is_already_logged_in(drac_cluster),
                     reason="Should give True when we're already logged in.",
                 ),
             )
