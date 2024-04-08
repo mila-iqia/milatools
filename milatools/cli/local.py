@@ -12,7 +12,7 @@ import fabric
 import paramiko.ssh_exception
 from typing_extensions import deprecated
 
-from milatools.utils.remote_v2 import is_already_logged_in
+from milatools.utils.remote_v2 import SSH_CONFIG_FILE, is_already_logged_in
 
 from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs
 
@@ -82,7 +82,11 @@ def display(split_command: list[str] | tuple[str, ...] | str) -> None:
 
 
 def check_passwordless(host: str) -> bool:
-    if sys.platform != "win32" and is_already_logged_in(host):
+    if (
+        sys.platform != "win32"
+        and SSH_CONFIG_FILE.exists()
+        and is_already_logged_in(host)
+    ):
         return True
 
     try:
