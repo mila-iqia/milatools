@@ -117,7 +117,8 @@ def test_popen(
 
 def paramiko_openssh_key_parsing_issue(strict: bool = False):
     return pytest.mark.xfail(
-        not in_github_CI,
+        # Expect this to sometimes fail, except when we're in the (cloud) GitHub CI.
+        not in_github_CI or in_self_hosted_github_CI,
         strict=strict,
         raises=ValueError,
         # ValueError("q must be exactly 160, 224, or 256 bits long")
