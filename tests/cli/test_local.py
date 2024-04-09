@@ -132,6 +132,8 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
     )
 
 
+# TODO: This test is incredibly flaky. Needs to be totally reworked.
+@PARAMIKO_SSH_BANNER_BUG
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
