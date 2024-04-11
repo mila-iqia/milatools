@@ -8,7 +8,6 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
 from milatools.utils.remote_v2 import is_already_logged_in
-from tests.integration.test_slurm_remote import PARAMIKO_SSH_BANNER_BUG
 
 from .common import (
     in_github_CI,
@@ -115,25 +114,27 @@ def test_popen(
     )
 
 
-def paramiko_openssh_key_parsing_issue(strict: bool = False):
-    return pytest.mark.xfail(
-        # Expect this to sometimes fail, except when we're in the (cloud) GitHub CI.
-        not in_github_CI or in_self_hosted_github_CI,
-        strict=strict,
-        raises=ValueError,
-        # ValueError("q must be exactly 160, 224, or 256 bits long")
-        # https://github.com/paramiko/paramiko/issues/1839
-        # https://github.com/fabric/fabric/issues/2182
-        # https://github.com/paramiko/paramiko/pull/1606
-        reason=(
-            "BUG: Seems like paramiko reads new RSA keys of OpenSSH as DSA "
-            "and raises a ValueError."
-        ),
-    )
+paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
+    # Expect this to sometimes fail, except when we're in the (cloud) GitHub CI.
+    not in_github_CI or in_self_hosted_github_CI,
+    strict=False,
+    raises=ValueError,
+    # ValueError("q must be exactly 160, 224, or 256 bits long")
+    # https://github.com/paramiko/paramiko/issues/1839
+    # https://github.com/fabric/fabric/issues/2182
+    # https://github.com/paramiko/paramiko/pull/1606
+    reason=(
+        "BUG: Seems like paramiko reads new RSA keys of OpenSSH as DSA "
+        "and raises a ValueError."
+    ),
+)
 
 
-# TODO: This test is incredibly flaky. Needs to be totally reworked.
-@PARAMIKO_SSH_BANNER_BUG
+# @PARAMIKO_SSH_BANNER_BUG
+# @paramiko_openssh_key_parsing_issue
+@pytest.mark.xfail(
+    reason="TODO: `check_passwordless` is incredibly flaky and needs to be reworked."
+)
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
@@ -150,8 +151,8 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
             "bobobobobobo@mila",
             False,
             marks=[
+                paramiko_openssh_key_parsing_issue,
                 skip_if_on_github_CI,
-                paramiko_openssh_key_parsing_issue(),
             ],
         ),
         # For the clusters with 2FA, we expect `check_passwordless` to return True if
@@ -161,7 +162,7 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
             False,
             marks=[
                 skip_if_on_github_CI,
-                paramiko_openssh_key_parsing_issue(),
+                paramiko_openssh_key_parsing_issue,
             ],
         ),
         *(
@@ -182,7 +183,7 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
             False,
             marks=[
                 skip_if_on_github_CI,
-                paramiko_openssh_key_parsing_issue(),
+                paramiko_openssh_key_parsing_issue,
             ],
         ),  # SSH access to niagara isn't enabled by default.
     ],

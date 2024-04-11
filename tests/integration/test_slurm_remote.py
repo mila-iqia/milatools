@@ -156,6 +156,7 @@ def sbatch_slurm_remote(
 ## Tests for the SlurmRemote class:
 
 PARAMIKO_SSH_BANNER_BUG = pytest.mark.xfail(
+    True,
     reason="TODO: (CRITICAL): Getting this annoying Paramiko SSH Banner issue!",
     raises=milatools.cli.utils.SSHConnectionError,
     strict=False,

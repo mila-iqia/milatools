@@ -30,6 +30,7 @@ in_self_hosted_github_CI = (
     in_github_CI and os.environ.get("GITHUB_ACTION") == "self_hosted_integration_tests"
 )
 
+
 skip_if_on_github_CI = pytest.mark.skipif(
     in_github_CI and not in_self_hosted_github_CI,
     reason="This test shouldn't run on the Github CI.",
