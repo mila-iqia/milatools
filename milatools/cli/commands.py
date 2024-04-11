@@ -32,12 +32,12 @@ import rich.logging
 from typing_extensions import TypedDict
 
 from milatools.cli import console
+from milatools.cli.login import login
 from milatools.utils.local_v1 import LocalV1
 from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.remote_v2 import SSH_CONFIG_FILE, RemoteV2
 from milatools.utils.vscode_utils import (
     get_code_command,
-    # install_local_vscode_extensions_on_remote,
     sync_vscode_extensions,
     sync_vscode_extensions_with_hostnames,
 )
@@ -169,6 +169,15 @@ def mila():
     )
 
     init_parser.set_defaults(function=init)
+
+    # ----- mila login ------
+    login_parser = subparsers.add_parser(
+        "login",
+        help="Sets up reusable SSH connections to the entries of the SSH config.",
+        formatter_class=SortingHelpFormatter,
+    )
+    login_parser.add_argument("--ssh_config_path", type=Path, default=SSH_CONFIG_FILE)
+    login_parser.set_defaults(function=login)
 
     # ----- mila forward ------
 
