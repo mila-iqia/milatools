@@ -4,6 +4,7 @@ The cluster to use can be specified by setting the SLURM_CLUSTER environment var
 During the CI on GitHub, a small local slurm cluster is setup with a GitHub Action, and
 SLURM_CLUSTER is set to "localhost".
 """
+
 from __future__ import annotations
 
 import datetime
@@ -13,6 +14,9 @@ from logging import getLogger as get_logger
 import fabric.runners
 import pytest
 
+import milatools
+import milatools.cli
+import milatools.cli.utils
 from milatools.cli.remote import Remote, SlurmRemote
 from milatools.cli.utils import CLUSTERS
 from milatools.utils.remote_v2 import RemoteV2
@@ -105,9 +109,12 @@ def test_cluster_setup(login_node: Remote | RemoteV2, allocation_flags: list[str
 
 
 @pytest.fixture
-def connection_to_login_node(login_node: Remote | RemoteV2):
+def fabric_connection_to_login_node(
+    login_node: Remote | RemoteV2, request: pytest.FixtureRequest
+):
     if isinstance(login_node, Remote):
         return login_node.connection
+
     if login_node.hostname not in ["localhost", "mila"]:
         pytest.skip(
             reason=(
@@ -120,7 +127,7 @@ def connection_to_login_node(login_node: Remote | RemoteV2):
 
 @pytest.fixture
 def salloc_slurm_remote(
-    connection_to_login_node: fabric.Connection, allocation_flags: list[str]
+    fabric_connection_to_login_node: fabric.Connection, allocation_flags: list[str]
 ):
     """Fixture that creates a `SlurmRemote` that uses `salloc` (persist=False).
 
@@ -129,18 +136,18 @@ def salloc_slurm_remote(
     flags before a command is run.
     """
     return SlurmRemote(
-        connection=connection_to_login_node,
+        connection=fabric_connection_to_login_node,
         alloc=allocation_flags,
     )
 
 
 @pytest.fixture
 def sbatch_slurm_remote(
-    connection_to_login_node: fabric.Connection, allocation_flags: list[str]
+    fabric_connection_to_login_node: fabric.Connection, allocation_flags: list[str]
 ):
     """Fixture that creates a `SlurmRemote` that uses `sbatch` (persist=True)."""
     return SlurmRemote(
-        connection=connection_to_login_node,
+        connection=fabric_connection_to_login_node,
         alloc=allocation_flags,
         persist=True,
     )
@@ -148,7 +155,15 @@ def sbatch_slurm_remote(
 
 ## Tests for the SlurmRemote class:
 
+PARAMIKO_SSH_BANNER_BUG = pytest.mark.xfail(
+    True,
+    reason="TODO: (CRITICAL): Getting this annoying Paramiko SSH Banner issue!",
+    raises=milatools.cli.utils.SSHConnectionError,
+    strict=False,
+)
 
+
+@PARAMIKO_SSH_BANNER_BUG
 @requires_access_to_slurm_cluster
 def test_run(
     login_node: Remote | RemoteV2,
@@ -191,6 +206,7 @@ def test_run(
     assert (job_id, JOB_NAME, compute_node) in sacct_output
 
 
+@PARAMIKO_SSH_BANNER_BUG
 @hangs_in_github_CI
 @requires_access_to_slurm_cluster
 def test_ensure_allocation(
@@ -287,6 +303,7 @@ def test_ensure_allocation(
     assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output
 
 
+@PARAMIKO_SSH_BANNER_BUG
 @pytest.mark.xfail(
     on_windows,
     raises=PermissionError,

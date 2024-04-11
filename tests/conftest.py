@@ -161,8 +161,7 @@ def cluster(request: pytest.FixtureRequest) -> str:
 
 
 @contextlib.contextmanager
-def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
-    login_node = Remote(cluster)
+def cancel_all_milatools_jobs_before_and_after_tests(login_node: Remote | RemoteV2):
     from .integration.conftest import WCKEY
 
     logger.info(
@@ -179,7 +178,7 @@ def cancel_all_milatools_jobs_before_and_after_tests(cluster: str):
     time.sleep(1)
     # Display the output of squeue just to be sure that the jobs were cancelled.
     logger.info(f"Checking that all jobs have been cancelked on {cluster}...")
-    login_node._run("squeue --me", echo=True, in_stream=False)
+    login_node.run("squeue --me")
 
 
 @pytest.fixture(

@@ -193,7 +193,9 @@ def is_already_logged_in(cluster: str, also_run_command_to_check: bool = False) 
         100% sure that we are logged in. In most cases this isn't necessary so we can
         skip it, since it can take a few seconds.
     """
-    control_path = get_controlpath_for(cluster)
+    if not SSH_CONFIG_FILE.exists():
+        return False
+    control_path = get_controlpath_for(cluster, ssh_config_path=SSH_CONFIG_FILE)
     if not control_path.exists():
         logger.debug(f"ControlPath at {control_path} doesn't exist. Not logged in.")
         return False

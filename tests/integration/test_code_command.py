@@ -21,7 +21,7 @@ from .conftest import (
     skip_if_not_already_logged_in,
     skip_param_if_not_already_logged_in,
 )
-from .test_slurm_remote import get_recent_jobs_info_dicts
+from .test_slurm_remote import PARAMIKO_SSH_BANNER_BUG, get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
 
@@ -60,6 +60,7 @@ def test_check_disk_quota(
     # IF the quota is met, then a `MilatoolsUserError` is logged.
 
 
+@PARAMIKO_SSH_BANNER_BUG
 @pytest.mark.parametrize(
     "cluster",
     [

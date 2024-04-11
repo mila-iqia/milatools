@@ -34,6 +34,7 @@ from tests.integration.conftest import skip_if_not_already_logged_in
 
 from ..cli.common import (
     in_github_CI,
+    in_self_hosted_github_CI,
     requires_ssh_to_localhost,
     skip_if_on_github_CI,
     xfails_on_windows,
@@ -44,10 +45,13 @@ logger = get_logger(__name__)
 
 def test_vscode_installed():
     """Check that on a dev machine with VsCode installed, this function returns True."""
-    if in_github_CI:
-        assert not vscode_installed()
+    installed = vscode_installed()
+    if in_self_hosted_github_CI:
+        assert installed
+    elif in_github_CI:
+        assert not installed
     else:
-        assert vscode_installed()
+        assert installed
 
 
 @pytest.mark.parametrize("custom_code_command", ["ls", "fake-code-doesnt-exist"])

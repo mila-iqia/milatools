@@ -128,7 +128,7 @@ class Remote:
                     _connect_kwargs.update(connect_kwargs)
 
                 logger.info(f"Opening a new connection to {hostname}")
-                logger.debug(f"Connection kwargs: {_connect_kwargs}")
+                logger.debug(f"connect_kwargs: {_connect_kwargs}")
                 connection = Connection(hostname, connect_kwargs=_connect_kwargs)
                 if keepalive:
                     connection.open()

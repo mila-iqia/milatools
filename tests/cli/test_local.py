@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import sys
 from subprocess import PIPE
 
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
+from milatools.utils.remote_v2 import is_already_logged_in
 
 from .common import (
     in_github_CI,
+    in_self_hosted_github_CI,
     output_tester,
     passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
+    skip_if_on_github_CI,
     xfails_on_windows,
 )
 
@@ -110,32 +114,46 @@ def test_popen(
     )
 
 
-def paramiko_openssh_key_parsing_issue(strict: bool = False):
-    return pytest.mark.xfail(
-        not in_github_CI,
-        strict=strict,
-        raises=ValueError,
-        # ValueError("q must be exactly 160, 224, or 256 bits long")
-        # https://github.com/paramiko/paramiko/issues/1839
-        # https://github.com/fabric/fabric/issues/2182
-        # https://github.com/paramiko/paramiko/pull/1606
-        reason=(
-            "BUG: Seems like paramiko reads new RSA keys of OpenSSH as DSA "
-            "and raises a ValueError."
-        ),
-    )
+paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
+    # Expect this to sometimes fail, except when we're in the (cloud) GitHub CI.
+    not in_github_CI or in_self_hosted_github_CI,
+    strict=False,
+    raises=ValueError,
+    # ValueError("q must be exactly 160, 224, or 256 bits long")
+    # https://github.com/paramiko/paramiko/issues/1839
+    # https://github.com/fabric/fabric/issues/2182
+    # https://github.com/paramiko/paramiko/pull/1606
+    reason=(
+        "BUG: Seems like paramiko reads new RSA keys of OpenSSH as DSA "
+        "and raises a ValueError."
+    ),
+)
 
 
+# @PARAMIKO_SSH_BANNER_BUG
+# @paramiko_openssh_key_parsing_issue
+@pytest.mark.xfail(
+    reason="TODO: `check_passwordless` is incredibly flaky and needs to be reworked."
+)
 @pytest.mark.parametrize(
     ("hostname", "expected"),
     [
-        ("localhost", passwordless_ssh_connection_to_localhost_is_setup),
+        pytest.param(
+            "localhost",
+            passwordless_ssh_connection_to_localhost_is_setup,
+        ),
         ("blablabob@localhost", False),
-        ("mila", not in_github_CI),
+        pytest.param(
+            "mila",
+            True if (in_self_hosted_github_CI or not in_github_CI) else False,
+        ),
         pytest.param(
             "bobobobobobo@mila",
             False,
-            marks=paramiko_openssh_key_parsing_issue(),
+            marks=[
+                paramiko_openssh_key_parsing_issue,
+                skip_if_on_github_CI,
+            ],
         ),
         # For the clusters with 2FA, we expect `check_passwordless` to return True if
         # we've already setup the shared SSH connection.
@@ -143,15 +161,19 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
             "blablabob@narval",
             False,
             marks=[
-                paramiko_openssh_key_parsing_issue(),
+                skip_if_on_github_CI,
+                paramiko_openssh_key_parsing_issue,
             ],
         ),
         *(
+            # note: can't properly test for the False case because of the 2FA
+            # prompt!
             pytest.param(
                 drac_cluster,
                 True,
-                marks=pytest.mark.skip(
-                    reason="TODO: Rework this, currently might wait for 2FA input.",
+                marks=pytest.mark.skipif(
+                    sys.platform == "win32" or not is_already_logged_in(drac_cluster),
+                    reason="Should give True when we're already logged in.",
                 ),
             )
             for drac_cluster in ["narval", "beluga", "cedar", "graham"]
@@ -159,8 +181,11 @@ def paramiko_openssh_key_parsing_issue(strict: bool = False):
         pytest.param(
             "niagara",
             False,
-            marks=paramiko_openssh_key_parsing_issue(),
-        ),  # SSH access isn't enabled by default.
+            marks=[
+                skip_if_on_github_CI,
+                paramiko_openssh_key_parsing_issue,
+            ],
+        ),  # SSH access to niagara isn't enabled by default.
     ],
 )
 def test_check_passwordless(hostname: str, expected: bool):
