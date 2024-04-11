@@ -171,7 +171,7 @@ jobs:
       - name: Launch integration tests
         id: self_hosted_integration_tests
         run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
-        timeout-minutes: 10
+        timeout-minutes: 30
         env:
           SLURM_CLUSTER: mila
 
