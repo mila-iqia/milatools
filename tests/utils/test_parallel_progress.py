@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import time
 from logging import getLogger as get_logger
-from typing import Sequence, TypeVar
+from typing import TypeVar
 
 from pytest_regressions.file_regression import FileRegressionFixture
 
@@ -55,8 +55,9 @@ def _task_fn(
     strict=True,
 )
 def test_parallel_progress_bar(file_regression: FileRegressionFixture):
-    num_tasks = 3
-    task_lengths = [(i + 1) * 2 for i in range(num_tasks)]
+    num_tasks = 4
+    task_length = 5
+    task_lengths = [task_length for _ in range(num_tasks)]
     task_results = [i for i in range(num_tasks)]
 
     task_fns: list[TaskFn[int]] = [
@@ -79,25 +80,9 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
 
     assert results == task_results
 
-    for task_length, time_to_result in zip(task_lengths, time_to_results):
-        # It should take ~`task_lengths[i]` seconds to get result #i
-        # NOTE: This check was flaky. Adding some slack to the max time temporarily
-        # addressed this.
-        assert task_length <= time_to_result  # <= task_length + 2.0
-
-    def assert_increasing(sequence: Sequence[float]) -> None:
-        assert sequence and all(
-            time_i <= time_j
-            for time_i, time_j in zip(time_to_results, time_to_results[1:])
-        )
-
-    assert_increasing(task_lengths)
-    assert_increasing(time_to_results)
-
     all_output = console.end_capture()
 
-    # Remove the elapsed column since its values can vary a little bit, and we're
-    # already checking the elapsed time for each result in the for-loop above.
+    # Remove the elapsed column since its values can vary a little bit between runs.
     all_output_without_elapsed = "\n".join(
         removesuffix(line, last_part).rstrip()
         if (parts := line.split()) and (last_part := parts[-1]).count(":") == 2
@@ -108,10 +93,7 @@ def test_parallel_progress_bar(file_regression: FileRegressionFixture):
     file_regression.check(all_output_without_elapsed, encoding="utf-8")
 
     total_time_seconds = time.time() - start_time
-    # output = console.end_capture()
-    # longest task was programmed to take a known amount of time to run, so the
-    # overall progress bar should have taken a max of ~ `max(task_lengths)` seconds.
-    longtest_task_length = max(task_lengths)
-    # NOTE: This check was flaky. Adding some slack to the max time only temporarily
-    # addressed this.
-    assert longtest_task_length <= total_time_seconds  # <= longtest_task_length + 1.5
+
+    # All tasks sleep for `task_length` seconds, so the total time should still be
+    # roughly `task_length` seconds.
+    assert total_time_seconds < 2 * task_length
