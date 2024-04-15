@@ -33,6 +33,7 @@ from typing_extensions import TypedDict
 
 from milatools.cli import console
 from milatools.cli.login import login
+from milatools.cli.run import run_command
 from milatools.utils.local_v1 import LocalV1
 from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
 from milatools.utils.remote_v2 import SSH_CONFIG_FILE, RemoteV2
@@ -178,6 +179,18 @@ def mila():
     )
     login_parser.add_argument("--ssh_config_path", type=Path, default=SSH_CONFIG_FILE)
     login_parser.set_defaults(function=login)
+
+    # ----- mila run ------
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Runs a command over SSH on all the slurm clusters in the SSH config.",
+        formatter_class=SortingHelpFormatter,
+    )
+    run_parser.add_argument("--ssh_config_path", type=Path, default=SSH_CONFIG_FILE)
+    run_parser.add_argument(
+        "command", type=str, nargs=argparse.REMAINDER, help="The command to run."
+    )
+    run_parser.set_defaults(function=run_command)
 
     # ----- mila forward ------
 

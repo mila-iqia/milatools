@@ -6,6 +6,7 @@ from pathlib import Path
 from paramiko import SSHConfig
 
 from milatools.cli import console
+from milatools.cli.utils import CLUSTERS
 from milatools.utils.remote_v2 import SSH_CONFIG_FILE, RemoteV2
 
 
@@ -22,10 +23,12 @@ async def login(
         for host in ssh_config.get_hostnames()
         if not any(c in host for c in ["*", "?", "!"])
     ]
-    # take out entries like `mila-cpu` that have a proxy and remote command.
     potential_clusters = [
         hostname
         for hostname in potential_clusters
+        if hostname in CLUSTERS
+        # TODO: make this more generic with something like this:
+        # take out entries like `mila-cpu` that have a proxy and remote command.
         if not (
             (config := ssh_config.lookup(hostname)).get("proxycommand")
             and config.get("remotecommand")
