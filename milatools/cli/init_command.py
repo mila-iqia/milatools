@@ -310,18 +310,18 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     ssh_private_key_path = Path(identity_file).expanduser()
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
-    # TODO: This will fail for clusters with 2FA.
-    if check_passwordless(cluster):
-        logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
-        return True
 
-    if not yn(
-        f"Your public key does not appear be registered on the {cluster} cluster. "
-        "Register it?"
-    ):
-        print("No passwordless login.")
-        return False
-    print("Please enter your password when prompted.")
+    # TODO: This will fail on Windows for clusters with 2FA.
+    # if check_passwordless(cluster):
+    #     logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
+    #     return True
+    # if not yn(
+    #     f"Your public key does not appear be registered on the {cluster} cluster. "
+    #     "Register it?"
+    # ):
+    #     print("No passwordless login.")
+    #     return False
+    print("Please enter your password if prompted.")
     if sys.platform == "win32":
         # NOTE: This is to remove extra '^M' characters that would be added at the end
         # of the file on the remote!
