@@ -15,6 +15,8 @@ from typing import Any
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 
+from milatools.utils.remote_v2 import SSH_CONFIG_FILE
+
 from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
@@ -294,7 +296,16 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
     # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
     # the default.
-    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+
+    from paramiko.config import SSHConfig
+
+    config = SSHConfig.from_path(str(SSH_CONFIG_FILE))
+    identity_file = config.lookup(cluster).get("identityfile", "~/.ssh/id_rsa")
+    # Seems to be a list for some reason?
+    if isinstance(identity_file, list):
+        assert identity_file
+        identity_file = identity_file[0]
+    ssh_private_key_path = Path(identity_file).expanduser()
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
     # TODO: This will fail for clusters with 2FA.
@@ -308,7 +319,6 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     ):
         print("No passwordless login.")
         return False
-
     print("Please enter your password when prompted.")
     if sys.platform == "win32":
         # NOTE: This is to remove extra '^M' characters that would be added at the end
@@ -316,6 +326,8 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
         public_key_contents = ssh_public_key_path.read_text().replace("\r\n", "\n")
         command = (
             "ssh",
+            "-i",
+            str(ssh_private_key_path),
             "-o",
             "StrictHostKeyChecking=no",
             cluster,
@@ -329,7 +341,15 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
             f.seek(0)
             subprocess.run(command, check=True, text=False, stdin=f)
     else:
-        here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
+        here.run(
+            "ssh-copy-id",
+            "-i",
+            str(ssh_private_key_path),
+            "-o",
+            "StrictHostKeyChecking=no",
+            cluster,
+            check=True,
+        )
 
     # double-check that this worked.
     if not check_passwordless(cluster):
