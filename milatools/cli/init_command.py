@@ -256,6 +256,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
     success = setup_passwordless_ssh_access_to_cluster("mila")
     if not success:
         return False
+    setup_keys_on_login_node("mila")
 
     drac_clusters_in_ssh_config: list[str] = []
     hosts_in_config = ssh_config.hosts()
