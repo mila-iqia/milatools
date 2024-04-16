@@ -458,7 +458,7 @@ def find_code_server_executable(
 def parse_vscode_extensions_versions(
     list_extensions_output_lines: list[str],
 ) -> dict[str, str]:
-    extensions = list_extensions_output_lines
+    extensions = [line for line in list_extensions_output_lines if "@" in line]
 
     def _extension_name_and_version(extension: str) -> tuple[str, str]:
         # extensions should include name@version since we use --show-versions.
