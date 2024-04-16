@@ -240,17 +240,19 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
 
     here = Local()
     sshdir = Path.home() / ".ssh"
-    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
 
     # Check if there is a public key file in ~/.ssh
     if not list(sshdir.glob("id*.pub")):
         if yn("You have no public keys. Generate one?"):
             # Run ssh-keygen with the given location and no passphrase.
+            ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
             create_ssh_keypair(ssh_private_key_path, here)
         else:
             print("No public keys.")
             return False
 
+    # TODO: This uses the public key set in the SSH config file, which may (or may not)
+    # be the random id*.pub file that was just checked for above.
     success = setup_passwordless_ssh_access_to_cluster("mila")
     if not success:
         return False
