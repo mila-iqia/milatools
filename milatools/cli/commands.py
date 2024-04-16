@@ -680,11 +680,17 @@ def code(
     if persist:
         print("This allocation is persistent and is still active.")
         print("To reconnect to this node:")
-        print(T.bold(f"  mila code {path} --node {node_name}"))
+        print(
+            T.bold(
+                f"  mila code {path} "
+                + (f"--cluster={cluster} " if cluster != "mila" else "")
+                + f"--node {node_name}"
+            )
+        )
         print("To kill this allocation:")
         assert data is not None
         assert "jobid" in data
-        print(T.bold(f"  ssh mila scancel {data['jobid']}"))
+        print(T.bold(f"  ssh {cluster} scancel {data['jobid']}"))
 
 
 def connect(identifier: str, port: int | None):

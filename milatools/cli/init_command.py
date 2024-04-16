@@ -277,6 +277,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
         if not success:
             return False
+        setup_keys_on_login_node(drac_cluster)
     return True
 
 
@@ -337,14 +338,17 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     return True
 
 
-def setup_keys_on_login_node():
+def setup_keys_on_login_node(cluster: str = "mila"):
     #####################################
     # Step 3: Set up keys on login node #
     #####################################
 
-    print("Checking connection to compute nodes")
-
-    remote = Remote("mila")
+    print(
+        f"Checking connection to compute nodes on the {cluster} cluster. "
+        "This is required for `mila code` to work properly."
+    )
+    # todo: avoid re-creating the `Remote` here, since it goes through 2FA each time!
+    remote = Remote(cluster)
     try:
         pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
         print("# OK")
