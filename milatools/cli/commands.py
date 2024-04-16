@@ -584,7 +584,7 @@ def code(
         )
     elif no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
-        run_in_the_background = False  # if "pytest" not in sys.modules else True
+        run_in_the_background = not currently_in_a_test()
         print(
             console.log(
                 f"[cyan]Installing VSCode extensions that are on the local machine on "
