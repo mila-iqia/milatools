@@ -605,7 +605,7 @@ class TestSlurmRemote:
         results, _runner = remote.ensure_allocation()
 
         remote.extract.assert_called_once_with(
-            "echo @@@ $(hostname) @@@ && sleep 1000d",
+            "echo @@@ $SLURMD_NODENAME @@@ && sleep 1000d",
             patterns={
                 "node_name": "@@@ ([^ ]+) @@@",
                 "jobid": "Submitted batch job ([0-9]+)",
