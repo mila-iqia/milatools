@@ -1,5 +1,6 @@
 import asyncio
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,7 +17,9 @@ from milatools.utils.remote_v2 import RemoteV2
 
 
 async def run_command(
-    command: str | list[str], ssh_config_path: Path = SSH_CONFIG_FILE
+    command: str | list[str],
+    ssh_config_path: Path = SSH_CONFIG_FILE,
+    show_table: bool = False,
 ):
     command = shlex.join(command) if isinstance(command, list) else command
     if command.startswith("'") and command.endswith("'"):
@@ -44,18 +47,36 @@ async def run_command(
 
     results = await asyncio.gather(
         *(
-            login_node.run_async(command=command, warn=True, display=True, hide=False)
+            login_node.run_async(command=command, warn=True, display=True, hide=True)
             for login_node in cluster_login_nodes
         )
     )
+    if show_table:
+        _print_with_table(command, cluster_login_nodes, results)
+    else:
+        _print_with_prefix(command, cluster_login_nodes, results)
+    return results
+
+
+def _print_with_prefix(
+    command: str,
+    cluster_login_nodes: list[RemoteV2],
+    results: list[subprocess.CompletedProcess[str]],
+):
     for remote, result in zip(cluster_login_nodes, results):
         for line in result.stdout.splitlines():
-            print(f"({remote.hostname}) {line}")
+            console.print(f"[bold]({remote.hostname})[/bold] {line}", markup=True)
         for line in result.stderr.splitlines():
             print(f"({remote.hostname}) {line}", file=sys.stderr)
 
-    return results
+    # return results
 
+
+def _print_with_table(
+    command: str,
+    cluster_login_nodes: list[RemoteV2],
+    results: list[subprocess.CompletedProcess[str]],
+):
     table = rich.table.Table(title=command)
     table.add_column("Cluster")
 
@@ -88,7 +109,6 @@ async def run_command(
     #         table.add_column(remote.hostname, no_wrap=True)
     #         task = group.create_task(remote.run_async(command))
     #         task.add_done_callback(lambda _: table.add_row())
-    return results
 
 
 if __name__ == "main":

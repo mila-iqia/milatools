@@ -187,6 +187,7 @@ def mila():
         formatter_class=SortingHelpFormatter,
     )
     run_parser.add_argument("--ssh_config_path", type=Path, default=SSH_CONFIG_FILE)
+    run_parser.add_argument("--show-table", action="store_true", default=False)
     run_parser.add_argument(
         "command", type=str, nargs=argparse.REMAINDER, help="The command to run."
     )
