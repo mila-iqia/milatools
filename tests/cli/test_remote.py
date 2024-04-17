@@ -1,4 +1,5 @@
 """Tests for the Remote and SlurmRemote classes."""
+
 from __future__ import annotations
 
 import shlex
@@ -452,7 +453,10 @@ class TestSlurmRemote:
             mock_connection, alloc=alloc, transforms=transforms, persist=persist
         )
         command = "bob"
-        assert remote.srun_transform(command) == f"srun {alloc[0]} bash -c {command}"
+        assert (
+            remote.srun_transform(command)
+            == f"cd $SCRATCH && srun {alloc[0]} bash -c {command}"
+        )
 
     def test_srun_transform_persist(
         self,
@@ -471,10 +475,19 @@ class TestSlurmRemote:
         # that the regression file content is reproducible.
         mock_time_ns = Mock(return_value=1234567890)
         monkeypatch.setattr("time.time_ns", mock_time_ns)
+        batch_dir = Path.home() / ".milatools" / "batch"
+        # executing `srun_transform_persist` should create an sbatch script in the
+        # remote ~/.milatools/batch folder (which just so happens to be on the local
+        # machine when running tests.)
 
-        files_before = list((Path.home() / ".milatools" / "batch").rglob("*"))
+        expected_batch_file = batch_dir / "batch-1234567890.sh"
+        if expected_batch_file.exists():
+            # the file exists before the test, we should remove it.
+            expected_batch_file.unlink()
+
+        files_before = list(batch_dir.rglob("*"))
         output_command = remote.srun_transform_persist(command)
-        files_after = list((Path.home() / ".milatools" / "batch").rglob("*"))
+        files_after = list(batch_dir.rglob("*"))
 
         new_files = set(files_after) - set(files_before)
 
@@ -620,11 +633,7 @@ class TestSlurmRemote:
         alloc = ["--time=00:01:00"]
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         node = "bob-123"
-        expected_command = (
-            f"cd $SCRATCH && salloc {shlex.join(alloc)}"
-            if mock_connection.host == "mila"
-            else f"salloc {shlex.join(alloc)}"
-        )
+        expected_command = f"cd $SCRATCH && salloc {shlex.join(alloc)}"
 
         def write_stuff(
             command: str,

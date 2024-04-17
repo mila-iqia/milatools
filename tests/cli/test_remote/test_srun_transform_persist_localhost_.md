@@ -35,5 +35,5 @@ bob
 and produced the following command as output (with the absolute path to the home directory replaced with '$HOME' for tests):
 
 ```bash
-sbatch --time=00:01:00 $HOME/.milatools/batch/batch-1234567890.sh; touch $HOME/.milatools/batch/out-1234567890.txt; tail -n +1 -f $HOME/.milatools/batch/out-1234567890.txt
+cd $SCRATCH && sbatch --time=00:01:00 $HOME/.milatools/batch/batch-1234567890.sh; touch $HOME/.milatools/batch/out-1234567890.txt; tail -n +1 -f $HOME/.milatools/batch/out-1234567890.txt
 ```
