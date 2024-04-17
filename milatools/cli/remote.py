@@ -20,7 +20,6 @@ from fabric import Connection
 from typing_extensions import Self, TypedDict, deprecated
 
 from .utils import (
-    DRAC_CLUSTERS,
     SSHConnectionError,
     T,
     cluster_to_connect_kwargs,
@@ -467,14 +466,8 @@ class SlurmRemote(Remote):
 
     def srun_transform(self, cmd: str) -> str:
         cmd = shlex.join(["srun", *self.alloc, "bash", "-c", cmd])
-        # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
-        # self.connection.host can be something like `cedar.alliancecan.ca`
-        connection_host = self.connection.host
-        assert isinstance(connection_host, str)
-        if any(
-            connection_host.startswith(cluster_name) for cluster_name in DRAC_CLUSTERS
-        ):
-            cmd = f"cd $SCRATCH && {cmd}"
+        # We need to cd to $SCRATCH before we can run jobs with `srun` on some clusters.
+        cmd = f"cd $SCRATCH && {cmd}"
         return cmd
 
     def srun_transform_persist(self, cmd: str) -> str:
@@ -490,15 +483,8 @@ class SlurmRemote(Remote):
         self.puttext(text=batch, dest=batch_file)
         self.simple_run(f"chmod +x {batch_file}")
         cmd = shlex.join(["sbatch", *self.alloc, str(batch_file)])
-
-        # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
-        # self.connection.host can be something like `cedar.alliancecan.ca`
-        connection_host = self.connection.host
-        assert isinstance(connection_host, str)
-        if any(
-            connection_host.startswith(cluster_name) for cluster_name in DRAC_CLUSTERS
-        ):
-            cmd = f"cd $SCRATCH && {cmd}"
+        # We need to cd to $SCRATCH before we run `sbatch` on some SLURM clusters.
+        cmd = f"cd $SCRATCH && {cmd}"
         return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
 
     def with_transforms(
@@ -549,15 +535,8 @@ class SlurmRemote(Remote):
         else:
             remote = Remote(hostname=self.hostname, connection=self.connection)
             command = shlex.join(["salloc", *self.alloc])
-            # NOTE: On DRAC clusters, it's required to first cd to $SCRATCH or
-            # /projects before submitting a job.
-            connection_host = self.connection.host
-            assert isinstance(connection_host, str)
-            if any(
-                connection_host.startswith(cluster_name)
-                for cluster_name in DRAC_CLUSTERS
-            ):
-                command = f"cd $SCRATCH && {command}"
+            # We need to cd to $SCRATCH before we can run `salloc` on some clusters.
+            command = f"cd $SCRATCH && {command}"
 
             proc, results = remote.extract(
                 command,
