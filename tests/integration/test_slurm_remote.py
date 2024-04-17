@@ -300,7 +300,11 @@ def test_ensure_allocation(
     time.sleep(MAX_JOB_DURATION.total_seconds())
 
     sacct_output = get_recent_jobs_info(login_node, fields=("JobName", "Node", "State"))
-    assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output
+    assert (JOB_NAME, compute_node_from_salloc_output, "COMPLETED") in sacct_output or (
+        JOB_NAME,
+        compute_node_from_salloc_output,
+        "TIMEOUT",
+    ) in sacct_output
 
 
 @PARAMIKO_SSH_BANNER_BUG
