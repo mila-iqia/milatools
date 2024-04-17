@@ -14,13 +14,8 @@ Calling this:
 remote.srun_transform_persist('bob')
 ```
 
-created the following files (with abs path to the home directory replaced with '$HOME' for tests):
-- ~/.milatools/batch/batch-1234567890.sh:
-
-
-
+created a new sbatch script with this content (with some substitutions for regression tests):
 ```
-
 #!/bin/bash
 #SBATCH --output=$HOME/.milatools/batch/out-1234567890.txt
 #SBATCH --ntasks=1
@@ -28,7 +23,6 @@ created the following files (with abs path to the home directory replaced with '
 echo jobid = $SLURM_JOB_ID >> /dev/null
 
 bob
-
 
 ```
 

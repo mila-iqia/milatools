@@ -470,34 +470,29 @@ class TestSlurmRemote:
         remote = SlurmRemote(mock_connection, alloc=alloc, transforms=(), persist=False)
         command = "bob"
 
-        # NOTE: It is unfortunately necessary for us to mock this function which we know
-        # the `srun_transform_persist` method will call to get a temporary file name, so
-        # that the regression file content is reproducible.
-        mock_time_ns = Mock(return_value=1234567890)
-        monkeypatch.setattr("time.time_ns", mock_time_ns)
-        batch_dir = Path.home() / ".milatools" / "batch"
         # executing `srun_transform_persist` should create an sbatch script in the
-        # remote ~/.milatools/batch folder (which just so happens to be on the local
+        # remote ~/.milatools/batch directory (which just so happens to be on the local
         # machine when running tests.)
-
-        expected_batch_file = batch_dir / "batch-1234567890.sh"
-        if expected_batch_file.exists():
-            # the file exists before the test, we should remove it.
-            expected_batch_file.unlink()
+        batch_dir = Path.home() / ".milatools" / "batch"
+        batch_dir_existed_before = batch_dir.exists()
 
         files_before = list(batch_dir.rglob("*"))
         output_command = remote.srun_transform_persist(command)
         files_after = list(batch_dir.rglob("*"))
 
         new_files = set(files_after) - set(files_before)
+        assert len(new_files) == 1  # should create a single file
+        new_file = new_files.pop()
 
-        assert len(new_files) == 1
+        new_file_timestamp = str(new_file.stem.split("-")[-1])
         slurm_remote_constructor_call_str = function_call_string(
             SlurmRemote, mock_connection, alloc=alloc, transforms=(), persist=False
         )
+
         method_call_string = function_call_string(
             remote.srun_transform_persist, command
         )
+
         file_regression.check(
             "\n".join(
                 [
@@ -512,40 +507,36 @@ class TestSlurmRemote:
                     f"remote.{method_call_string}",
                     "```",
                     "",
-                    "created the following files (with abs path to the home directory "
-                    "replaced with '$HOME' for tests):",
+                    "created a new sbatch script with this content (with some "
+                    "substitutions for regression tests):",
                     "\n".join(
-                        "\n\n".join(
-                            [
-                                f"- {str(new_file).replace(str(Path.home()), '~')}:",
-                                "",
-                                "```",
-                                new_file.read_text().replace(str(Path.home()), "$HOME"),
-                                "```",
-                            ]
-                        )
-                        for new_file in new_files
+                        [
+                            "```",
+                            new_file.read_text()
+                            .replace(str(new_file_timestamp), "1234567890")
+                            .replace(str(Path.home()), "$HOME"),
+                            "```",
+                        ]
                     ),
                     "",
                     "and produced the following command as output (with the absolute "
                     "path to the home directory replaced with '$HOME' for tests):",
                     "",
                     "```bash",
-                    output_command.replace(str(Path.home()), "$HOME"),
+                    output_command.replace(new_file_timestamp, "1234567890").replace(
+                        str(Path.home()), "$HOME"
+                    ),
                     "```",
                     "",
                 ]
             ),
             extension=".md",
         )
-        # TODO: Need to create a fixture for `persist` that checks if any files were
-        # created in ~/.milatools/batch, and if so, removes them after the test is done.
         # Remove any new files.
-        for file in new_files:
-            file.unlink()
-        # If there wasn't a `~/.milatools` folder before, we should remove it after.
-        if not files_before:
-            shutil.rmtree(Path.home() / ".milatools")
+        new_file.unlink()
+        # If there wasn't a `~/.milatools/batch` folder before, we should remove it.
+        if not batch_dir_existed_before:
+            shutil.rmtree(batch_dir)
 
     @pytest.mark.parametrize("persist", [True, False, None])
     def test_with_transforms(self, mock_connection: Connection, persist: bool | None):
