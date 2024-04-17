@@ -144,13 +144,10 @@ def test_code(
         expected_line,
     )
 
-    # Check that on the DRAC clusters, the workdir is the scratch directory (because we
-    # cd'ed to $SCRATCH before submitting the job)
+    # Check that the workdir is the scratch directory (because we cd'ed to $SCRATCH
+    # before submitting the job)
     workdir = job_info["WorkDir"]
-    if login_node.hostname == "mila":
-        assert workdir == home
-    else:
-        assert workdir == scratch
+    assert workdir == scratch
 
     if persist:
         # Job should still be running since we're using `persist` (that's the whole
