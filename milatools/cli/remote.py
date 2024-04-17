@@ -20,7 +20,6 @@ from fabric import Connection
 from typing_extensions import Self, TypedDict, deprecated
 
 from .utils import (
-    DRAC_CLUSTERS,
     SSHConnectionError,
     T,
     cluster_to_connect_kwargs,
@@ -344,7 +343,6 @@ class Remote:
         # something like a `io.StringIO` here instead, and create an object that manages
         # reading from it, and pass that `io.StringIO` buffer to `self.run`.
         qio: TextIO = QueueIO()
-
         promise = self.run(
             cmd,
             hide=hide,
@@ -467,7 +465,10 @@ class SlurmRemote(Remote):
         )
 
     def srun_transform(self, cmd: str) -> str:
-        return shlex.join(["srun", *self.alloc, "bash", "-c", cmd])
+        cmd = shlex.join(["srun", *self.alloc, "bash", "-c", cmd])
+        # We need to cd to $SCRATCH before we can run jobs with `srun` on some clusters.
+        cmd = f"cd $SCRATCH && {cmd}"
+        return cmd
 
     def srun_transform_persist(self, cmd: str) -> str:
         tag = time.time_ns()
@@ -482,10 +483,8 @@ class SlurmRemote(Remote):
         self.puttext(text=batch, dest=batch_file)
         self.simple_run(f"chmod +x {batch_file}")
         cmd = shlex.join(["sbatch", *self.alloc, str(batch_file)])
-
-        # NOTE: We need to cd to $SCRATCH before we run `sbatch` on DRAC clusters.
-        if self.connection.host in DRAC_CLUSTERS:
-            cmd = f"cd $SCRATCH && {cmd}"
+        # We need to cd to $SCRATCH before we run `sbatch` on some SLURM clusters.
+        cmd = f"cd $SCRATCH && {cmd}"
         return f"{cmd}; touch {output_file}; tail -n +1 -f {output_file}"
 
     def with_transforms(
@@ -518,9 +517,10 @@ class SlurmRemote(Remote):
             - a dict with the compute node name (without the jobid)
             - a `fabric.runners.Remote` object connected to the *login* node.
         """
+
         if self._persist:
             login_node_runner, results = self.extract(
-                "echo @@@ $(hostname) @@@ && sleep 1000d",
+                "echo @@@ $SLURMD_NODENAME @@@ && sleep 1000d",
                 patterns={
                     "node_name": "@@@ ([^ ]+) @@@",
                     "jobid": "Submitted batch job ([0-9]+)",
@@ -535,10 +535,9 @@ class SlurmRemote(Remote):
         else:
             remote = Remote(hostname=self.hostname, connection=self.connection)
             command = shlex.join(["salloc", *self.alloc])
-            # NOTE: On some DRAC clusters, it's required to first cd to $SCRATCH or
-            # /projects before submitting a job.
-            if self.connection.host in DRAC_CLUSTERS:
-                command = f"cd $SCRATCH && {command}"
+            # We need to cd to $SCRATCH before we can run `salloc` on some clusters.
+            command = f"cd $SCRATCH && {command}"
+
             proc, results = remote.extract(
                 command,
                 patterns={"node_name": "salloc: Nodes ([^ ]+) are ready for job"},

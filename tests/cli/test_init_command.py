@@ -31,6 +31,7 @@ from milatools.cli.init_command import (
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
     has_passphrase,
+    setup_keys_on_login_node,
     setup_passwordless_ssh_access,
     setup_passwordless_ssh_access_to_cluster,
     setup_ssh_config,
@@ -1573,6 +1574,12 @@ def test_setup_passwordless_ssh_access(
         milatools.cli.init_command,
         setup_passwordless_ssh_access_to_cluster.__name__,
         mock_setup_passwordless_ssh_access_to_cluster,
+    )
+
+    monkeypatch.setattr(
+        milatools.cli.init_command,
+        setup_keys_on_login_node.__name__,
+        Mock(spec=setup_keys_on_login_node),
     )
 
     result = setup_passwordless_ssh_access(ssh_config)

@@ -102,5 +102,7 @@ def test_get_fully_qualified_hostname_of_compute_node_unknown_cluster():
 def test_make_process():
     process = make_process(print, "hello", end="!")
     assert isinstance(process, multiprocessing.Process)
-    assert process.daemon
+    # TODO: Make the process daemonic again (if needed), for now we want to be able to
+    # run the syncing of vscode extensions in the background during `mila code`.
+    assert not process.daemon
     assert not process.is_alive()

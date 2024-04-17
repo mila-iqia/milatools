@@ -15,6 +15,8 @@ from typing import Any
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 
+from milatools.utils.remote_v2 import SSH_CONFIG_FILE
+
 from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
@@ -238,20 +240,23 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
 
     here = Local()
     sshdir = Path.home() / ".ssh"
-    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
 
     # Check if there is a public key file in ~/.ssh
     if not list(sshdir.glob("id*.pub")):
         if yn("You have no public keys. Generate one?"):
             # Run ssh-keygen with the given location and no passphrase.
+            ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
             create_ssh_keypair(ssh_private_key_path, here)
         else:
             print("No public keys.")
             return False
 
+    # TODO: This uses the public key set in the SSH config file, which may (or may not)
+    # be the random id*.pub file that was just checked for above.
     success = setup_passwordless_ssh_access_to_cluster("mila")
     if not success:
         return False
+    setup_keys_on_login_node("mila")
 
     drac_clusters_in_ssh_config: list[str] = []
     hosts_in_config = ssh_config.hosts()
@@ -277,6 +282,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
         if not success:
             return False
+        setup_keys_on_login_node(drac_cluster)
     return True
 
 
@@ -293,28 +299,38 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
     # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
     # the default.
-    ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
+
+    from paramiko.config import SSHConfig
+
+    config = SSHConfig.from_path(str(SSH_CONFIG_FILE))
+    identity_file = config.lookup(cluster).get("identityfile", "~/.ssh/id_rsa")
+    # Seems to be a list for some reason?
+    if isinstance(identity_file, list):
+        assert identity_file
+        identity_file = identity_file[0]
+    ssh_private_key_path = Path(identity_file).expanduser()
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
-    # TODO: This will fail for clusters with 2FA.
-    if check_passwordless(cluster):
-        logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
-        return True
 
-    if not yn(
-        f"Your public key does not appear be registered on the {cluster} cluster. "
-        "Register it?"
-    ):
-        print("No passwordless login.")
-        return False
-
-    print("Please enter your password when prompted.")
+    # TODO: This will fail on Windows for clusters with 2FA.
+    # if check_passwordless(cluster):
+    #     logger.info(f"Passwordless SSH access to {cluster} is already setup correctly.")
+    #     return True
+    # if not yn(
+    #     f"Your public key does not appear be registered on the {cluster} cluster. "
+    #     "Register it?"
+    # ):
+    #     print("No passwordless login.")
+    #     return False
+    print("Please enter your password if prompted.")
     if sys.platform == "win32":
         # NOTE: This is to remove extra '^M' characters that would be added at the end
         # of the file on the remote!
         public_key_contents = ssh_public_key_path.read_text().replace("\r\n", "\n")
         command = (
             "ssh",
+            "-i",
+            str(ssh_private_key_path),
             "-o",
             "StrictHostKeyChecking=no",
             cluster,
@@ -328,7 +344,15 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
             f.seek(0)
             subprocess.run(command, check=True, text=False, stdin=f)
     else:
-        here.run("ssh-copy-id", "-o", "StrictHostKeyChecking=no", cluster, check=True)
+        here.run(
+            "ssh-copy-id",
+            "-i",
+            str(ssh_private_key_path),
+            "-o",
+            "StrictHostKeyChecking=no",
+            cluster,
+            check=True,
+        )
 
     # double-check that this worked.
     if not check_passwordless(cluster):
@@ -337,14 +361,17 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     return True
 
 
-def setup_keys_on_login_node():
+def setup_keys_on_login_node(cluster: str = "mila"):
     #####################################
     # Step 3: Set up keys on login node #
     #####################################
 
-    print("Checking connection to compute nodes")
-
-    remote = Remote("mila")
+    print(
+        f"Checking connection to compute nodes on the {cluster} cluster. "
+        "This is required for `mila code` to work properly."
+    )
+    # todo: avoid re-creating the `Remote` here, since it goes through 2FA each time!
+    remote = Remote(cluster)
     try:
         pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
         print("# OK")

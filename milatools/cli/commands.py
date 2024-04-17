@@ -584,7 +584,8 @@ def code(
         )
     elif no_internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
-        run_in_the_background = False  # if "pytest" not in sys.modules else True
+        # TODO: Make this happen in the background (without overwriting the output).
+        run_in_the_background = False
         print(
             console.log(
                 f"[cyan]Installing VSCode extensions that are on the local machine on "
@@ -680,11 +681,17 @@ def code(
     if persist:
         print("This allocation is persistent and is still active.")
         print("To reconnect to this node:")
-        print(T.bold(f"  mila code {path} --node {node_name}"))
+        print(
+            T.bold(
+                f"  mila code {path} "
+                + (f"--cluster={cluster} " if cluster != "mila" else "")
+                + f"--node {node_name}"
+            )
+        )
         print("To kill this allocation:")
         assert data is not None
         assert "jobid" in data
-        print(T.bold(f"  ssh mila scancel {data['jobid']}"))
+        print(T.bold(f"  ssh {cluster} scancel {data['jobid']}"))
 
 
 def connect(identifier: str, port: int | None):
