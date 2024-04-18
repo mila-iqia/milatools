@@ -24,7 +24,7 @@ jobs:
       - name: Check that we have the pre-existing connection to the SLURM cluster.
         # TODO: mila cluster doesn't use 2FA yet, so we can actually create the connection
         # to run the tests; we don't need it to be already running.
-        if: ${{ inputs.cluster != 'mila' }}
+        if: ${{ inputs.cluster != 'mila' && inputs.cluster != 'localhost'}}
         run:
             # Check that the control socket is running on the self-hosted runner so
             # that we don't have to go through 2FA on DRAC clusters.
