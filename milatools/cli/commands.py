@@ -31,28 +31,11 @@ import questionary as qn
 import rich.logging
 from typing_extensions import TypedDict
 
+from milatools.__version__ import __version__
 from milatools.cli import console
-from milatools.utils.local_v1 import LocalV1
-from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
-from milatools.utils.remote_v2 import RemoteV2
-from milatools.utils.vscode_utils import (
-    get_code_command,
-    # install_local_vscode_extensions_on_remote,
-    sync_vscode_extensions,
-    sync_vscode_extensions_with_hostnames,
-)
-
-from ..__version__ import __version__
-from .init import (
-    print_welcome_message,
-    setup_keys_on_login_node,
-    setup_passwordless_ssh_access,
-    setup_ssh_config,
-    setup_vscode_settings,
-    setup_windows_ssh_config_from_wsl,
-)
-from .profile import ensure_program, setup_profile
-from .utils import (
+from milatools.cli.init import init
+from milatools.cli.profile import ensure_program, setup_profile
+from milatools.cli.utils import (
     CLUSTERS,
     Cluster,
     CommandNotFoundError,
@@ -68,6 +51,14 @@ from .utils import (
     randname,
     running_inside_WSL,
     with_control_file,
+)
+from milatools.utils.local_v1 import LocalV1
+from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
+from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.vscode_utils import (
+    get_code_command,
+    sync_vscode_extensions,
+    sync_vscode_extensions_with_hostnames,
 )
 
 if typing.TYPE_CHECKING:
@@ -490,32 +481,6 @@ def intranet(search: Sequence[str]) -> None:
         url = "https://intranet.mila.quebec"
     print(f"Opening the intranet: {url}")
     webbrowser.open(url)
-
-
-def init():
-    """Set up your configuration and credentials."""
-
-    #############################
-    # Step 1: SSH Configuration #
-    #############################
-
-    print("Checking ssh config")
-
-    ssh_config = setup_ssh_config()
-
-    # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
-    # ~/.ssh/config to the Windows ssh directory (taking care to remove the
-    # ControlMaster-related entries) so that the user doesn't need to install Python on
-    # the Windows side.
-    if running_inside_WSL():
-        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
-
-    success = setup_passwordless_ssh_access(ssh_config=ssh_config)
-    if not success:
-        exit()
-    setup_keys_on_login_node()
-    setup_vscode_settings()
-    print_welcome_message()
 
 
 def forward(
