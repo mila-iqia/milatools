@@ -22,8 +22,8 @@ import questionary
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli import init_command
-from milatools.cli.init_command import (
+from milatools.cli import init
+from milatools.cli.init import (
     DRAC_CLUSTERS,
     _get_drac_username,
     _get_mila_username,
@@ -845,12 +845,12 @@ def test_setup_windows_ssh_config_from_wsl(
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
     monkeypatch.setattr(
-        init_command,
+        init,
         running_inside_WSL.__name__,
         Mock(spec=running_inside_WSL, return_value=True),
     )
     monkeypatch.setattr(
-        init_command,
+        init,
         get_windows_home_path_in_wsl.__name__,
         Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
     )
@@ -921,15 +921,15 @@ def test_setup_vscode_settings(
             json.dump(initial_settings, f, indent=4)
 
     monkeypatch.setattr(
-        init_command,
-        init_command.vscode_installed.__name__,
-        Mock(spec=init_command.vscode_installed, return_value=True),
+        init,
+        init.vscode_installed.__name__,
+        Mock(spec=init.vscode_installed, return_value=True),
     )
     monkeypatch.setattr(
-        init_command,
-        init_command.get_expected_vscode_settings_json_path.__name__,
+        init,
+        init.get_expected_vscode_settings_json_path.__name__,
         Mock(
-            spec=init_command.get_expected_vscode_settings_json_path,
+            spec=init.get_expected_vscode_settings_json_path,
             return_value=vscode_settings_json_path,
         ),
     )
@@ -1005,12 +1005,12 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     monkeypatch.setattr(Path, "home", Mock(spec=Path.home, return_value=linux_home))
 
     monkeypatch.setattr(
-        init_command,
+        init,
         running_inside_WSL.__name__,
         Mock(spec=running_inside_WSL, return_value=True),
     )
     monkeypatch.setattr(
-        init_command,
+        init,
         get_windows_home_path_in_wsl.__name__,
         Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
     )
@@ -1570,16 +1570,16 @@ def test_setup_passwordless_ssh_access(
         spec=setup_passwordless_ssh_access_to_cluster,
         side_effect=[accept_mila, *(accept_drac for _ in drac_clusters_in_ssh_config)],
     )
-    import milatools.cli.init_command
+    import milatools.cli.init
 
     monkeypatch.setattr(
-        milatools.cli.init_command,
+        milatools.cli.init,
         setup_passwordless_ssh_access_to_cluster.__name__,
         mock_setup_passwordless_ssh_access_to_cluster,
     )
 
     monkeypatch.setattr(
-        milatools.cli.init_command,
+        milatools.cli.init,
         setup_keys_on_login_node.__name__,
         Mock(spec=setup_keys_on_login_node),
     )

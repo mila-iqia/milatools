@@ -43,7 +43,7 @@ from milatools.utils.vscode_utils import (
 )
 
 from ..__version__ import __version__
-from .init_command import (
+from .init import (
     print_welcome_message,
     setup_keys_on_login_node,
     setup_passwordless_ssh_access,

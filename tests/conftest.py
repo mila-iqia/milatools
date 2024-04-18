@@ -25,7 +25,7 @@ import milatools.utils.local_v2
 import milatools.utils.parallel_progress
 import milatools.utils.remote_v2
 from milatools.cli import console
-from milatools.cli.init_command import setup_ssh_config
+from milatools.cli.init import setup_ssh_config
 from milatools.cli.utils import SSH_CONFIG_FILE
 from milatools.utils.compute_node import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
@@ -379,7 +379,7 @@ def ssh_config_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
     """Fixture that creates the SSH config as setup by `mila init`."""
-    from milatools.cli.init_command import yn
+    from milatools.cli.init import yn
 
     # NOTE: might want to put this in a fixture if we wanted the "real" mila / drac
     # usernames in the config.
@@ -400,9 +400,9 @@ def ssh_config_file(
 
     mock_yn = Mock(spec=yn, side_effect=_yn)
 
-    import milatools.cli.init_command
+    import milatools.cli.init
 
-    monkeypatch.setattr(milatools.cli.init_command, yn.__name__, mock_yn)
+    monkeypatch.setattr(milatools.cli.init, yn.__name__, mock_yn)
 
     def _mock_unsafe_ask(question: str, *args, **kwargs) -> str:
         question = question.strip()
