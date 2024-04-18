@@ -1,0 +1,32 @@
+# Run integration tests on a self-hosted runner using all slurm clusters.
+on:
+  push:
+    branches: "master"  # every time a push is made to `master`, OR
+  schedule:
+    - cron: "30 6 * * 1"  # every Monday at 6:30 AM UTC (2:30 AM Montreal time) OR
+  workflow_dispatch:  # when the workflow is manually triggered
+
+# https://stackoverflow.com/a/72408109/6388696
+# https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-concurrency-to-cancel-any-in-progress-job-or-run
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+  real-slurm-integration-tests:
+    name: integration tests with a real SLURM cluster
+    strategy:
+      max-parallel: 5
+      matrix:
+        # TODO: We should ideally also run this with Windows/Mac clients and a Linux
+        # server. Unsure how to set that up with GitHub Actions though.
+        python-version: ['3.11']
+        # TODO: also run these integration tests on the DRAC clusters (probably less
+        # frequently because of the long job wait times)
+        cluster: ['mila', 'narval', 'beluga', 'cedar', 'graham']
+
+    uses: ./.github/workflows/testing.yml
+    with:
+      cluster: ${{ matrix.cluster }}
+      python-version: ${{ matrix.python-version }}
+    secrets: inherit
