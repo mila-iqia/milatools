@@ -96,6 +96,7 @@ jobs:
       # NOTE: Replacing this with our customized version of
       # - uses: koesterlab/setup-slurm-action@v1
       - uses: ./.github/custom_setup_slurm_action
+        timeout-minutes: 5
 
       - name: Test if the slurm cluster is setup correctly
         run: srun --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=00:01:00 hostname
