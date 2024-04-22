@@ -8,6 +8,10 @@ on:
         required: false
         type: string
         default: '3.11'
+      timeout-minutes:
+        required: false
+        type: number
+        default: 30
     secrets:
       CODECOV_TOKEN:
         required: true
@@ -45,7 +49,7 @@ jobs:
       - name: Launch integration tests
         id: self_hosted_integration_tests
         run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
-        timeout-minutes: 30
+        timeout-minutes: ${{ inputs.timeout-minutes }}
         env:
           SLURM_CLUSTER: ${{ inputs.cluster }}
 

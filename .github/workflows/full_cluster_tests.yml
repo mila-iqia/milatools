@@ -25,5 +25,6 @@ jobs:
     with:
       cluster: ${{ matrix.cluster }}
       python-version: ${{ matrix.python-version }}
+      timeout-minutes: 60
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
