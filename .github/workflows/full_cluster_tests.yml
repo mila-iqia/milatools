@@ -17,6 +17,7 @@ jobs:
     name: integration tests with a real SLURM cluster
     strategy:
       max-parallel: 5
+      fail-fast: false
       matrix:
         # TODO: Setup self-hosted runners inside Mac and Windows VMs.
         python-version: ['3.11']
