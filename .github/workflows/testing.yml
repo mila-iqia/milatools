@@ -1,0 +1,64 @@
+on:
+  workflow_call:
+    inputs:
+      cluster:
+        required: true
+        type: string
+      python-version:
+        required: false
+        type: string
+        default: '3.11'
+      timeout-minutes:
+        required: false
+        type: number
+        default: 30
+    secrets:
+      CODECOV_TOKEN:
+        required: true
+
+  workflow_dispatch:
+
+
+jobs:
+  real-slurm-integration-tests:
+    name: integration tests with a real SLURM cluster
+    runs-on: self-hosted
+
+    steps:
+      - name: Check that we have the pre-existing connection to the SLURM cluster.
+        # TODO: mila cluster doesn't use 2FA yet, so we can actually create the connection
+        # to run the tests; we don't need it to be already running.
+        if: ${{ inputs.cluster != 'mila' && inputs.cluster != 'localhost'}}
+        run:
+            # Check that the control socket is running on the self-hosted runner so
+            # that we don't have to go through 2FA on DRAC clusters.
+            ssh -O check -oStrictHostKeyChecking=no ${{ inputs.cluster }}
+
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install --with=dev
+
+      - name: Launch integration tests
+        id: self_hosted_integration_tests
+        run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
+        timeout-minutes: ${{ inputs.timeout-minutes }}
+        env:
+          SLURM_CLUSTER: ${{ inputs.cluster }}
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          flags: integrationtests
+          env_vars: PLATFORM,PYTHON
+          name: codecov-umbrella
+          fail_ci_if_error: false

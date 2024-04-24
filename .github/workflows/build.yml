@@ -76,8 +76,6 @@ jobs:
     strategy:
       max-parallel: 5
       matrix:
-        # TODO: We should ideally also run this with Windows/Mac clients and a Linux
-        # server. Unsure how to set that up with GitHub Actions though.
         platform: [ubuntu-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11']
 
@@ -98,6 +96,7 @@ jobs:
       # NOTE: Replacing this with our customized version of
       # - uses: koesterlab/setup-slurm-action@v1
       - uses: ./.github/custom_setup_slurm_action
+        timeout-minutes: 5
 
       - name: Test if the slurm cluster is setup correctly
         run: srun --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=00:01:00 hostname
@@ -143,43 +142,21 @@ jobs:
           fail_ci_if_error: false
 
   real-slurm-integration-tests:
+
     name: integration tests with a real SLURM cluster
     needs: [mock-slurm-integration-tests]
-    runs-on: self-hosted
 
     strategy:
-      max-parallel: 5
+      max-parallel: 1
       matrix:
         # TODO: We should ideally also run this with Windows/Mac clients and a Linux
         # server. Unsure how to set that up with GitHub Actions though.
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install poetry
-          poetry install --with=dev
-
-      - name: Launch integration tests
-        id: self_hosted_integration_tests
-        run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
-        timeout-minutes: 30
-        env:
-          SLURM_CLUSTER: mila
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-          flags: integrationtests
-          env_vars: PLATFORM,PYTHON
-          name: codecov-umbrella
-          fail_ci_if_error: false
+        python-version: ['3.11']
+        cluster: ['mila']
+    uses: ./.github/workflows/testing.yml
+    with:
+      cluster: ${{ matrix.cluster }}
+      python-version: ${{ matrix.python-version }}
+      timeout-minutes: 30
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
