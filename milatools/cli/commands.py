@@ -206,7 +206,17 @@ def add_arguments(parser: argparse.ArgumentParser):
         formatter_class=SortingHelpFormatter,
     )
     code_parser.add_argument(
-        "PATH", help="Path to open on the remote machine", type=str
+        "PATH",
+        help=(
+            "Path to open on the remote machine. Defaults to $HOME.\n"
+            "Can be a relative or absolute path. When a relative path (that doesn't "
+            "start with a '/', like foo/bar) is passed, the path is relative to the "
+            "$HOME directory on the selected cluster.\n"
+            "For example, foo/project will be interpreted as $HOME/foo/project."
+        ),
+        type=str,
+        default=".",
+        nargs="?",
     )
     code_parser.add_argument(
         "--cluster",
