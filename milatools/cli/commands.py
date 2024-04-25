@@ -242,10 +242,10 @@ def add_arguments(parser: argparse.ArgumentParser):
     )
     code_parser.add_argument(
         "--job",
-        type=str,
+        type=int,
         default=None,
         help="Job ID to connect to",
-        metavar="VALUE",
+        metavar="JOB_ID",
     )
     code_parser.add_argument(
         "--node",
@@ -563,7 +563,7 @@ def code(
     path: str,
     command: str,
     persist: bool,
-    job: str | None,
+    job: int | None,
     node: str | None,
     alloc: list[str],
     cluster: Cluster = "mila",
@@ -801,7 +801,7 @@ class StandardServerArgs(TypedDict):
     alloc: list[str]
     """Extra options to pass to slurm."""
 
-    job: str | None
+    job: int | None
     """Job ID to connect to."""
 
     name: str | None
@@ -954,10 +954,10 @@ def _add_standard_server_args(parser: ArgumentParser):
     )
     parser.add_argument(
         "--job",
-        type=str,
+        type=int,
         default=None,
         help="Job ID to connect to",
-        metavar="VALUE",
+        metavar="JOB_ID",
     )
     parser.add_argument(
         "--name",
@@ -1005,7 +1005,7 @@ def _standard_server(
     port: int | None,
     name: str | None,
     node: str | None,
-    job: str | None,
+    job: int | None,
     alloc: list[str],
     port_pattern=None,
     token_pattern=None,
@@ -1290,7 +1290,7 @@ def check_disk_quota(remote: Remote | RemoteV2) -> None:
 def _find_allocation(
     remote: Remote,
     node: str | None,
-    job: str | None,
+    job: int | str | None,
     alloc: list[str],
     cluster: Cluster = "mila",
     job_name: str = "mila-tools",
