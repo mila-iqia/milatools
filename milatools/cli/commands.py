@@ -2,6 +2,7 @@
 
 Cluster documentation: https://docs.mila.quebec/
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,7 +22,7 @@ from collections.abc import Sequence
 from contextlib import ExitStack
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlencode
 
 import questionary as qn
@@ -127,6 +128,13 @@ def main():
 
 def mila():
     parser = ArgumentParser(prog="mila", description=__doc__, add_help=True)
+    add_arguments(parser)
+    verbose, function, args_dict = parse_args(parser)
+    setup_logging(verbose)
+    return function(**args_dict)
+
+
+def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--version",
         action="version",
@@ -416,18 +424,26 @@ def mila():
     _add_standard_server_args(serve_aim_parser)
     serve_aim_parser.set_defaults(function=aim)
 
+
+def parse_args(parser: argparse.ArgumentParser) -> tuple[int, Callable, dict[str, Any]]:
+    """Parses the command-line arguments.
+
+    Returns the verbosity level, the function (or awaitable) to call, and the arguments
+    to the function.
+    """
     args = parser.parse_args()
     args_dict = vars(args)
+
     verbose: int = args_dict.pop("verbose")
+
     function = args_dict.pop("function")
     _ = args_dict.pop("<command>")
     _ = args_dict.pop("<serve_subcommand>", None)
     _ = args_dict.pop("<sync_subcommand>", None)
-    setup_logging(verbose)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
     assert callable(function)
-    return function(**args_dict)
+    return verbose, function, args_dict
 
 
 def setup_logging(verbose: int) -> None:
