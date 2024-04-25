@@ -28,13 +28,19 @@ jobs:
       PLATFORM: ${{ matrix.platform }}
     steps:
     - uses: actions/checkout@v4
-    - name: Install poetry
-      run: pipx install poetry
+    - name: Install poetry (not on MacOS)
+      if: runner.os != 'macOS'
+      run: pip install poetry
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
         cache: ${{ matrix.platform != 'macos-latest' && 'poetry' || '' }}
+
+    - name: Install poetry (only on MacOS)
+      if: runner.os == 'macOS'
+      run: pip install poetry
 
     - name: Install dependencies
       run: poetry install --with=dev
