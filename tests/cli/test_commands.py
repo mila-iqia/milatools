@@ -63,7 +63,7 @@ def test_help(
     [
         "mila",  # Error: Missing a subcommand.
         "mila search conda",
-        "mila code",  # Error: Missing the required PATH argument.
+        "mila code --boo",  # Error: Unknown argument.
         "mila serve",  # Error: Missing the subcommand.
         "mila forward",  # Error: Missing the REMOTE argument.
     ],

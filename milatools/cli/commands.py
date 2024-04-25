@@ -204,7 +204,6 @@ def add_arguments(parser: argparse.ArgumentParser):
     code_parser = subparsers.add_parser(
         "code",
         help="Open a remote VSCode session on a compute node.",
-        formatter_class=SortingHelpFormatter,
     )
     code_parser.add_argument(
         "PATH",
@@ -359,7 +358,6 @@ def add_arguments(parser: argparse.ArgumentParser):
     serve_lab_parser = serve_subparsers.add_parser(
         "lab",
         help="Start a Jupyterlab server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_lab_parser.add_argument(
         "PATH",
@@ -375,7 +373,6 @@ def add_arguments(parser: argparse.ArgumentParser):
     serve_notebook_parser = serve_subparsers.add_parser(
         "notebook",
         help="Start a Jupyter Notebook server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_notebook_parser.add_argument(
         "PATH",
@@ -391,7 +388,6 @@ def add_arguments(parser: argparse.ArgumentParser):
     serve_tensorboard_parser = serve_subparsers.add_parser(
         "tensorboard",
         help="Start a Tensorboard server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_tensorboard_parser.add_argument(
         "LOGDIR", type=str, help="Path to the experiment logs"
@@ -404,7 +400,6 @@ def add_arguments(parser: argparse.ArgumentParser):
     serve_mlflow_parser = serve_subparsers.add_parser(
         "mlflow",
         help="Start an MLFlow server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_mlflow_parser.add_argument(
         "LOGDIR", type=str, help="Path to the experiment logs"
@@ -417,7 +412,6 @@ def add_arguments(parser: argparse.ArgumentParser):
     serve_aim_parser = serve_subparsers.add_parser(
         "aim",
         help="Start an AIM server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_aim_parser.add_argument(
         "LOGDIR", type=str, help="Path to the experiment logs"
@@ -936,9 +930,13 @@ class SortingHelpFormatter(argparse.HelpFormatter):
 
 
 def _add_allocation_options(parser: ArgumentParser):
+    # note: Ideally we'd like [--persist --alloc] | [--salloc] | [--sbatch] (i.e. a
+    # subgroup with alloc and persist within a mutually exclusive group with salloc and
+    # sbatch) but that doesn't seem possible with argparse as far as I can tell.
     arg_group = parser.add_argument_group(
         "Allocation options", description="Extra options to pass to slurm."
     )
+    alloc_group = arg_group.add_mutually_exclusive_group()
     common_kwargs = {
         "dest": "alloc",
         "nargs": argparse.REMAINDER,
@@ -946,24 +944,22 @@ def _add_allocation_options(parser: ArgumentParser):
         "metavar": "VALUE",
         "default": [],
     }
-    arg_group.add_argument(
-        "--alloc",
-        **common_kwargs,
-        help="Extra options to pass to salloc or to sbatch if --persist is set.",
-    )
-    alloc_group = arg_group.add_mutually_exclusive_group()
     alloc_group.add_argument(
         "--persist",
         action="store_true",
         help="Whether the server should persist or not when using --alloc",
     )
-
+    # --persist can be used with --alloc
+    arg_group.add_argument(
+        "--alloc",
+        **common_kwargs,
+        help="Extra options to pass to salloc or to sbatch if --persist is set.",
+    )
     # --persist cannot be used with --salloc or --sbatch.
     # Note: REMAINDER args like --alloc, --sbatch and --salloc are already mutually
     # exclusive in a sense, since it's only possible to use one correctly, the other
     # args are stored in the first one (e.g. mila code --alloc --salloc bob will have
     # alloc of ["--salloc", "bob"]).
-
     alloc_group.add_argument(
         "--salloc",
         **common_kwargs,
@@ -972,12 +968,11 @@ def _add_allocation_options(parser: ArgumentParser):
     alloc_group.add_argument(
         "--sbatch",
         **common_kwargs,
-        help="Extra options to pass to sbatch (equivalent to --persist --alloc [...])",
+        help="Extra options to pass to sbatch. Same as using --alloc with --persist.",
     )
 
 
 def _add_standard_server_args(parser: ArgumentParser):
-    _add_allocation_options(parser)
     parser.add_argument(
         "--job",
         type=int,
@@ -1013,6 +1008,8 @@ def _add_standard_server_args(parser: ArgumentParser):
         help="Name of the profile to use",
         metavar="VALUE",
     )
+    # Add these arguments last because we want them to show up last in the usage message
+    _add_allocation_options(parser)
 
 
 def _standard_server(

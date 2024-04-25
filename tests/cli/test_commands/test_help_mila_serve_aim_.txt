@@ -1,6 +1,6 @@
-usage: mila serve aim [-h] [--alloc ...] [--job VALUE] [--name VALUE]
-                      [--node VALUE] [--persist] [--port VALUE]
-                      [--profile VALUE]
+usage: mila serve aim [-h] [--job JOB_ID] [--name VALUE] [--node VALUE]
+                      [--port VALUE] [--profile VALUE] [--persist]
+                      [--alloc ...] [--salloc ...] [--sbatch ...]
                       LOGDIR
 
 positional arguments:
@@ -8,10 +8,19 @@ positional arguments:
 
 optional arguments:
   -h, --help       show this help message and exit
-  --alloc ...      Extra options to pass to slurm
-  --job VALUE      Job ID to connect to
+  --job JOB_ID     Job ID to connect to
   --name VALUE     Name of the persistent server
   --node VALUE     Node to connect to
-  --persist        Whether the server should persist or not
   --port VALUE     Port to open on the local machine
   --profile VALUE  Name of the profile to use
+
+Allocation optional arguments:
+  Extra options to pass to slurm.
+
+  --persist        Whether the server should persist or not when using --alloc
+  --alloc ...      Extra options to pass to salloc or to sbatch if --persist
+                   is set.
+  --salloc ...     Extra options to pass to salloc. Same as using --alloc
+                   without --persist.
+  --sbatch ...     Extra options to pass to sbatch. Same as using --alloc with
+                   --persist.
