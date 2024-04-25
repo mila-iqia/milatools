@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import contextvars
 import functools
 import itertools
@@ -13,6 +14,7 @@ import typing
 import warnings
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
+from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Any, Literal, TypeVar, Union, get_args
 
@@ -26,6 +28,7 @@ from typing_extensions import ParamSpec, TypeGuard
 if typing.TYPE_CHECKING:
     from milatools.cli.remote import Remote
 
+logger = get_logger(__name__)
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
 
@@ -347,3 +350,31 @@ if sys.version_info < (3, 9):
             return s
 else:
     removesuffix = str.removesuffix
+
+
+class AllocationFlagsAction(argparse._StoreAction):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace,
+        values: list[str],
+        option_string: str | None = None,
+    ):
+        persist: bool | None = namespace.persist
+        if option_string == "--alloc":
+            namespace.alloc = values
+        elif option_string == "--salloc":
+            # --salloc is in a mutually exclusive group with --persist
+            assert not persist
+            if persist:
+                raise argparse.ArgumentError(
+                    argument=self,
+                    message="Cannot use --salloc with --persist, use only --sbatch for a persistent session.",
+                )
+            namespace.alloc = values
+        else:
+            assert option_string == "--sbatch", option_string
+            # --sbatch is in a mutually exclusive group with --persist
+            assert not persist
+            namespace.alloc = values
+            namespace.persist = True

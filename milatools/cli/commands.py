@@ -52,6 +52,7 @@ from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (
     CLUSTERS,
+    AllocationFlagsAction,
     Cluster,
     CommandNotFoundError,
     MilatoolsUserError,
@@ -225,13 +226,6 @@ def add_arguments(parser: argparse.ArgumentParser):
         help="Which cluster to connect to.",
     )
     code_parser.add_argument(
-        "--alloc",
-        nargs=argparse.REMAINDER,
-        help="Extra options to pass to slurm",
-        metavar="VALUE",
-        default=[],
-    )
-    code_parser.add_argument(
         "--command",
         default=get_code_command(),
         help=(
@@ -252,13 +246,10 @@ def add_arguments(parser: argparse.ArgumentParser):
         type=str,
         default=None,
         help="Node to connect to",
-        metavar="VALUE",
+        metavar="NODE",
     )
-    code_parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Whether the server should persist or not",
-    )
+    _add_allocation_options(code_parser)
+
     code_parser.set_defaults(function=code)
 
     # ----- mila sync vscode-extensions ------
@@ -944,14 +935,49 @@ class SortingHelpFormatter(argparse.HelpFormatter):
         super().add_arguments(actions)
 
 
-def _add_standard_server_args(parser: ArgumentParser):
-    parser.add_argument(
-        "--alloc",
-        nargs=argparse.REMAINDER,
-        help="Extra options to pass to slurm",
-        metavar="VALUE",
-        default=[],
+def _add_allocation_options(parser: ArgumentParser):
+    arg_group = parser.add_argument_group(
+        "Allocation options", description="Extra options to pass to slurm."
     )
+    common_kwargs = {
+        "dest": "alloc",
+        "nargs": argparse.REMAINDER,
+        "action": AllocationFlagsAction,
+        "metavar": "VALUE",
+        "default": [],
+    }
+    arg_group.add_argument(
+        "--alloc",
+        **common_kwargs,
+        help="Extra options to pass to salloc or to sbatch if --persist is set.",
+    )
+    alloc_group = arg_group.add_mutually_exclusive_group()
+    alloc_group.add_argument(
+        "--persist",
+        action="store_true",
+        help="Whether the server should persist or not when using --alloc",
+    )
+
+    # --persist cannot be used with --salloc or --sbatch.
+    # Note: REMAINDER args like --alloc, --sbatch and --salloc are already mutually
+    # exclusive in a sense, since it's only possible to use one correctly, the other
+    # args are stored in the first one (e.g. mila code --alloc --salloc bob will have
+    # alloc of ["--salloc", "bob"]).
+
+    alloc_group.add_argument(
+        "--salloc",
+        **common_kwargs,
+        help="Extra options to pass to salloc. Same as using --alloc without --persist.",
+    )
+    alloc_group.add_argument(
+        "--sbatch",
+        **common_kwargs,
+        help="Extra options to pass to sbatch (equivalent to --persist --alloc [...])",
+    )
+
+
+def _add_standard_server_args(parser: ArgumentParser):
+    _add_allocation_options(parser)
     parser.add_argument(
         "--job",
         type=int,
@@ -972,11 +998,6 @@ def _add_standard_server_args(parser: ArgumentParser):
         default=None,
         help="Node to connect to",
         metavar="VALUE",
-    )
-    parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Whether the server should persist or not",
     )
     parser.add_argument(
         "--port",
