@@ -17,13 +17,13 @@ import pytest
 from fabric.connection import Connection
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.remote_v1 import (
+from milatools.cli.utils import T, cluster_to_connect_kwargs
+from milatools.utils.remote_v1 import (
     QueueIO,
     RemoteV1,
     SlurmRemote,
     get_first_node_name,
 )
-from milatools.cli.utils import T, cluster_to_connect_kwargs
 
 from .common import function_call_string
 

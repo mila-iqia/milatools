@@ -12,8 +12,8 @@ from typing import Any, Literal
 from paramiko import SSHConfig
 
 from milatools.cli import console
-from milatools.cli.remote_v1 import Hide
 from milatools.cli.utils import DRAC_CLUSTERS, MilatoolsUserError
+from milatools.utils.remote_v1 import Hide
 
 logger = get_logger(__name__)
 

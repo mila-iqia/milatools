@@ -17,8 +17,8 @@ import pytest
 import milatools
 import milatools.cli
 import milatools.cli.utils
-from milatools.cli.remote_v1 import RemoteV1, SlurmRemote
 from milatools.cli.utils import CLUSTERS
+from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
 from milatools.utils.remote_v2 import RemoteV2
 
 from ..cli.common import on_windows

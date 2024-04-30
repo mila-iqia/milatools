@@ -19,7 +19,7 @@ import questionary as qn
 from fabric import Connection
 from typing_extensions import Self, TypedDict, deprecated
 
-from .utils import (
+from ..cli.utils import (
     SSHConnectionError,
     T,
     cluster_to_connect_kwargs,

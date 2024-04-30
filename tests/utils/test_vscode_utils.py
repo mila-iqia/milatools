@@ -11,10 +11,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from milatools.cli.remote_v1 import RemoteV1
 from milatools.cli.utils import running_inside_WSL
 from milatools.utils.local_v1 import LocalV1
 from milatools.utils.parallel_progress import ProgressDict
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2, UnsupportedPlatformError
 from milatools.utils.vscode_utils import (
     extensions_to_install,

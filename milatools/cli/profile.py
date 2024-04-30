@@ -16,7 +16,7 @@ from questionary.prompts.common import FormattedText
 from .utils import askpath, yn
 
 if typing.TYPE_CHECKING:
-    from milatools.cli.remote_v1 import RemoteV1
+    from milatools.utils.remote_v1 import RemoteV1
 
 style = qn.Style(
     [

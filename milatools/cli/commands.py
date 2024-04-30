@@ -39,6 +39,7 @@ from milatools.utils.vscode_utils import (
 
 from ..__version__ import __version__
 from ..utils.local_v1 import LocalV1
+from ..utils.remote_v1 import RemoteV1, SlurmRemote
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -48,7 +49,6 @@ from .init_command import (
     setup_windows_ssh_config_from_wsl,
 )
 from .profile import ensure_program, setup_profile
-from .remote_v1 import RemoteV1, SlurmRemote
 from .utils import (
     CLUSTERS,
     Cluster,

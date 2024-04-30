@@ -11,7 +11,6 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal, Sequence
 
-from milatools.cli.remote_v1 import RemoteV1
 from milatools.cli.utils import (
     CLUSTERS,
     batched,
@@ -25,6 +24,7 @@ from milatools.utils.parallel_progress import (
     TaskID,
     parallel_progress_bar,
 )
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
 logger = get_logger(__name__)
