@@ -12,10 +12,13 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+import pytest_asyncio
 import questionary
 from fabric.connection import Connection
 
+from milatools.cli import console
 from milatools.cli.init_command import setup_ssh_config
+from milatools.utils.compute_node import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     RemoteV2,
@@ -212,6 +215,33 @@ def get_job_name_for_tests(request: pytest.FixtureRequest) -> str | None:
     # remove anything weird like spaces, /, etc.
     job_name = re.sub(r"\W+", "-", job_name)
     return job_name
+
+
+@pytest_asyncio.fixture(scope="session")
+async def launches_job_fixture(login_node_v2: RemoteV2, job_name: str):
+    jobs_before = await get_queued_milatools_job_ids(login_node_v2, job_name=job_name)
+    if jobs_before:
+        logger.debug(f"Jobs in squeue before tests: {jobs_before}")
+    try:
+        yield
+    finally:
+        jobs_after = await get_queued_milatools_job_ids(
+            login_node_v2, job_name=job_name
+        )
+        if jobs_before:
+            logger.debug(f"Jobs after tests: {jobs_before}")
+
+        new_jobs = jobs_after - jobs_before
+        if new_jobs:
+            console.log(f"Cancelling jobs {new_jobs} after running tests...")
+            login_node_v2.run(
+                "scancel " + " ".join(str(job_id) for job_id in new_jobs), display=True
+            )
+        else:
+            logger.debug("Test apparently didn't launch any new jobs.")
+
+
+launches_jobs = pytest.mark.usefixtures(launches_job_fixture.__name__)
 
 
 @functools.lru_cache
