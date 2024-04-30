@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import shutil
 import sys
 import time
@@ -11,10 +12,11 @@ from unittest.mock import Mock
 
 import paramiko.ssh_exception
 import pytest
+import questionary
 from fabric.connection import Connection
 
 from milatools.cli import console
-from milatools.cli.init_command import DRAC_CLUSTERS
+from milatools.cli.init_command import DRAC_CLUSTERS, setup_ssh_config
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     RemoteV2,
@@ -249,3 +251,64 @@ def already_logged_in(
         if control_path.exists():
             control_path.unlink()
         shutil.move(moved_path, control_path)
+
+
+@pytest.fixture()
+def ssh_config_file(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Fixture that creates the SSH config as setup by `mila init`."""
+    from milatools.cli.init_command import yn
+
+    # NOTE: might want to put this in a fixture if we wanted the "real" mila / drac
+    # usernames in the config.
+    mila_username = drac_username = "bob"
+
+    ssh_config_path = tmp_path_factory.mktemp(".ssh") / "ssh_config"
+
+    def _yn(question: str) -> bool:
+        question = question.strip()
+        known_questions = {
+            f"There is no {ssh_config_path} file. Create one?": True,
+            "Do you also have an account on the ComputeCanada/DRAC clusters?": True,
+            "Is this OK?": True,
+        }
+        if question in known_questions:
+            return known_questions[question]
+        raise NotImplementedError(f"Unexpected question: {question}")
+
+    mock_yn = Mock(spec=yn, side_effect=_yn)
+
+    import milatools.cli.init_command
+
+    monkeypatch.setattr(milatools.cli.init_command, yn.__name__, mock_yn)
+
+    def _mock_unsafe_ask(question: str, *args, **kwargs) -> str:
+        question = question.strip()
+        known_questions = {
+            "What's your username on the mila cluster?": mila_username,
+            "What's your username on the CC/DRAC clusters?": drac_username,
+        }
+        if question in known_questions:
+            return known_questions[question]
+        raise NotImplementedError(f"Unexpected question: {question}")
+
+    def _mock_text(message: str, *args, **kwargs):
+        return Mock(
+            spec=questionary.Question,
+            unsafe_ask=Mock(
+                spec=questionary.Question.unsafe_ask,
+                side_effect=functools.partial(_mock_unsafe_ask, message),
+            ),
+        )
+
+    mock_text = Mock(
+        spec=questionary.text,
+        side_effect=_mock_text,
+    )
+    monkeypatch.setattr(questionary, questionary.text.__name__, mock_text)
+
+    setup_ssh_config(ssh_config_path)
+    assert ssh_config_path.exists()
+    return ssh_config_path
