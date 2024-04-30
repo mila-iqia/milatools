@@ -9,7 +9,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 from milatools.utils.local_v1 import CommandNotFoundError, LocalV1, check_passwordless
 from milatools.utils.remote_v2 import is_already_logged_in
 
-from .common import (
+from ..cli.common import (
     in_github_CI,
     in_self_hosted_github_CI,
     output_tester,
