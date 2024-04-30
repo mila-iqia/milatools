@@ -1,7 +1,7 @@
 After creating a Remote like so:
 
 ```python
-remote = Remote('localhost', connection=Connection('localhost'), transforms=())
+remote = RemoteV1('localhost', connection=Connection('localhost'), transforms=())
 ```
 
 and then calling:
