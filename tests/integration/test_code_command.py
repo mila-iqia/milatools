@@ -10,7 +10,7 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.commands import check_disk_quota, code
-from milatools.cli.utils import get_fully_qualified_hostname_of_compute_node
+from milatools.cli.utils import get_hostname_to_use_for_compute_node
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
@@ -135,7 +135,7 @@ def test_code(
     job_info = job_id_to_job_info[job_id]
 
     node = job_info["Node"]
-    node_hostname = get_fully_qualified_hostname_of_compute_node(
+    node_hostname = get_hostname_to_use_for_compute_node(
         node, cluster=login_node.hostname
     )
     expected_line = f"(local) $ /usr/bin/echo -nw --remote ssh-remote+{node_hostname} {home}/{relative_path}"

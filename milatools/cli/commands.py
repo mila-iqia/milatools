@@ -58,8 +58,8 @@ from .utils import (
     T,
     cluster_to_connect_kwargs,
     currently_in_a_test,
-    get_fully_qualified_hostname_of_compute_node,
     get_fully_qualified_name,
+    get_hostname_to_use_for_compute_node,
     make_process,
     no_internet_on_compute_nodes,
     randname,
@@ -641,7 +641,7 @@ def code(
     # NOTE: Since we have the config entries for the DRAC compute nodes, there is no
     # need to use the fully qualified hostname here.
     if cluster == "mila":
-        node_name = get_fully_qualified_hostname_of_compute_node(node_name)
+        node_name = get_hostname_to_use_for_compute_node(node_name)
 
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open VSCode without
@@ -1110,7 +1110,7 @@ def _standard_server(
 
     local_proc, local_port = _forward(
         local=LocalV1(),
-        node=get_fully_qualified_hostname_of_compute_node(node_name, cluster="mila"),
+        node=get_hostname_to_use_for_compute_node(node_name, cluster="mila"),
         to_forward=to_forward,
         options=options,
         port=port,
@@ -1275,7 +1275,7 @@ def _find_allocation(
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
     if node is not None:
-        node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
+        node_name = get_hostname_to_use_for_compute_node(node, cluster=cluster)
         return RemoteV1(
             node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
         )
