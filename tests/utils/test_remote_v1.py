@@ -25,7 +25,7 @@ from milatools.utils.remote_v1 import (
     get_first_node_name,
 )
 
-from .common import function_call_string
+from ..cli.common import function_call_string
 
 
 @pytest.mark.parametrize("keepalive", [0, 123])
