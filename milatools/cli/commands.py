@@ -46,7 +46,7 @@ from .init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from .local import Local
+from .local_v1 import Local
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (

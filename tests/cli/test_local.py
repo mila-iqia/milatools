@@ -6,7 +6,7 @@ from subprocess import PIPE
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
+from milatools.cli.local_v1 import CommandNotFoundError, Local, check_passwordless
 from milatools.utils.remote_v2 import is_already_logged_in
 
 from .common import (

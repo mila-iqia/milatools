@@ -21,7 +21,7 @@ from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
-from .local import Local, check_passwordless, display
+from .local_v1 import Local, check_passwordless, display
 from .remote import Remote
 from .utils import SSHConfig, T, running_inside_WSL, yn
 

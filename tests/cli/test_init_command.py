@@ -38,7 +38,7 @@ from milatools.cli.init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.local import Local, check_passwordless
+from milatools.cli.local_v1 import Local, check_passwordless
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     SSHConfig,
