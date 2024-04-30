@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from milatools.cli.remote_v1 import Remote
+from milatools.cli.remote_v1 import RemoteV1
 from milatools.cli.utils import running_inside_WSL
 from milatools.utils.local_v1 import LocalV1
 from milatools.utils.parallel_progress import ProgressDict
@@ -206,7 +206,7 @@ def missing_extensions(
 
 
 def _remote(hostname: str):
-    return RemoteV2(hostname) if sys.platform != "win32" else Remote(hostname)
+    return RemoteV2(hostname) if sys.platform != "win32" else RemoteV1(hostname)
 
 
 @uses_remote_v2

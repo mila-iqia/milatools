@@ -22,7 +22,7 @@ from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
-from .remote_v1 import Remote
+from .remote_v1 import RemoteV1
 from .utils import SSHConfig, T, running_inside_WSL, yn
 
 logger = get_logger(__name__)
@@ -371,7 +371,7 @@ def setup_keys_on_login_node(cluster: str = "mila"):
         "This is required for `mila code` to work properly."
     )
     # todo: avoid re-creating the `Remote` here, since it goes through 2FA each time!
-    remote = Remote(cluster)
+    remote = RemoteV1(cluster)
     try:
         pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
         print("# OK")

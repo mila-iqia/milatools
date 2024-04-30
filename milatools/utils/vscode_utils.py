@@ -11,7 +11,7 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal, Sequence
 
-from milatools.cli.remote_v1 import Remote
+from milatools.cli.remote_v1 import RemoteV1
 from milatools.cli.utils import (
     CLUSTERS,
     batched,
@@ -132,7 +132,7 @@ def sync_vscode_extensions(
         elif isinstance(dest_remote, RemoteV2):
             dest_hostname = dest_remote.hostname
             dest_remote = dest_remote  # pickleable
-        elif isinstance(dest_remote, Remote):
+        elif isinstance(dest_remote, RemoteV1):
             # We unfortunately can't pass this kind of object to another process or
             # thread because it uses `fabric.Connection` which don't appear to be
             # pickleable. This means we will have to re-connect in the subprocess.
@@ -334,7 +334,7 @@ def get_local_vscode_extensions() -> dict[str, str]:
 
 
 def get_remote_vscode_extensions(
-    remote: Remote | RemoteV2,
+    remote: RemoteV1 | RemoteV2,
     remote_code_server_executable: str,
 ) -> dict[str, str]:
     """Returns the list of isntalled extensions and the path to the code-server
@@ -387,7 +387,7 @@ def extensions_to_install(
 
 
 def find_code_server_executable(
-    remote: Remote | RemoteV2, remote_vscode_server_dir: str = "~/.vscode-server"
+    remote: RemoteV1 | RemoteV2, remote_vscode_server_dir: str = "~/.vscode-server"
 ) -> str | None:
     """Find the most recent `code-server` executable on the remote.
 

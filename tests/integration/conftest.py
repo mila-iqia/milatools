@@ -8,7 +8,7 @@ from logging import getLogger as get_logger
 
 import pytest
 
-from milatools.cli.remote_v1 import Remote
+from milatools.cli.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     SSH_CONFIG_FILE,
     RemoteV2,
@@ -94,7 +94,7 @@ def get_slurm_account(cluster: str) -> str:
         f"Fetching the list of SLURM accounts available on the {cluster} cluster."
     )
     if sys.platform == "win32":
-        result = Remote(cluster).run(
+        result = RemoteV1(cluster).run(
             "sacctmgr --noheader show associations where user=$USER format=Account%50"
         )
     else:

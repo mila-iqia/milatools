@@ -19,7 +19,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.remote_v1 import (
     QueueIO,
-    Remote,
+    RemoteV1,
     SlurmRemote,
     get_first_node_name,
 )
@@ -39,7 +39,7 @@ def test_init(
 
     # This should have called the `Connection` class with the host, which we patched in
     # the fixture above.
-    r = Remote(host, keepalive=keepalive)
+    r = RemoteV1(host, keepalive=keepalive)
     # The Remote should have created a Connection instance (which happens to be
     # the mock_connection we made above).
     MockConnection.assert_called_once_with(
@@ -65,7 +65,7 @@ def test_init_with_connection(
     mock_connection: Mock,
 ):
     """This test shows the behaviour of __init__ to isolate it from other tests."""
-    r = Remote(mock_connection.host, connection=mock_connection, keepalive=keepalive)
+    r = RemoteV1(mock_connection.host, connection=mock_connection, keepalive=keepalive)
     MockConnection.assert_not_called()
     assert r.connection is mock_connection
     # The connection is not opened, and the transport is also not opened.
@@ -81,23 +81,23 @@ def test_init_with_connection(
     ("method", "args"),
     [
         (
-            Remote.with_transforms,
+            RemoteV1.with_transforms,
             (
                 lambda cmd: cmd.replace("OK", "NOT_OK"),
                 lambda cmd: f"echo 'command before' && {cmd}",
             ),
         ),
         (
-            Remote.wrap,
+            RemoteV1.wrap,
             ("echo 'echo wrap' && {}",),
         ),
         (
-            Remote.with_precommand,
+            RemoteV1.with_precommand,
             ("echo 'echo precommand'",),
         ),
         # this need to be a file to source before running the command.
-        (Remote.with_profile, (".bashrc",)),
-        (Remote.with_bash, ()),
+        (RemoteV1.with_profile, (".bashrc",)),
+        (RemoteV1.with_bash, ()),
     ],
 )
 def test_remote_transform_methods(
@@ -113,13 +113,13 @@ def test_remote_transform_methods(
     """Test the methods of `Remote` that modify the commands passed to `run` before it
     gets passed to the connection and run on the server."""
     mock_connection = mock_connection
-    r = Remote(
+    r = RemoteV1(
         host,
         connection=mock_connection,
         transforms=initial_transforms,
     )
     # Call the method on the remote, which should return a new Remote.
-    modified_remote: Remote = method(r, *args)
+    modified_remote: RemoteV1 = method(r, *args)
     assert modified_remote.hostname == r.hostname
     assert modified_remote.connection is r.connection
 
@@ -144,7 +144,7 @@ def test_remote_transform_methods(
 After creating a Remote like so:
 
 ```python
-remote = {function_call_string(Remote, host, connection=mock_connection, transforms=())}
+remote = {function_call_string(RemoteV1, host, connection=mock_connection, transforms=())}
 ```
 
 and then calling:
@@ -174,7 +174,7 @@ and `result.stdout.strip()={repr(result.stdout.strip())}`.
 @pytest.mark.parametrize("message", ["foobar"])
 def test_display(
     message: str,
-    remote: Remote,
+    remote: RemoteV1,
     capsys: pytest.CaptureFixture,
 ):
     remote.display(message)
@@ -206,7 +206,7 @@ def hide(
 @pytest.mark.parametrize("warn", [True, False])
 @pytest.mark.parametrize("display", [True, False, None])
 def test_run(
-    remote: Remote,
+    remote: RemoteV1,
     command: str,
     expected_output: str,
     asynchronous: bool,
@@ -278,7 +278,7 @@ def test_get_output(
     mock_result = Mock(wraps=invoke.runners.Result(Mock(wraps=command_output)))
     mock_connection.run.return_value = mock_result
 
-    r = Remote(host, connection=mock_connection)
+    r = RemoteV1(host, connection=mock_connection)
     output = r.get_output(command, display=None, hide=hide, warn=warn)
     assert output == command_output
 
@@ -305,7 +305,7 @@ def test_get_lines(
     command = " && ".join(f"echo '{line}'" for line in expected_lines)
     command_output = "\n".join(expected_lines)
     mock_connection.run.return_value = invoke.runners.Result(stdout=command_output)
-    r = Remote(host, connection=mock_connection)
+    r = RemoteV1(host, connection=mock_connection)
     lines = r.get_lines(command, hide=hide, warn=warn)
     # NOTE: We'd expect this, but instead we get ['Line', '1', 'has', 'this', 'value',
     # TODO: Uncomment this if we fix `get_lines` to split based on lines, or remove this
@@ -328,7 +328,7 @@ def write_lines_with_sleeps(lines: Iterable[str], sleep_time: float = 0.1):
 @pytest.mark.parametrize("wait", [True, False])
 @pytest.mark.parametrize("pty", [True, False])
 def test_extract(
-    remote: Remote,
+    remote: RemoteV1,
     wait: bool,
     pty: bool,
 ):
@@ -362,7 +362,7 @@ def _xfail_if_not_on_localhost(host: str):
         pytest.xfail("This test only works on localhost.")
 
 
-def test_get(remote: Remote, tmp_path: Path, host: str):
+def test_get(remote: RemoteV1, tmp_path: Path, host: str):
     # TODO: Make this test smarter? or no need? (because we'd be testing fabric at that
     # point?)
     _xfail_if_not_on_localhost(remote.hostname)
@@ -375,7 +375,7 @@ def test_get(remote: Remote, tmp_path: Path, host: str):
     assert dest.read_text() == source_content
 
 
-def test_put(remote: Remote, tmp_path: Path):
+def test_put(remote: RemoteV1, tmp_path: Path):
     _xfail_if_not_on_localhost(remote.hostname)
     src = tmp_path / "foo"
     dest = tmp_path / "bar"
@@ -390,7 +390,7 @@ def test_put(remote: Remote, tmp_path: Path):
     assert dest.read_text() == source_content
 
 
-def test_puttext(remote: Remote, tmp_path: Path):
+def test_puttext(remote: RemoteV1, tmp_path: Path):
     _xfail_if_not_on_localhost(remote.hostname)
     dest_dir = tmp_path / "bar/baz"
     dest = tmp_path / f"{dest_dir}/bob.txt"
@@ -403,7 +403,7 @@ def test_puttext(remote: Remote, tmp_path: Path):
     assert dest.read_text() == some_text
 
 
-def test_home(remote: Remote):
+def test_home(remote: RemoteV1):
     home_dir = remote.home()
     remote.connection.run.assert_called_once()
     assert remote.connection.run.mock_calls[0].args[0] == "echo $HOME"
@@ -414,11 +414,11 @@ def test_home(remote: Remote):
         assert home_dir == str(Path.home())
 
 
-def test_persist(remote: Remote):
+def test_persist(remote: RemoteV1):
     assert remote.persist() is remote
 
 
-def test_ensure_allocation(remote: Remote):
+def test_ensure_allocation(remote: RemoteV1):
     assert remote.ensure_allocation() == ({"node_name": remote.hostname}, None)
 
 
@@ -544,7 +544,7 @@ class TestSlurmRemote:
         # It isn't a very useful test, but it's better than not having one for now.
         # The test for Remote.run above checks that `run` on the transformed remote
         # does what we expect.
-        assert SlurmRemote.run is Remote.run
+        assert SlurmRemote.run is RemoteV1.run
         alloc = ["--time=00:01:00"]
         transforms = [some_transform]
         new_transforms = [some_other_transform]
