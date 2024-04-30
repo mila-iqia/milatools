@@ -10,7 +10,7 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.commands import check_disk_quota, code
-from milatools.cli.remote import Remote
+from milatools.cli.remote_v1 import Remote
 from milatools.cli.utils import get_fully_qualified_hostname_of_compute_node
 from milatools.utils.remote_v2 import RemoteV2
 

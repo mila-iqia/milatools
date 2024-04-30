@@ -48,7 +48,7 @@ from .init_command import (
     setup_windows_ssh_config_from_wsl,
 )
 from .profile import ensure_program, setup_profile
-from .remote import Remote, SlurmRemote
+from .remote_v1 import Remote, SlurmRemote
 from .utils import (
     CLUSTERS,
     Cluster,

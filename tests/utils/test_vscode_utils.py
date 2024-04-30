@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from milatools.cli.remote import Remote
+from milatools.cli.remote_v1 import Remote
 from milatools.cli.utils import running_inside_WSL
 from milatools.utils.local_v1 import LocalV1
 from milatools.utils.parallel_progress import ProgressDict

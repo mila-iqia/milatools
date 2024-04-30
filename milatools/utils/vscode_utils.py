@@ -11,7 +11,7 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal, Sequence
 
-from milatools.cli.remote import Remote
+from milatools.cli.remote_v1 import Remote
 from milatools.cli.utils import (
     CLUSTERS,
     batched,

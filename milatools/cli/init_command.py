@@ -22,7 +22,7 @@ from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
-from .remote import Remote
+from .remote_v1 import Remote
 from .utils import SSHConfig, T, running_inside_WSL, yn
 
 logger = get_logger(__name__)

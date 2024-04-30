@@ -15,7 +15,7 @@ from fabric.connection import Connection
 
 from milatools.cli import console
 from milatools.cli.init_command import DRAC_CLUSTERS
-from milatools.cli.remote import Remote
+from milatools.cli.remote_v1 import Remote
 from milatools.utils.remote_v2 import (
     RemoteV2,
     get_controlpath_for,
@@ -90,9 +90,9 @@ def MockConnection(
             __repr__=lambda _: f"Connection({repr(host)})",
         ),
     )
-    import milatools.cli.remote
+    import milatools.cli.remote_v1
 
-    monkeypatch.setattr(milatools.cli.remote, Connection.__name__, MockConnection)
+    monkeypatch.setattr(milatools.cli.remote_v1, Connection.__name__, MockConnection)
     return MockConnection
 
 

@@ -8,7 +8,7 @@ from logging import getLogger as get_logger
 
 import pytest
 
-from milatools.cli.remote import Remote
+from milatools.cli.remote_v1 import Remote
 from milatools.utils.remote_v2 import (
     SSH_CONFIG_FILE,
     RemoteV2,

@@ -24,7 +24,7 @@ from sshconf import ConfigLine, SshConfigFile, read_ssh_config
 from typing_extensions import ParamSpec, TypeGuard
 
 if typing.TYPE_CHECKING:
-    from milatools.cli.remote import Remote
+    from milatools.cli.remote_v1 import Remote
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 

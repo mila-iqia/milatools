@@ -17,7 +17,7 @@ import pytest
 from fabric.connection import Connection
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.remote import (
+from milatools.cli.remote_v1 import (
     QueueIO,
     Remote,
     SlurmRemote,
