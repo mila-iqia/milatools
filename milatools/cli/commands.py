@@ -38,6 +38,7 @@ from milatools.utils.vscode_utils import (
 )
 
 from ..__version__ import __version__
+from ..utils.local_v1 import LocalV1
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -46,7 +47,6 @@ from .init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from .local_v1 import LocalV1
 from .profile import ensure_program, setup_profile
 from .remote import Remote, SlurmRemote
 from .utils import (

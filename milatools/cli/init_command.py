@@ -17,11 +17,11 @@ from invoke.exceptions import UnexpectedExit
 
 from milatools.utils.remote_v2 import SSH_CONFIG_FILE
 
+from ..utils.local_v1 import LocalV1, check_passwordless, display
 from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
-from .local_v1 import LocalV1, check_passwordless, display
 from .remote import Remote
 from .utils import SSHConfig, T, running_inside_WSL, yn
 

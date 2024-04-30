@@ -11,13 +11,13 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal, Sequence
 
-from milatools.cli.local_v1 import LocalV1
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     CLUSTERS,
     batched,
     stripped_lines_of,
 )
+from milatools.utils.local_v1 import LocalV1
 from milatools.utils.parallel_progress import (
     DictProxy,
     ProgressDict,
