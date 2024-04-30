@@ -38,7 +38,7 @@ from milatools.cli.init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.local_v1 import Local, check_passwordless
+from milatools.cli.local_v1 import LocalV1, check_passwordless
 from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     SSHConfig,
@@ -1539,7 +1539,7 @@ def test_setup_passwordless_ssh_access(
         # There should be an ssh key in the .ssh dir.
         # Won't ask to generate a key.
         create_ssh_keypair(
-            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=Local()
+            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=LocalV1()
         )
         if drac_clusters_in_ssh_config:
             # We should get a prompt asking if we want to register the public key

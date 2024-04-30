@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from milatools.cli.local_v1 import Local
+from milatools.cli.local_v1 import LocalV1
 from milatools.cli.remote import Remote
 from milatools.cli.utils import running_inside_WSL
 from milatools.utils.parallel_progress import ProgressDict
@@ -141,7 +141,7 @@ def test_sync_vscode_extensions_in_parallel_with_hostnames(
 @requires_vscode
 @requires_ssh_to_localhost
 def test_sync_vscode_extensions_in_parallel():
-    results = sync_vscode_extensions(Local(), dest_clusters=[Local()])
+    results = sync_vscode_extensions(LocalV1(), dest_clusters=[LocalV1()])
     assert results == {"localhost": {"info": "Done.", "progress": 0, "total": 0}}
 
 

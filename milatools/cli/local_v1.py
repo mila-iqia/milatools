@@ -19,7 +19,7 @@ from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs
 logger = get_logger(__name__)
 
 
-class Local:
+class LocalV1:
     def display(self, args: list[str] | tuple[str, ...]) -> None:
         display(args)
 
