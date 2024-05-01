@@ -16,7 +16,6 @@ from milatools.utils.vscode_utils import (
     install_vscode_extensions_task_function,
     sync_vscode_extensions,
 )
-from tests.integration.conftest import skip_param_if_not_already_logged_in
 
 from ..cli.common import (
     requires_ssh_to_localhost,
@@ -30,31 +29,27 @@ logger = get_logger(__name__)
     "source",
     [
         pytest.param("localhost", marks=requires_ssh_to_localhost),
-        skip_param_if_not_already_logged_in("mila"),
-        skip_param_if_not_already_logged_in("narval"),
-        skip_param_if_not_already_logged_in("beluga"),
-        skip_param_if_not_already_logged_in("cedar"),
-        skip_param_if_not_already_logged_in("graham"),
-        skip_param_if_not_already_logged_in("niagara"),
+        "cluster",
     ],
 )
 @pytest.mark.parametrize(
     "dest",
     [
         pytest.param("localhost", marks=requires_ssh_to_localhost),
-        skip_param_if_not_already_logged_in("mila"),
-        skip_param_if_not_already_logged_in("narval"),
-        skip_param_if_not_already_logged_in("beluga"),
-        skip_param_if_not_already_logged_in("cedar"),
-        skip_param_if_not_already_logged_in("graham"),
-        skip_param_if_not_already_logged_in("niagara"),
+        "cluster",
     ],
 )
 def test_sync_vscode_extensions(
     source: str,
     dest: str,
+    cluster: str,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    if source == "cluster":
+        source = cluster
+    if dest == "cluster":
+        dest = cluster
+
     if source == dest:
         pytest.skip("Source and destination are the same.")
 
@@ -83,7 +78,6 @@ def test_sync_vscode_extensions(
         source=LocalV1() if source == "localhost" else RemoteV2(source),
         dest_clusters=[dest],
     )
-
     mock_task_function.assert_called_once()
     mock_extensions_to_install.assert_called_once()
     if source == "localhost":
