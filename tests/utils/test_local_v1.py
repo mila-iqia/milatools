@@ -15,7 +15,7 @@ from ..cli.common import (
     output_tester,
     passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
-    skip_if_on_github_CI,
+    skip_if_on_github_cloud_CI,
     xfails_on_windows,
 )
 
@@ -152,7 +152,7 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
             False,
             marks=[
                 paramiko_openssh_key_parsing_issue,
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
             ],
         ),
         # For the clusters with 2FA, we expect `check_passwordless` to return True if
@@ -161,7 +161,7 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
             "blablabob@narval",
             False,
             marks=[
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
                 paramiko_openssh_key_parsing_issue,
             ],
         ),
@@ -182,7 +182,7 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
             "niagara",
             False,
             marks=[
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
                 paramiko_openssh_key_parsing_issue,
             ],
         ),  # SSH access to niagara isn't enabled by default.

@@ -14,7 +14,7 @@ from milatools.cli.utils import get_hostname_to_use_for_compute_node
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
-from ..cli.common import in_github_CI, skip_param_if_on_github_ci
+from ..cli.common import in_github_CI, skip_param_if_on_github_cloud_ci
 from .conftest import (
     SLURM_CLUSTER,
     hangs_in_github_CI,
@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 @pytest.mark.parametrize(
     "cluster",
     [
-        skip_param_if_on_github_ci("mila"),
+        skip_param_if_on_github_cloud_ci("mila"),
         skip_param_if_not_already_logged_in("narval"),
         skip_param_if_not_already_logged_in("beluga"),
         skip_param_if_not_already_logged_in("cedar"),
@@ -78,7 +78,7 @@ def test_check_disk_quota(
                 hangs_in_github_CI,
             ],
         ),
-        skip_param_if_on_github_ci("mila"),
+        skip_param_if_on_github_cloud_ci("mila"),
         # TODO: Re-enable these tests once we make `code` work with RemoteV2
         pytest.param("narval", marks=pytest.mark.skip(reason="Goes through 2FA!")),
         pytest.param("beluga", marks=pytest.mark.skip(reason="Goes through 2FA!")),

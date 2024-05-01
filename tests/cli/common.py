@@ -7,6 +7,7 @@ import subprocess
 import sys
 import typing
 from collections.abc import Callable
+from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import Any
 
@@ -16,11 +17,13 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
-from milatools.cli.utils import MilatoolsUserError, removesuffix
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE, removesuffix
+from milatools.utils.remote_v2 import RemoteV2, get_controlpath_for
 
 if typing.TYPE_CHECKING:
     from typing_extensions import TypeGuard
+
+logger = get_logger(__name__)
 
 in_github_CI = os.environ.get("GITHUB_ACTIONS") == "true"
 """True if this is being run inside the GitHub CI."""
@@ -29,34 +32,47 @@ in_github_CI = os.environ.get("GITHUB_ACTIONS") == "true"
 in_self_hosted_github_CI = (
     in_github_CI and os.environ.get("GITHUB_ACTION") == "self_hosted_integration_tests"
 )
+in_github_cloud_CI = in_github_CI and not in_self_hosted_github_CI
 
-
-skip_if_on_github_CI = pytest.mark.skipif(
-    in_github_CI and not in_self_hosted_github_CI,
+skip_if_on_github_cloud_CI = pytest.mark.skipif(
+    in_github_cloud_CI,
     reason="This test shouldn't run on the Github CI.",
 )
-skip_param_if_on_github_ci = functools.partial(pytest.param, marks=skip_if_on_github_CI)
+skip_param_if_on_github_cloud_ci = functools.partial(
+    pytest.param, marks=skip_if_on_github_cloud_CI
+)
 
 
-passwordless_ssh_connection_to_localhost_is_setup = False
+def ssh_to_localhost_is_setup() -> bool:
+    SSH_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    control_path = get_controlpath_for(
+        "localhost",
+        ssh_config_path=SSH_CONFIG_FILE,
+        ssh_cache_dir=SSH_CACHE_DIR,
+    )
+    if sys.platform != "win32":
+        try:
+            _localhost_remote = RemoteV2("localhost", control_path=control_path)
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+        ) as err:
+            logger.error(f"SSH connection to localhost is not setup: {err}")
+            return False
+        return True
 
-try:
-    localhost_remote = RemoteV2("localhost")
-except (
-    subprocess.CalledProcessError,
-    subprocess.TimeoutExpired,
-    RuntimeError,
-    MilatoolsUserError,
-):
     try:
-        connection = fabric.Connection("localhost")
+        _connection = fabric.Connection("localhost")
+        _connection.open()
     except (
         paramiko.ssh_exception.SSHException,
         paramiko.ssh_exception.NoValidConnectionsError,
     ):
-        passwordless_ssh_connection_to_localhost_is_setup = True
-else:
-    passwordless_ssh_connection_to_localhost_is_setup = True
+        return False
+    return True
+
+
+passwordless_ssh_connection_to_localhost_is_setup = ssh_to_localhost_is_setup()
 
 requires_ssh_to_localhost = pytest.mark.skipif(
     not passwordless_ssh_connection_to_localhost_is_setup,
