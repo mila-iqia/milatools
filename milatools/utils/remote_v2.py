@@ -19,7 +19,7 @@ from milatools.cli.utils import (
     SSH_CONFIG_FILE,
     MilatoolsUserError,
 )
-from milatools.utils.local_v2 import LocalV2, run_async
+from milatools.utils.local_v2 import LocalV2, run, run_async
 from milatools.utils.remote_v1 import Hide
 from milatools.utils.runner import Runner
 
@@ -267,7 +267,7 @@ def control_socket_is_running(host: str, control_path: Path) -> bool:
     if not control_path.exists():
         return False
 
-    result = subprocess.run(
+    result = run(
         (
             "ssh",
             "-O",
@@ -275,23 +275,14 @@ def control_socket_is_running(host: str, control_path: Path) -> bool:
             f"-oControlPath={control_path}",
             host,
         ),
-        check=False,
-        capture_output=True,
-        text=True,
-        shell=False,
+        warn=True,
+        hide=True,
     )
-    if (
-        result.returncode != 0
-        or not result.stderr
-        or not result.stderr.startswith("Master running")
-    ):
-        logger.debug(f"{control_path=} doesn't exist or isn't running: {result=}.")
-        return False
-    return True
+    return _is_control_socket_running_given_result(result, control_path)
 
 
 async def control_socket_is_running_async(host: str, control_path: Path) -> bool:
-    """Check whether the control socket at the given path is running asynchronously."""
+    """Asynchronously checks whether the control socket at the given path is running."""
     control_path = control_path.expanduser()
     if not control_path.exists():
         return False
@@ -307,6 +298,12 @@ async def control_socket_is_running_async(host: str, control_path: Path) -> bool
         warn=True,
         hide=True,
     )
+    return _is_control_socket_running_given_result(result, control_path)
+
+
+def _is_control_socket_running_given_result(
+    result: subprocess.CompletedProcess, control_path: Path
+) -> bool:
     if (
         result.returncode != 0
         or not result.stderr
