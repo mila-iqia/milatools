@@ -14,80 +14,34 @@ from milatools.cli.utils import get_hostname_to_use_for_compute_node
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
-from ..cli.common import in_github_CI, skip_param_if_on_github_cloud_ci
-from .conftest import (
-    SLURM_CLUSTER,
-    hangs_in_github_CI,
-    skip_if_not_already_logged_in,
-    skip_param_if_not_already_logged_in,
-)
+from ..conftest import launches_jobs
 from .test_slurm_remote import PARAMIKO_SSH_BANNER_BUG, get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
 
 
-@pytest.mark.parametrize(
-    "cluster",
-    [
-        skip_param_if_on_github_cloud_ci("mila"),
-        skip_param_if_not_already_logged_in("narval"),
-        skip_param_if_not_already_logged_in("beluga"),
-        skip_param_if_not_already_logged_in("cedar"),
-        pytest.param(
-            "graham",
-            marks=[
-                skip_if_not_already_logged_in("graham"),
-                pytest.mark.xfail(
-                    raises=subprocess.CalledProcessError,
-                    reason="Graham doesn't use a lustre filesystem for $HOME.",
-                    strict=True,
-                ),
-            ],
-        ),
-        skip_param_if_not_already_logged_in("niagara"),
-    ],
-    indirect=True,
-)
+@pytest.mark.slow
 def test_check_disk_quota(
     login_node: RemoteV1 | RemoteV2,
     capsys: pytest.LogCaptureFixture,
     caplog: pytest.LogCaptureFixture,
-):  # noqa: F811
-    with caplog.at_level(logging.DEBUG):
-        check_disk_quota(remote=login_node)
+):
+    if login_node.hostname.startswith("graham") or login_node.hostname == "localhost":
+        with pytest.raises(subprocess.CalledProcessError):
+            check_disk_quota(remote=login_node)
+    else:
+        with caplog.at_level(logging.DEBUG):
+            check_disk_quota(remote=login_node)
+    # TODO: Maybe figure out a way to actually test this, (not just by running it and
+    # expecting no errors).
     # Check that it doesn't raise any errors.
     # IF the quota is nearly met, then a warning is logged.
     # IF the quota is met, then a `MilatoolsUserError` is logged.
 
 
+@pytest.mark.slow
+@launches_jobs
 @PARAMIKO_SSH_BANNER_BUG
-@pytest.mark.parametrize(
-    "cluster",
-    [
-        pytest.param(
-            "localhost",
-            marks=[
-                pytest.mark.skipif(
-                    not (in_github_CI and SLURM_CLUSTER == "localhost"),
-                    reason=(
-                        "Only runs in the GitHub CI when localhost is a slurm cluster."
-                    ),
-                ),
-                # todo: remove this mark once we're able to do sbatch and salloc in the
-                # GitHub CI.
-                hangs_in_github_CI,
-            ],
-        ),
-        skip_param_if_on_github_cloud_ci("mila"),
-        # TODO: Re-enable these tests once we make `code` work with RemoteV2
-        pytest.param("narval", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("beluga", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("cedar", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("graham", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-        pytest.param("niagara", marks=pytest.mark.skip(reason="Goes through 2FA!")),
-    ],
-    indirect=True,
-)
 @pytest.mark.parametrize("persist", [True, False])
 def test_code(
     login_node: RemoteV1 | RemoteV2,
@@ -95,6 +49,10 @@ def test_code(
     capsys: pytest.CaptureFixture,
     allocation_flags: list[str],
 ):
+    if login_node.hostname == "localhost":
+        pytest.skip(
+            "TODO: This test doesn't yet work with the slurm cluster spun up in the GitHub CI."
+        )
     home = login_node.run("echo $HOME", display=False, hide=True).stdout.strip()
     scratch = login_node.get_output("echo $SCRATCH")
     relative_path = "bob"
