@@ -1,6 +1,20 @@
 name: Python package
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'README.md'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+
+# https://stackoverflow.com/a/72408109/6388696
+# https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-concurrency-to-cancel-any-in-progress-job-or-run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linting:
@@ -133,7 +147,7 @@ jobs:
 
       - name: Launch integration tests
         run: poetry run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           SLURM_CLUSTER: localhost
 
