@@ -55,7 +55,7 @@ def test_hostname():
     + [
         # Host !cedar   cdr? cdr?? cdr??? cdr????
         ("cedar", cnode, cnode)
-        for n in range(5)
+        for n in range(1, 5)
         for cnode in [f"cdr{'0' * n}"]
     ]
     + [
