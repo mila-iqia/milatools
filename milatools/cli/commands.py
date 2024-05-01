@@ -2,9 +2,12 @@
 
 Cluster documentation: https://docs.mila.quebec/
 """
+
 from __future__ import annotations
 
 import argparse
+import asyncio
+import inspect
 import logging
 import operator
 import re
@@ -29,6 +32,8 @@ import rich.logging
 from typing_extensions import TypedDict
 
 from milatools.cli import console
+from milatools.utils.local_v1 import LocalV1
+from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
 from milatools.utils.remote_v2 import RemoteV2
 from milatools.utils.vscode_utils import (
     get_code_command,
@@ -38,8 +43,6 @@ from milatools.utils.vscode_utils import (
 )
 
 from ..__version__ import __version__
-from ..utils.local_v1 import LocalV1
-from ..utils.remote_v1 import RemoteV1, SlurmRemote
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -426,6 +429,14 @@ def mila():
     setup_logging(verbose)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
+
+    if inspect.iscoroutinefunction(function):
+        try:
+            return asyncio.run(function(**args_dict))
+        except KeyboardInterrupt:
+            console.log("Terminated by user.")
+        return
+
     assert callable(function)
     return function(**args_dict)
 
