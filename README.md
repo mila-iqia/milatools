@@ -61,16 +61,23 @@ Connect a VSCode instance to a compute node. `mila code` first allocates a compu
 You can simply Ctrl+C the process to end the session.
 
 ```
-usage: mila code [-h] [--alloc ...] [--job VALUE] [--node VALUE] PATH
+usage: mila code [-h] [--cluster {mila,cedar,narval,beluga,graham}] [--alloc ...]
+                 [--command VALUE] [--job VALUE] [--node VALUE] [--persist]
+                 PATH
 
 positional arguments:
-  PATH          Path to open on the remote machine
+  PATH                  Path to open on the remote machine
 
-optional arguments:
-  -h, --help    show this help message and exit
-  --alloc ...   Extra options to pass to slurm
-  --job VALUE   Job ID to connect to
-  --node VALUE  Node to connect to
+options:
+  -h, --help            show this help message and exit
+  --alloc ...           Extra options to pass to slurm
+  --cluster {mila,cedar,narval,beluga,graham}
+                        Which cluster to connect to.
+  --command VALUE       Command to use to start vscode (defaults to "code" or the value
+                        of $MILATOOLS_CODE_COMMAND)
+  --job VALUE           Job ID to connect to
+  --node VALUE          Node to connect to
+  --persist             Whether the server should persist or not
 ```
 
 For example:
@@ -79,7 +86,7 @@ For example:
 mila code path/to/my/experiment
 ```
 
-The `--alloc` option may be used to pass extra arguments to `salloc` when allocating a node (for example, `--alloc --gres=cpu:8` to allocate 8 CPUs). `--alloc` should be at the end, because it will take all of the arguments that come after it.
+The `--alloc` option may be used to pass extra arguments to `salloc` when allocating a node (for example, `--alloc --gres=gpu:1` to allocate 1 GPU). `--alloc` should be at the end, because it will take all of the arguments that come after it.
 
 If you already have an allocation on a compute node, you may use the `--node NODENAME` or `--job JOBID` options to connect to that node.
 
