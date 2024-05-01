@@ -449,8 +449,10 @@ def setup_logging(verbose: int) -> None:
     )
     logging.basicConfig(
         level=global_loglevel,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[rich.logging.RichHandler(markup=True, rich_tracebacks=True)],
+        format="%(message)s",
+        handlers=[
+            rich.logging.RichHandler(markup=True, rich_tracebacks=True, console=console)
+        ],
     )
     get_logger("milatools").setLevel(package_loglevel)
 

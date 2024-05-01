@@ -74,6 +74,11 @@ the possible values.
 """
 
 
+def currently_in_a_test() -> bool:
+    """Returns True during unit tests (pytest) and False during normal execution."""
+    return "pytest" in sys.modules
+
+
 def no_internet_on_compute_nodes(
     cluster: Cluster,
 ) -> TypeGuard[ClusterWithoutInternetOnCNodes]:
@@ -300,11 +305,6 @@ def make_process(
     return multiprocessing.Process(
         target=target, daemon=False, args=args, kwargs=kwargs
     )
-
-
-def currently_in_a_test() -> bool:
-    """Returns True during unit tests (pytest) and False during normal execution."""
-    return "pytest" in sys.modules
 
 
 V = TypeVar("V")
