@@ -106,15 +106,17 @@ def test_code(
     # before submitting the job)
     workdir = job_info["WorkDir"]
     assert workdir == scratch
-
-    if persist:
-        # Job should still be running since we're using `persist` (that's the whole
-        # point.)
-        assert job_info["State"] == "RUNNING"
-    else:
-        # Job should have been cancelled by us after the `echo` process finished.
-        # NOTE: This check is a bit flaky, perhaps our `scancel` command hasn't
-        # completed yet, or sacct doesn't show the change in status quick enough.
-        # Relaxing it a bit for now.
-        # assert "CANCELLED" in job_info["State"]
-        assert "CANCELLED" in job_info["State"] or job_info["State"] == "RUNNING"
+    try:
+        if persist:
+            # Job should still be running since we're using `persist` (that's the whole
+            # point.)
+            assert job_info["State"] == "RUNNING"
+        else:
+            # Job should have been cancelled by us after the `echo` process finished.
+            # NOTE: This check is a bit flaky, perhaps our `scancel` command hasn't
+            # completed yet, or sacct doesn't show the change in status quick enough.
+            # Relaxing it a bit for now.
+            # assert "CANCELLED" in job_info["State"]
+            assert "CANCELLED" in job_info["State"] or job_info["State"] == "RUNNING"
+    finally:
+        login_node.run(f"scancel {job_id}", display=True)
