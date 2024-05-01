@@ -11,13 +11,12 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Literal, Sequence
 
-from milatools.cli.local import Local
-from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     CLUSTERS,
     batched,
     stripped_lines_of,
 )
+from milatools.utils.local_v1 import LocalV1
 from milatools.utils.parallel_progress import (
     DictProxy,
     ProgressDict,
@@ -25,6 +24,7 @@ from milatools.utils.parallel_progress import (
     TaskID,
     parallel_progress_bar,
 )
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
 logger = get_logger(__name__)
@@ -85,20 +85,20 @@ def sync_vscode_extensions_with_hostnames(
     if len(set(destinations)) != len(destinations):
         raise ValueError(f"{destinations=} contains duplicate hostnames!")
 
-    source_obj = Local() if source == "localhost" else RemoteV2(source)
+    source_obj = LocalV1() if source == "localhost" else RemoteV2(source)
     return sync_vscode_extensions(source_obj, destinations)
 
 
 def sync_vscode_extensions(
-    source: str | Local | RemoteV2,
-    dest_clusters: Sequence[str | Local | RemoteV2],
+    source: str | LocalV1 | RemoteV2,
+    dest_clusters: Sequence[str | LocalV1 | RemoteV2],
 ):
     """Syncs vscode extensions between `source` all all the clusters in `dest`.
 
     This spawns a thread for each cluster in `dest` and displays a parallel progress bar
     for the syncing of vscode extensions to each cluster.
     """
-    if isinstance(source, Local):
+    if isinstance(source, LocalV1):
         source_hostname = "localhost"
         source_extensions = get_local_vscode_extensions()
     elif isinstance(source, RemoteV2):
@@ -125,14 +125,14 @@ def sync_vscode_extensions(
 
         if dest_remote == "localhost":
             dest_hostname = dest_remote  # type: ignore
-            dest_remote = Local()  # pickleable
-        elif isinstance(dest_remote, Local):
+            dest_remote = LocalV1()  # pickleable
+        elif isinstance(dest_remote, LocalV1):
             dest_hostname = "localhost"
             dest_remote = dest_remote  # again, pickleable
         elif isinstance(dest_remote, RemoteV2):
             dest_hostname = dest_remote.hostname
             dest_remote = dest_remote  # pickleable
-        elif isinstance(dest_remote, Remote):
+        elif isinstance(dest_remote, RemoteV1):
             # We unfortunately can't pass this kind of object to another process or
             # thread because it uses `fabric.Connection` which don't appear to be
             # pickleable. This means we will have to re-connect in the subprocess.
@@ -180,7 +180,7 @@ def install_vscode_extensions_task_function(
     task_id: TaskID,
     dest_hostname: str | Literal["localhost"],
     source_extensions: dict[str, str],
-    remote: RemoteV2 | Local | None,
+    remote: RemoteV2 | LocalV1 | None,
     source_name: str,
     verbose: bool = False,
 ) -> ProgressDict:
@@ -209,12 +209,12 @@ def install_vscode_extensions_task_function(
 
     if remote is None:
         if dest_hostname == "localhost":
-            remote = Local()
+            remote = LocalV1()
         else:
             _update_progress(0, "Connecting...")
             remote = RemoteV2(dest_hostname)
 
-    if isinstance(remote, Local):
+    if isinstance(remote, LocalV1):
         assert dest_hostname == "localhost"
         code_server_executable = get_vscode_executable_path()
         assert code_server_executable
@@ -290,7 +290,7 @@ def install_vscode_extensions_task_function(
 
 
 def install_vscode_extension(
-    remote: Local | RemoteV2,
+    remote: LocalV1 | RemoteV2,
     code_server_executable: str,
     extension: str,
     verbose: bool = False,
@@ -334,7 +334,7 @@ def get_local_vscode_extensions() -> dict[str, str]:
 
 
 def get_remote_vscode_extensions(
-    remote: Remote | RemoteV2,
+    remote: RemoteV1 | RemoteV2,
     remote_code_server_executable: str,
 ) -> dict[str, str]:
     """Returns the list of isntalled extensions and the path to the code-server
@@ -387,7 +387,7 @@ def extensions_to_install(
 
 
 def find_code_server_executable(
-    remote: Remote | RemoteV2, remote_vscode_server_dir: str = "~/.vscode-server"
+    remote: RemoteV1 | RemoteV2, remote_vscode_server_dir: str = "~/.vscode-server"
 ) -> str | None:
     """Find the most recent `code-server` executable on the remote.
 

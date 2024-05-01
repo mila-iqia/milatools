@@ -10,8 +10,8 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.commands import check_disk_quota, code
-from milatools.cli.remote import Remote
 from milatools.cli.utils import get_fully_qualified_hostname_of_compute_node
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
 from ..cli.common import in_github_CI, skip_param_if_on_github_ci
@@ -49,7 +49,7 @@ logger = get_logger(__name__)
     indirect=True,
 )
 def test_check_disk_quota(
-    login_node: Remote | RemoteV2,
+    login_node: RemoteV1 | RemoteV2,
     capsys: pytest.LogCaptureFixture,
     caplog: pytest.LogCaptureFixture,
 ):  # noqa: F811
@@ -90,7 +90,7 @@ def test_check_disk_quota(
 )
 @pytest.mark.parametrize("persist", [True, False])
 def test_code(
-    login_node: Remote | RemoteV2,
+    login_node: RemoteV1 | RemoteV2,
     persist: bool,
     capsys: pytest.CaptureFixture,
     allocation_flags: list[str],

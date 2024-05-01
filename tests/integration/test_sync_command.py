@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 from typing_extensions import ParamSpec
 
-from milatools.cli.local import Local
+from milatools.utils.local_v1 import LocalV1
 from milatools.utils.remote_v2 import RemoteV2
 from milatools.utils.vscode_utils import (
     extensions_to_install,
@@ -80,7 +80,7 @@ def test_sync_vscode_extensions(
     )
 
     sync_vscode_extensions(
-        source=Local() if source == "localhost" else RemoteV2(source),
+        source=LocalV1() if source == "localhost" else RemoteV2(source),
         dest_clusters=[dest],
     )
 

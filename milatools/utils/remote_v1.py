@@ -19,7 +19,7 @@ import questionary as qn
 from fabric import Connection
 from typing_extensions import Self, TypedDict, deprecated
 
-from .utils import (
+from ..cli.utils import (
     SSHConnectionError,
     T,
     cluster_to_connect_kwargs,
@@ -109,7 +109,7 @@ def get_first_node_name(node_names_out: str) -> str:
     return base + inside_brackets.split("-")[0]
 
 
-class Remote:
+class RemoteV1:
     def __init__(
         self,
         hostname: str,
@@ -444,7 +444,7 @@ class Remote:
         return self.extract(shlex.join([dest, *args]), pattern=pattern, **kwargs)
 
 
-class SlurmRemote(Remote):
+class SlurmRemote(RemoteV1):
     def __init__(
         self,
         connection: fabric.Connection,
@@ -533,7 +533,7 @@ class SlurmRemote(Remote):
                 "jobid": results["jobid"],
             }, login_node_runner
         else:
-            remote = Remote(hostname=self.hostname, connection=self.connection)
+            remote = RemoteV1(hostname=self.hostname, connection=self.connection)
             command = shlex.join(["salloc", *self.alloc])
             # We need to cd to $SCRATCH before we can run `salloc` on some clusters.
             command = f"cd $SCRATCH && {command}"

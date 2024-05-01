@@ -17,12 +17,12 @@ from invoke.exceptions import UnexpectedExit
 
 from milatools.utils.remote_v2 import SSH_CONFIG_FILE
 
+from ..utils.local_v1 import LocalV1, check_passwordless, display
+from ..utils.remote_v1 import RemoteV1
 from ..utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
-from .local import Local, check_passwordless, display
-from .remote import Remote
 from .utils import SSHConfig, T, running_inside_WSL, yn
 
 logger = get_logger(__name__)
@@ -238,7 +238,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
     """
     print("Checking passwordless authentication")
 
-    here = Local()
+    here = LocalV1()
     sshdir = Path.home() / ".ssh"
 
     # Check if there is a public key file in ~/.ssh
@@ -294,7 +294,7 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
 
     Returns whether the operation completed successfully or not.
     """
-    here = Local()
+    here = LocalV1()
     # Check that it is possible to connect without using a password.
     print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
     # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
@@ -371,7 +371,7 @@ def setup_keys_on_login_node(cluster: str = "mila"):
         "This is required for `mila code` to work properly."
     )
     # todo: avoid re-creating the `Remote` here, since it goes through 2FA each time!
-    remote = Remote(cluster)
+    remote = RemoteV1(cluster)
     try:
         pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
         print("# OK")
@@ -443,7 +443,7 @@ def get_windows_home_path_in_wsl() -> Path:
 
 def create_ssh_keypair(
     ssh_private_key_path: Path,
-    local: Local | None = None,
+    local: LocalV1 | None = None,
     passphrase: str | None = "",
 ) -> None:
     """Creates a public/private key pair at the given path using ssh-keygen.
@@ -452,7 +452,7 @@ def create_ssh_keypair(
     Otherwise, if passphrase is an empty string, no passphrase will be used (default).
     If a string is passed, it is passed to ssh-keygen and used as the passphrase.
     """
-    local = local or Local()
+    local = local or LocalV1()
     command = [
         "ssh-keygen",
         "-f",

@@ -6,10 +6,10 @@ from subprocess import PIPE
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.local import CommandNotFoundError, Local, check_passwordless
+from milatools.utils.local_v1 import CommandNotFoundError, LocalV1, check_passwordless
 from milatools.utils.remote_v2 import is_already_logged_in
 
-from .common import (
+from ..cli.common import (
     in_github_CI,
     in_self_hosted_github_CI,
     output_tester,
@@ -38,7 +38,7 @@ def test_display(
     capsys: pytest.CaptureFixture,
     file_regression: FileRegressionFixture,
 ):
-    output_tester(lambda: (Local().display(cmd), None), capsys, file_regression)
+    output_tester(lambda: (LocalV1().display(cmd), None), capsys, file_regression)
 
 
 prints_unexpected_text_to_stdout_on_windows = xfails_on_windows(
@@ -58,7 +58,7 @@ def test_silent_get(
     capsys: pytest.CaptureFixture,
     file_regression: FileRegressionFixture,
 ):
-    output_tester(lambda: (Local().silent_get(*cmd), None), capsys, file_regression)
+    output_tester(lambda: (LocalV1().silent_get(*cmd), None), capsys, file_regression)
 
 
 @prints_unexpected_text_to_stdout_on_windows
@@ -69,7 +69,7 @@ def test_get(
     capsys: pytest.CaptureFixture,
     file_regression: FileRegressionFixture,
 ):
-    output_tester(lambda: (Local().get(*cmd), None), capsys, file_regression)
+    output_tester(lambda: (LocalV1().get(*cmd), None), capsys, file_regression)
 
 
 @prints_unexpected_text_to_stdout_on_windows
@@ -81,7 +81,7 @@ def test_run(
     file_regression: FileRegressionFixture,
 ):
     def func():
-        return Local().run(*cmd, capture_output=True), None
+        return LocalV1().run(*cmd, capture_output=True), None
 
     if cmd in [_FAKE_CMD, _FAIL_CODE_CMD]:
 
@@ -108,7 +108,7 @@ def test_popen(
     file_regression: FileRegressionFixture,
 ):
     output_tester(
-        lambda: Local().popen(*cmd, stdout=PIPE, stderr=PIPE).communicate(),
+        lambda: LocalV1().popen(*cmd, stdout=PIPE, stderr=PIPE).communicate(),
         capsys,
         file_regression,
     )

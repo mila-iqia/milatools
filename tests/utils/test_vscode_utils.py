@@ -11,10 +11,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from milatools.cli.local import Local
-from milatools.cli.remote import Remote
 from milatools.cli.utils import running_inside_WSL
+from milatools.utils.local_v1 import LocalV1
 from milatools.utils.parallel_progress import ProgressDict
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2, UnsupportedPlatformError
 from milatools.utils.vscode_utils import (
     extensions_to_install,
@@ -141,7 +141,7 @@ def test_sync_vscode_extensions_in_parallel_with_hostnames(
 @requires_vscode
 @requires_ssh_to_localhost
 def test_sync_vscode_extensions_in_parallel():
-    results = sync_vscode_extensions(Local(), dest_clusters=[Local()])
+    results = sync_vscode_extensions(LocalV1(), dest_clusters=[LocalV1()])
     assert results == {"localhost": {"info": "Done.", "progress": 0, "total": 0}}
 
 
@@ -206,7 +206,7 @@ def missing_extensions(
 
 
 def _remote(hostname: str):
-    return RemoteV2(hostname) if sys.platform != "win32" else Remote(hostname)
+    return RemoteV2(hostname) if sys.platform != "win32" else RemoteV1(hostname)
 
 
 @uses_remote_v2

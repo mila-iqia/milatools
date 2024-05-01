@@ -1,13 +1,13 @@
 After creating a Remote like so:
 
 ```python
-remote = Remote('localhost', connection=Connection('localhost'), transforms=())
+remote = RemoteV1('localhost', connection=Connection('localhost'), transforms=())
 ```
 
 and then calling:
 
 ```python
-transformed_remote = remote.wrap("echo 'echo wrap' && {}")
+transformed_remote = remote.with_precommand("echo 'echo precommand'")
 result = transformed_remote.run('echo OK')
 ```
 
@@ -15,7 +15,7 @@ Printed the following on the terminal:
 
 ```console
 (localhost) $ echo OK
-echo wrap
+echo precommand
 OK
 
 ```
@@ -23,7 +23,7 @@ OK
 The command that eventually would be run on the cluster is:
 
 ```bash
-echo 'echo wrap' && echo OK
+echo 'echo precommand' && echo OK
 ```
 
-and `result.stdout.strip()='echo wrap\nOK'`.
+and `result.stdout.strip()='echo precommand\nOK'`.

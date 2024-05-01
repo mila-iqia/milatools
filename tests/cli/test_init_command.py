@@ -38,12 +38,12 @@ from milatools.cli.init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.local import Local, check_passwordless
-from milatools.cli.remote import Remote
 from milatools.cli.utils import (
     SSHConfig,
     running_inside_WSL,
 )
+from milatools.utils.local_v1 import LocalV1, check_passwordless
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     SSH_CACHE_DIR,
     SSH_CONFIG_FILE,
@@ -1101,7 +1101,9 @@ def backup_dir(directory: Path, backup_directory: Path):
 
 @contextlib.contextmanager
 def backup_remote_dir(
-    remote: RemoteV2 | Remote, directory: PurePosixPath, backup_directory: PurePosixPath
+    remote: RemoteV2 | RemoteV1,
+    directory: PurePosixPath,
+    backup_directory: PurePosixPath,
 ):
     # IDEA: Make the equivalent function, but that backs up a directory on a remote
     # machine.
@@ -1194,7 +1196,7 @@ def backup_local_ssh_cache_dir():
 
 
 @pytest.fixture
-def backup_remote_ssh_dir(login_node: RemoteV2 | Remote, cluster: str):
+def backup_remote_ssh_dir(login_node: RemoteV2 | RemoteV1, cluster: str):
     """Creates a backup of the ~/.ssh directory on the remote cluster."""
     if USE_MY_REAL_SSH_DIR:
         logger.critical(
@@ -1235,7 +1237,7 @@ def backup_remote_ssh_dir(login_node: RemoteV2 | Remote, cluster: str):
 )
 def test_setup_passwordless_ssh_access_to_cluster(
     cluster: str,
-    login_node: Remote | RemoteV2,
+    login_node: RemoteV1 | RemoteV2,
     input_pipe: PipeInput,
     backup_local_ssh_dir: Path,
     backup_local_ssh_cache_dir: Path,
@@ -1539,7 +1541,7 @@ def test_setup_passwordless_ssh_access(
         # There should be an ssh key in the .ssh dir.
         # Won't ask to generate a key.
         create_ssh_keypair(
-            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=Local()
+            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=LocalV1()
         )
         if drac_clusters_in_ssh_config:
             # We should get a prompt asking if we want to register the public key

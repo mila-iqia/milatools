@@ -24,7 +24,7 @@ from sshconf import ConfigLine, SshConfigFile, read_ssh_config
 from typing_extensions import ParamSpec, TypeGuard
 
 if typing.TYPE_CHECKING:
-    from milatools.cli.remote import Remote
+    from milatools.utils.remote_v1 import RemoteV1
 
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
@@ -96,7 +96,7 @@ def randname():
 
 
 @contextmanager
-def with_control_file(remote: Remote, name=None):
+def with_control_file(remote: RemoteV1, name=None):
     name = name or randname()
     pth = f".milatools/control/{name}"
     remote.run("mkdir -p ~/.milatools/control", hide=True)
@@ -172,7 +172,7 @@ def yn(prompt: str, default: bool = True) -> bool:
     return qn.confirm(prompt, default=default).unsafe_ask()
 
 
-def askpath(prompt: str, remote: Remote) -> str:
+def askpath(prompt: str, remote: RemoteV1) -> str:
     while True:
         pth = qn.text(prompt).unsafe_ask()
         try:

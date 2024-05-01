@@ -14,12 +14,12 @@ from typing_extensions import deprecated
 
 from milatools.utils.remote_v2 import SSH_CONFIG_FILE, is_already_logged_in
 
-from .utils import CommandNotFoundError, T, cluster_to_connect_kwargs
+from ..cli.utils import CommandNotFoundError, T, cluster_to_connect_kwargs
 
 logger = get_logger(__name__)
 
 
-class Local:
+class LocalV1:
     def display(self, args: list[str] | tuple[str, ...]) -> None:
         display(args)
 

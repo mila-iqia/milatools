@@ -15,7 +15,7 @@ from fabric.connection import Connection
 
 from milatools.cli import console
 from milatools.cli.init_command import DRAC_CLUSTERS
-from milatools.cli.remote import Remote
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     RemoteV2,
     get_controlpath_for,
@@ -90,9 +90,9 @@ def MockConnection(
             __repr__=lambda _: f"Connection({repr(host)})",
         ),
     )
-    import milatools.cli.remote
+    import milatools.utils.remote_v1
 
-    monkeypatch.setattr(milatools.cli.remote, Connection.__name__, MockConnection)
+    monkeypatch.setattr(milatools.utils.remote_v1, Connection.__name__, MockConnection)
     return MockConnection
 
 
@@ -111,11 +111,11 @@ def mock_connection(
 @pytest.fixture(scope="function")
 def remote(mock_connection: Connection):
     assert isinstance(mock_connection.host, str)
-    return Remote(hostname=mock_connection.host, connection=mock_connection)
+    return RemoteV1(hostname=mock_connection.host, connection=mock_connection)
 
 
 @pytest.fixture(scope="function")
-def login_node(cluster: str) -> Remote | RemoteV2:
+def login_node(cluster: str) -> RemoteV1 | RemoteV2:
     """Fixture that gives a Remote connected to the login node of a slurm cluster.
 
     NOTE: Making this a function-scoped fixture because the Connection object of the
@@ -132,7 +132,7 @@ def login_node(cluster: str) -> Remote | RemoteV2:
             "prior connection to the cluster."
         )
     if sys.platform == "win32":
-        return Remote(cluster)
+        return RemoteV1(cluster)
     return RemoteV2(cluster)
 
 
@@ -161,7 +161,7 @@ def cluster(request: pytest.FixtureRequest) -> str:
 
 
 @contextlib.contextmanager
-def cancel_all_milatools_jobs_before_and_after_tests(login_node: Remote | RemoteV2):
+def cancel_all_milatools_jobs_before_and_after_tests(login_node: RemoteV1 | RemoteV2):
     from .integration.conftest import WCKEY
 
     logger.info(

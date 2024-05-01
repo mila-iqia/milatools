@@ -38,6 +38,8 @@ from milatools.utils.vscode_utils import (
 )
 
 from ..__version__ import __version__
+from ..utils.local_v1 import LocalV1
+from ..utils.remote_v1 import RemoteV1, SlurmRemote
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -46,9 +48,7 @@ from .init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from .local import Local
 from .profile import ensure_program, setup_profile
-from .remote import Remote, SlurmRemote
 from .utils import (
     CLUSTERS,
     Cluster,
@@ -518,7 +518,7 @@ def forward(
         pass
 
     local_proc, _ = _forward(
-        local=Local(),
+        local=LocalV1(),
         node=f"{node}.server.mila.quebec",
         to_forward=remote_port,
         page=page,
@@ -553,8 +553,8 @@ def code(
         node: Node to connect to
         alloc: Extra options to pass to slurm
     """
-    here = Local()
-    remote = Remote(cluster)
+    here = LocalV1()
+    remote = RemoteV1(cluster)
 
     if cluster != "mila" and job is None and node is None:
         if not any("--account" in flag for flag in alloc):
@@ -603,7 +603,7 @@ def code(
             copy_vscode_extensions_process.start()
         else:
             sync_vscode_extensions(
-                Local(),
+                LocalV1(),
                 [cluster],
             )
 
@@ -697,10 +697,10 @@ def code(
 def connect(identifier: str, port: int | None):
     """Reconnect to a persistent server."""
 
-    remote = Remote("mila")
+    remote = RemoteV1("mila")
     info = _get_server_info(remote, identifier)
     local_proc, _ = _forward(
-        local=Local(),
+        local=LocalV1(),
         node=f"{info['node_name']}.server.mila.quebec",
         to_forward=info["to_forward"],
         options={"token": info.get("token", None)},
@@ -718,7 +718,7 @@ def connect(identifier: str, port: int | None):
 
 def kill(identifier: str | None, all: bool = False):
     """Kill a persistent server."""
-    remote = Remote("mila")
+    remote = RemoteV1("mila")
 
     if all:
         for identifier in remote.get_lines("ls .milatools/control", hide=True):
@@ -740,7 +740,7 @@ def kill(identifier: str | None, all: bool = False):
 
 def serve_list(purge: bool):
     """List active servers."""
-    remote = Remote("mila")
+    remote = RemoteV1("mila")
 
     to_purge = []
 
@@ -899,7 +899,7 @@ def aim(logdir: str, **kwargs: Unpack[StandardServerArgs]):
 
 
 def _get_server_info(
-    remote: Remote, identifier: str, hide: bool = False
+    remote: RemoteV1, identifier: str, hide: bool = False
 ) -> dict[str, str]:
     text = remote.get_output(f"cat .milatools/control/{identifier}", hide=hide)
     info = dict(line.split(" = ") for line in text.split("\n") if line)
@@ -993,7 +993,7 @@ def _standard_server(
     elif persist:
         name = program
 
-    remote = Remote("mila")
+    remote = RemoteV1("mila")
 
     path = path or "~"
     if path == "~" or path.startswith("~/"):
@@ -1107,7 +1107,7 @@ def _standard_server(
         options = {}
 
     local_proc, local_port = _forward(
-        local=Local(),
+        local=LocalV1(),
         node=get_fully_qualified_hostname_of_compute_node(node_name, cluster="mila"),
         to_forward=to_forward,
         options=options,
@@ -1181,7 +1181,7 @@ def _parse_lfs_quota_output(
     return (used_gb, max_gb), (used_files, max_files)
 
 
-def check_disk_quota(remote: Remote | RemoteV2) -> None:
+def check_disk_quota(remote: RemoteV1 | RemoteV2) -> None:
     cluster = remote.hostname
 
     # NOTE: This is what the output of the command looks like on the Mila cluster:
@@ -1262,7 +1262,7 @@ def check_disk_quota(remote: Remote | RemoteV2) -> None:
 
 
 def _find_allocation(
-    remote: Remote,
+    remote: RemoteV1,
     node: str | None,
     job: str | None,
     alloc: list[str],
@@ -1274,11 +1274,15 @@ def _find_allocation(
 
     if node is not None:
         node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
-        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
+        return RemoteV1(
+            node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+        )
 
     elif job is not None:
         node_name = remote.get_output(f"squeue --jobs {job} -ho %N")
-        return Remote(node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster))
+        return RemoteV1(
+            node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+        )
 
     else:
         alloc = ["-J", job_name, *alloc]
@@ -1290,7 +1294,7 @@ def _find_allocation(
 
 
 def _forward(
-    local: Local,
+    local: LocalV1,
     node: str,
     to_forward: int | str,
     port: int | None,
