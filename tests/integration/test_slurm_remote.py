@@ -69,13 +69,14 @@ def get_recent_jobs_info(
     # otherwise this would launch a job!
     assert not isinstance(login_node, SlurmRemote)
     lines = login_node.run(
-        f"sacct --noheader --allocations "
+        f"sacct --noheader --allocations --user=$USER "
         f"--starttime=now-{int(since.total_seconds())}seconds "
-        "--format=" + ",".join(f"{field}%40" for field in fields),
-        display=True,
+        "--format=" + ",".join(f"{field}%100" for field in fields),
+        display=False,
+        hide=True,
     ).stdout.splitlines()
     # note: using maxsplit because the State field can contain spaces: "canceled by ..."
-    return [tuple(line.strip().split(maxsplit=len(fields))) for line in lines]
+    return [tuple(line.strip().split(maxsplit=len(fields) - 1)) for line in lines]
 
 
 def sleep_so_sacct_can_update():
