@@ -120,15 +120,15 @@ class ComputeNode(Runner):
         if shlex.quote(command) == command:
             # The command is simple and doesn't need to be shell-escaped, so we can run
             # it directly with `ssh`.
-            srun_command = command
+            _command = command
             input = None
         else:
             # The command might have some shell syntax that needs to be preserved, so we run
             # `ssh (...) bash` and feed the input to the subprocess' stdin.
-            srun_command = "bash"
+            _command = "bash"
             input = command + "\n"
         srun_command = (
-            f"srun --ntasks=1 --overlap --quiet --jobid {self.job_id} {command}"
+            f"srun --ntasks=1 --overlap --quiet --jobid {self.job_id} {_command}"
         )
         return srun_command, input
 
