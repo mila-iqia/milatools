@@ -279,7 +279,6 @@ async def salloc(
         ssh_config_path=login_node.ssh_config_path,
     )
 
-    salloc_subprocess = None
     job_id: int | None = None
 
     # "Why not just use `subprocess.Popen`?", you might ask. Well, we're essentially
@@ -291,9 +290,9 @@ async def salloc(
         f"({login_node.hostname}) $ {salloc_command}", style="green", markup=False
     )
     async with cancel_new_jobs_on_interrupt(login_node, job_name):
-        # BUG: IF stdin is not set (or set to PIPE?) then writing `salloc`, then the
-        # terminal is actually 'live' and affects the compute node! For instance if
-        # you do `mila code .` and then write `salloc`, it spawns a second job!!
+        # NOTE: If stdin were not set to PIPE, then the terminal would actually be live
+        # and run commands on the compute node! For instance if you were to do
+        # `mila code .` and then write `salloc`, it would spawn a second job!
         salloc_subprocess = await asyncio.subprocess.create_subprocess_exec(
             *command,
             shell=False,
@@ -310,19 +309,14 @@ async def salloc(
                 break
 
     if job_id is None:
-        salloc_subprocess.kill()
         raise RuntimeError("Unable to parse the job ID from the output of salloc!")
 
     try:
         console.log(f"Waiting for job {job_id} to start.", style="green")
         await wait_while_job_is_pending(login_node, job_id)
     except (KeyboardInterrupt, asyncio.CancelledError):
-        if salloc_subprocess is not None:
-            logger.debug("Killing the salloc subprocess following a KeyboardInterrupt.")
-            await salloc_subprocess.communicate("exit\n".encode())  # noqa: UP012
-            # salloc_subprocess.send_signal(signal.SIGINT)
-            # salloc_subprocess.send_signal(signal.SIGKILL)
-            # salloc_subprocess.terminate()
+        logger.debug("Killing the salloc subprocess following a KeyboardInterrupt.")
+        salloc_subprocess.terminate()
         await login_node.run_async(f"scancel {job_id}", display=True, hide=False)
         raise
 
