@@ -20,18 +20,17 @@ from milatools.utils.remote_v1 import Hide
 from milatools.utils.remote_v2 import RemoteV2, logger, ssh_command
 from milatools.utils.runner import Runner
 
-JOB_NOT_RUNNING_MESSAGE = (
-    "ComputeNode for job {job_id} has been closed and is unusable, since the job has "
-    "already ended!"
-)
-
 
 class JobNotRunningError(RuntimeError):
     """Raised when trying to call `run` or `run_async` on a ComputeNode whose job has
     already been closed."""
 
     def __init__(self, job_id: int, *args: object) -> None:
-        super().__init__(JOB_NOT_RUNNING_MESSAGE.format(job_id=job_id), *args)
+        super().__init__(
+            f"ComputeNode for job {job_id} has been closed and is unusable, since the "
+            f"job has already ended!",
+            *args,
+        )
         self.job_id = job_id
 
 
