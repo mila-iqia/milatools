@@ -302,14 +302,11 @@ async def salloc(
             stderr=asyncio.subprocess.PIPE,
         )
         assert salloc_subprocess.stderr is not None
-        while job_id is None:
-            error_line = (await salloc_subprocess.stderr.readline()).decode()
+        # Getting an empty line only after salloc errors are done printing.
+        while error_line := (await salloc_subprocess.stderr.readline()).decode():
             print(error_line, end="", file=sys.stderr)
             if job_id_match := re.findall(r"job allocation [0-9]+", error_line):
                 job_id = int(job_id_match[0].split()[-1])
-                break
-            if not error_line:
-                # Getting an empty line (only?) after salloc errors are done printing.
                 break
 
     if job_id is None:
