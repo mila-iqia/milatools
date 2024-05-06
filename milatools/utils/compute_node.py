@@ -75,7 +75,7 @@ class ComputeNode(Runner):
         login_node: RemoteV2,
         job_id_or_node_name: int | str,
     ) -> ComputeNode:
-        return await connect_to_running_job(
+        return await _connect_to_running_job(
             login_node=login_node, jobid_or_nodename=job_id_or_node_name
         )
 
@@ -446,7 +446,7 @@ async def wait_while_job_is_pending(login_node: RemoteV2, job_id: int) -> str:
     return await _wait_while_job_is_in_state(login_node, job_id, state="PENDING")
 
 
-async def connect_to_running_job(
+async def _connect_to_running_job(
     jobid_or_nodename: int | str,
     login_node: RemoteV2,
 ) -> ComputeNode:
