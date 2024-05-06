@@ -317,18 +317,16 @@ async def salloc(
     except (KeyboardInterrupt, asyncio.CancelledError):
         logger.debug("Killing the salloc subprocess following a KeyboardInterrupt.")
         salloc_subprocess.terminate()
-        await login_node.run_async(f"scancel {job_id}", display=True, hide=False)
+        login_node.run(f"scancel {job_id}", display=True, hide=False)
         raise
 
-    # todo: Are there are states between `PENDING` and `RUNNING`?
-    # if state != "RUNNING":
-    #     raise RuntimeError(
-    #         f"Error: Expected job {job_id} to be running, but it is in state {state!r}!"
-    #     )
+    # Note: While there are potentially states between `PENDING` and `RUNNING`, here
+    # we're assuming that if the job is no longer pending, it's probably running. Even
+    # if it isn't true, an informative error will most probably be given to the user by
+    # the first `ssh <cluster> srun --job-id <job_id>` command.
 
     # NOTE: passing the process handle to this ComputeNodeRemote so it doesn't go out of
-    # scope and die (which would maybe kill the job, not 100% sure).
-
+    # scope and die (which would kill the interactive job).
     return ComputeNode(
         job_id=job_id,
         login_node=login_node,
