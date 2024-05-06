@@ -134,15 +134,12 @@ class ComputeNode(Runner):
         if not self._closed and self.salloc_subprocess:
             try:
                 self.salloc_subprocess.terminate()
-            except ProcessLookupError:
-                pass  # salloc subprocess has already been terminated.
-            else:
-                # NOTE: We only get here if the job is being deleted without having been
-                # closed.
                 logger.warning(
                     f"Compute node is being deleted without having been closed!\n"
                     f"Terminated job {self.job_id} on {self.hostname}."
                 )
+            except ProcessLookupError:
+                pass  # salloc subprocess had already been killed, all good.
 
     def __enter__(self):
         return self
