@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio.subprocess
 import contextlib
 import dataclasses
-import datetime
 import re
 import shlex
 import subprocess
@@ -200,20 +199,6 @@ async def get_queued_milatools_job_ids(
 ) -> set[int]:
     jobs = await login_node.get_output_async(
         f"squeue --noheader --me --format=%A --name={job_name}"
-    )
-    return set([int(job_id_str) for job_id_str in jobs.splitlines()])
-
-
-async def get_milatools_job_ids(
-    login_node: RemoteV2,
-    job_name="mila-code",
-    since: datetime.timedelta = datetime.timedelta(hours=1),
-) -> set[int]:
-    """Get the IDS of jobs created by milatools from the output of `sacct`."""
-    jobs = await login_node.get_output_async(
-        f"sacct --noheader --allocations --user=$USER "
-        f"--starttime=now-{int(since.total_seconds())}seconds --format=JobId "
-        f"--name={job_name}"
     )
     return set([int(job_id_str) for job_id_str in jobs.splitlines()])
 
