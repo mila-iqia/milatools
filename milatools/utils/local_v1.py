@@ -85,7 +85,7 @@ def check_passwordless(host: str) -> bool:
     if (
         sys.platform != "win32"
         and SSH_CONFIG_FILE.exists()
-        and is_already_logged_in(host)
+        and is_already_logged_in(host, ssh_config_path=SSH_CONFIG_FILE)
     ):
         return True
 

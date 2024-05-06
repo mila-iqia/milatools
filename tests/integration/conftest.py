@@ -41,7 +41,7 @@ def skip_if_not_already_logged_in(cluster: str) -> pytest.MarkDecorator:
     return pytest.mark.skipif(
         sys.platform == "win32"
         or not SSH_CONFIG_FILE.exists()
-        or not is_already_logged_in(cluster),
+        or not is_already_logged_in(cluster, ssh_config_path=SSH_CONFIG_FILE),
         reason=(
             f"Logging into {cluster} might go through 2FA. It should be done "
             "in advance."

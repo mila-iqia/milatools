@@ -18,6 +18,7 @@ from fabric.connection import Connection
 
 from milatools.cli import console
 from milatools.cli.init_command import setup_ssh_config
+from milatools.cli.utils import SSH_CONFIG_FILE
 from milatools.utils.compute_node import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
@@ -134,7 +135,9 @@ def login_node(cluster: str) -> RemoteV1 | RemoteV2:
     compute nodes because a previous test kept the same connection object while doing
     salloc (just in case that were to happen).
     """
-    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    ):
         pytest.skip(
             f"Requires ssh access to the login node of the {cluster} cluster, and a "
             "prior connection to the cluster."
@@ -153,7 +156,9 @@ def login_node_v2(cluster: str) -> RemoteV2:
     """
     if sys.platform == "win32":
         pytest.skip("Test uses RemoteV2.")
-    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    ):
         pytest.skip(
             f"Requires ssh access to the login node of the {cluster} cluster, and a "
             "prior connection to the cluster."
@@ -266,7 +271,9 @@ def get_slurm_account(cluster: str) -> str:
     logger.info(
         f"Fetching the list of SLURM accounts available on the {cluster} cluster."
     )
-    assert cluster in ["mila", "localhost"] or is_already_logged_in(cluster)
+    assert cluster in ["mila", "localhost"] or is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    )
     result = RemoteV2(cluster).run(
         "sacctmgr --noheader show associations where user=$USER format=Account%50"
     )
@@ -280,7 +287,9 @@ def get_slurm_account(cluster: str) -> str:
 
 @pytest.fixture(scope="session")
 def slurm_account_on_cluster(cluster: str) -> str:
-    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    ):
         # avoid test hanging on 2FA prompt.
         pytest.skip(reason=f"Test needs an existing connection to {cluster} to run.")
     return get_slurm_account(cluster)

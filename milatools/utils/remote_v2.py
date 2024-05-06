@@ -325,7 +325,7 @@ def option_dict_to_flags(options: dict[str, str]) -> list[str]:
     ]
 
 
-def is_already_logged_in(cluster: str) -> bool:
+def is_already_logged_in(cluster: str, ssh_config_path: Path = SSH_CONFIG_FILE) -> bool:
     """Checks whether we are already logged in to the given cluster.
 
     More specifically, this checks whether a reusable SSH control master is setup at the
@@ -333,7 +333,6 @@ def is_already_logged_in(cluster: str) -> bool:
 
     NOTE: This function is not supported on Windows.
     """
-    ssh_config_path = SSH_CONFIG_FILE
     if not ssh_config_path.exists():
         return False
     control_path = get_controlpath_for(cluster, ssh_config_path=ssh_config_path)

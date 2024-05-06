@@ -7,6 +7,7 @@ import pytest
 import pytest_asyncio
 
 import milatools.utils.remote_v2
+from milatools.cli.utils import SSH_CONFIG_FILE
 from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v2 import (
     RemoteV2,
@@ -166,7 +167,10 @@ async def test_is_already_logged_in(
     already_logged_in_to_localhost: bool,
     mock_get_controlpath_for: Mock,
 ):
-    assert is_already_logged_in("localhost") == already_logged_in_to_localhost
+    assert (
+        is_already_logged_in("localhost", ssh_config_path=SSH_CONFIG_FILE)
+        == already_logged_in_to_localhost
+    )
     mock_get_controlpath_for.assert_called_once()
 
 

@@ -6,6 +6,7 @@ from subprocess import PIPE
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
+from milatools.cli.utils import SSH_CONFIG_FILE
 from milatools.utils.local_v1 import CommandNotFoundError, LocalV1, check_passwordless
 from milatools.utils.remote_v2 import is_already_logged_in
 
@@ -172,7 +173,10 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
                 drac_cluster,
                 True,
                 marks=pytest.mark.skipif(
-                    sys.platform == "win32" or not is_already_logged_in(drac_cluster),
+                    sys.platform == "win32"
+                    or not is_already_logged_in(
+                        drac_cluster, ssh_config_path=SSH_CONFIG_FILE
+                    ),
                     reason="Should give True when we're already logged in.",
                 ),
             )

@@ -1285,7 +1285,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
     def have_passwordless_ssh_access_to(cluster: str) -> bool:
         if sys.platform == "win32":
             return check_passwordless(cluster)
-        return is_already_logged_in(cluster)
+        return is_already_logged_in(cluster, ssh_config_path=SSH_CONFIG_FILE)
 
     def _exists(file: PurePosixPath | Path):
         if cluster == "localhost":
