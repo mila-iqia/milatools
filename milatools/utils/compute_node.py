@@ -250,12 +250,10 @@ async def cancel_new_jobs_on_interrupt(login_node: RemoteV2, job_name: str):
                 "Cancelling all of them to be safe...",
                 style="yellow",
             )
-            await asyncio.shield(
-                login_node.run_async(
-                    "scancel " + " ".join(str(job_id) for job_id in new_jobs),
-                    display=True,
-                    hide=False,
-                )
+            login_node.run(
+                "scancel " + " ".join(str(job_id) for job_id in new_jobs),
+                display=True,
+                hide=False,
             )
         else:
             warnings.warn(
