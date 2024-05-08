@@ -305,7 +305,7 @@ class RunnerTests(abc.ABC):
                 runner.run_async is type(runner).run_async
                 and runner.get_output_async is type(runner).get_output_async
             ):
-                # It's a static method! Path the class instead of the "instance".
+                # It's a static method! Patch the class instead of the "instance".
                 monkeypatch.setattr(
                     type(runner),
                     type(runner).run_async.__name__,
