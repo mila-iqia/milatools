@@ -7,7 +7,6 @@ import re
 import shlex
 import subprocess
 import sys
-import warnings
 
 from milatools.cli import console
 from milatools.cli.utils import (
@@ -226,26 +225,27 @@ async def cancel_new_jobs_on_interrupt(login_node: RemoteV2, job_name: str):
     try:
         yield
     except (KeyboardInterrupt, asyncio.CancelledError):
-        jobs_after = await get_queued_milatools_job_ids(login_node, job_name=job_name)
+        jobs_after = login_node.get_output(
+            f"squeue --noheader --me --format=%A --name={job_name}"
+        )
+        jobs_after = list(map(int, stripped_lines_of(jobs_after)))
         logger.warning("Interrupted before we were able to parse a job id!")
         # We were unable to get the job id, so we'll try to cancel only the newly
         # spawned jobs from this user that match the set name.
         new_jobs = list(set(jobs_after) - set(jobs_before))
         if len(new_jobs) == 1:
             job_id = new_jobs[0]
-            console.log(
+            logger.warning(
                 f"Cancelling job {job_id} since it is the only new job of this "
                 f"user with name {job_name!r} since the last call to salloc or sbatch.",
-                style="yellow",
             )
             login_node.run(f"scancel {new_jobs[0]}", display=True, hide=False)
         elif len(new_jobs) > 1:
-            console.log(
+            logger.warning(
                 f"There appears to be more than one new jobs from this user with "
                 f"name {job_name!r} since the initial call to salloc or sbatch: "
                 f"{new_jobs}\n"
                 "Cancelling all of them to be safe...",
-                style="yellow",
             )
             login_node.run(
                 "scancel " + " ".join(str(job_id) for job_id in new_jobs),
@@ -253,13 +253,11 @@ async def cancel_new_jobs_on_interrupt(login_node: RemoteV2, job_name: str):
                 hide=False,
             )
         else:
-            warnings.warn(
-                RuntimeWarning(
-                    f"Unable to find any new job IDs with name {job_name!r} since the last "
-                    f"job allocation. This means that if job allocations were created, "
-                    "they might not have been properly cancelled. Please check that there "
-                    f"are no leftover jobs with {job_name!r} on the cluster!"
-                )
+            logger.warning(
+                f"Unable to find any new job IDs with name {job_name!r} since the last "
+                f"job allocation. This means that if job allocations were created, "
+                "they might not have been properly cancelled. Please check that there "
+                f"are no leftover pending jobs with the name {job_name!r} on the cluster!"
             )
         raise
 

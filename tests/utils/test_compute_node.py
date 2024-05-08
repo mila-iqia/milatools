@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import re
 import subprocess
 from logging import getLogger as get_logger
@@ -15,6 +16,7 @@ from milatools.cli.utils import removesuffix
 from milatools.utils.compute_node import (
     ComputeNode,
     JobNotRunningError,
+    cancel_new_jobs_on_interrupt,
     get_queued_milatools_job_ids,
     salloc,
     sbatch,
@@ -395,3 +397,111 @@ async def test_using_closed_compute_node_raises_error(
 
         mock_run.assert_not_called()
         mock_run_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("jobs_before", "jobs_after"),
+    [
+        # no jobs with this name before, no jobs after, do nothing.
+        ([], []),
+        # one job before, one job after, don't cancel that job.
+        ([123], [123]),
+        # multiple jobs before, multiple jobs after, don't cancel any jobs.
+        ([123, 456], [123, 456]),
+        # multiple jobs before, some jobs finished in the meantime, don't cancel any jobs.
+        ([123, 456], [456]),
+        # job before, new job after, cancel that new job.
+        ([123], [123, 777]),
+        # job before, new job after, cancel that new job.
+        ([123, 456], [123, 456, 777]),
+        # no job before, a new job after, cancel that new job.
+        ([], [123]),
+        # two new jobs, cancel both just to be safe.
+        ([], [123, 456]),
+    ],
+)
+@pytest.mark.parametrize("exception_type", [KeyboardInterrupt, asyncio.CancelledError])
+async def test_cancel_new_jobs_on_interrupt(
+    login_node_v2: RemoteV2,
+    monkeypatch: pytest.MonkeyPatch,
+    jobs_before: list[int],
+    jobs_after: list[int],
+    exception_type: type[Exception],
+    caplog: pytest.LogCaptureFixture,
+):
+    """Interrupt before we are able to get the job ID from salloc or sbatch.
+
+    The goal is to cancel any new jobs, so that we don't leave an allocation lying there
+    on the cluster.
+
+    1. No new jobs with this name since entering the block.
+    2. One new job with this name
+    3. More than one new job with this name since entering the block
+    """
+    expected_scanceled_job_ids = set(jobs_after) - set(jobs_before)
+
+    squeue_output = (
+        # squeue output when entering the block
+        jobs_before,
+        # squeue output when exiting the block
+        jobs_after,
+    )
+    _job_ids_passed_to_scancel: list[int] = []
+    _num_squeue_calls = 0
+
+    def _run(command: str, input: str | None = None, *args, **kwargs):
+        if command.startswith("squeue"):
+            nonlocal _num_squeue_calls
+            job_ids = squeue_output[_num_squeue_calls]
+            _num_squeue_calls += 1
+            output = "\n".join(map(str, job_ids))
+        else:
+            assert command.startswith("scancel")
+            # note; command looks like `scancel {job_id} [{job_id} ...]`
+            nonlocal _job_ids_passed_to_scancel
+            _job_ids_passed_to_scancel.extend(map(int, command.split()[1:]))
+            output = ""
+        stderr = ""
+        return subprocess.CompletedProcess(command, 0, output, stderr)
+
+    mock_run = Mock(side_effect=_run)
+
+    async def _run_async(command: str, input: str | None = None, *args, **kwargs):
+        # Just call `run`, doesn't matter.
+        await asyncio.sleep(0.1)
+        return _run(command=command, input=input, *args, **kwargs)
+
+    mock_run_async = AsyncMock(side_effect=_run_async)
+
+    monkeypatch.setattr(login_node_v2, login_node_v2.run.__name__, mock_run)
+    monkeypatch.setattr(login_node_v2, login_node_v2.run_async.__name__, mock_run_async)
+
+    with pytest.raises(exception_type), caplog.at_level(
+        logging.WARNING, logger="milatools"
+    ):
+        async with cancel_new_jobs_on_interrupt(login_node_v2, job_name="foo"):
+            # Here we would do something like 'salloc' or 'sbatch' over SSH.
+            # For the sake of testing we don't need to actually launch a job, we can
+            # just mock the output of squeue to look like we made a job allocation (or
+            # none, or more than one) in the meantime.
+
+            # NOTE: In the case of asyncio.CancelledError, I'm (@lebrice) not sure if
+            # this accurately reproduces the interruption, but it's better than nothing.
+            raise exception_type()
+
+    warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+    assert any(
+        warning.message == "Interrupted before we were able to parse a job id!"
+        for warning in warnings
+    )
+    if not expected_scanceled_job_ids:
+        # We warn the user if we get interrupted and we don't manage to find a new job
+        # allocation, so they can perhaps look for any potentially dangling job
+        # allocations on the cluster themselves.
+        assert any(
+            "Unable to find any new job IDs with name 'foo' since the last job allocation."
+            in warning.message
+            for warning in warnings
+        )
+    assert set(_job_ids_passed_to_scancel) == expected_scanceled_job_ids
