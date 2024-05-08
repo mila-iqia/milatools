@@ -27,7 +27,7 @@ import milatools.utils.remote_v2
 from milatools.cli import console
 from milatools.cli.init_command import setup_ssh_config
 from milatools.cli.utils import SSH_CONFIG_FILE
-from milatools.utils.compute_node_v2 import get_queued_milatools_job_ids
+from milatools.utils.compute_node import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     RemoteV2,
