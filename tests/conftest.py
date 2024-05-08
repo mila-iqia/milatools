@@ -221,16 +221,6 @@ def cluster(request: pytest.FixtureRequest) -> str:
     if not cluster_name:
         pytest.skip("Requires ssh access to a SLURM cluster.")
 
-    clusters_in_maintenance = os.environ.get("CLUSTER_DOWN", "").split(",")
-    if cluster_name in clusters_in_maintenance:
-        pytest.skip(reason=f"Cluster {cluster_name} is down for maintenance.")
-        # TODO: Seems not possible to add this marker to all tests?.
-        # request.node.add_marker(
-        #     pytest.mark.xfail(
-        #         reason=f"Cluster {cluster_name} is down for maintenance.",
-        # raises=subprocess.CalledProcessError,
-        #     )
-        # )
     return cluster_name
 
 
