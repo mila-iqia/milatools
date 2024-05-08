@@ -14,12 +14,20 @@ from unittest.mock import Mock
 import pytest
 import pytest_asyncio
 import questionary
+import rich
 from fabric.connection import Connection
 
+import milatools.cli
+import milatools.cli.commands
+import milatools.utils
+import milatools.utils.compute_node
+import milatools.utils.local_v2
+import milatools.utils.parallel_progress
+import milatools.utils.remote_v2
 from milatools.cli import console
 from milatools.cli.init_command import setup_ssh_config
 from milatools.cli.utils import SSH_CONFIG_FILE
-from milatools.utils.compute_node import get_queued_milatools_job_ids
+from milatools.utils.compute_node_v2 import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     RemoteV2,
@@ -38,6 +46,36 @@ from .integration.conftest import (
     SLURM_CLUSTER,
     WCKEY,
 )
+from .utils import test_parallel_progress
+
+
+@pytest.fixture(autouse=True)
+def use_wider_console_during_tests(monkeypatch: pytest.MonkeyPatch):
+    """Make the console very wide so commands are not wrapped across multiple lines.
+
+    This makes tests that check the output of commands easier to write. Also removes the
+    path to the log and the log time from the console output.
+    """
+    regular_console = console
+    test_console = rich.console.Console(
+        record=True, width=200, log_time=False, log_path=False
+    )
+    monkeypatch.setattr(milatools.cli, "console", test_console)
+    monkeypatch.setitem(globals(), "console", test_console)
+    for module in [
+        milatools.cli.commands,
+        milatools.utils.compute_node,
+        milatools.utils.local_v2,
+        milatools.utils.parallel_progress,
+        milatools.utils.remote_v2,
+        test_parallel_progress,
+    ]:
+        # These modules import the console from milatools.cli before this runs, so we
+        # need to patch them also.
+        assert hasattr(module, "console")
+        assert module.console is regular_console
+        monkeypatch.setattr(module, "console", test_console)
+
 
 logger = get_logger(__name__)
 unsupported_on_windows = xfails_on_windows(raises=UnsupportedPlatformError, strict=True)
