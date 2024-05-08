@@ -55,6 +55,7 @@ class ComputeNode(Runner):
     """A handle to the subprocess that is running the `salloc` command."""
 
     hostname: str = dataclasses.field(init=False)
+    """Name of the compute node, as seen in `squeue`, `sacct` or `$SLURMD_NODENAME`."""
 
     _closed: bool = dataclasses.field(default=False, init=False, repr=False)
 
