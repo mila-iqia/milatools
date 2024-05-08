@@ -423,8 +423,6 @@ async def test_using_closed_compute_node_raises_error(
 )
 @pytest.mark.parametrize("exception_type", [KeyboardInterrupt, asyncio.CancelledError])
 async def test_cancel_new_jobs_on_interrupt(
-    login_node_v2: RemoteV2,
-    monkeypatch: pytest.MonkeyPatch,
     jobs_before: list[int],
     jobs_after: list[int],
     exception_type: type[Exception],
@@ -439,6 +437,7 @@ async def test_cancel_new_jobs_on_interrupt(
     2. One new job with this name
     3. More than one new job with this name since entering the block
     """
+    job_name = "foo"
     expected_scanceled_job_ids = set(jobs_after) - set(jobs_before)
 
     squeue_output = (
@@ -452,6 +451,7 @@ async def test_cancel_new_jobs_on_interrupt(
 
     def _run(command: str, input: str | None = None, *args, **kwargs):
         if command.startswith("squeue"):
+            assert f"--name={job_name}" in command
             nonlocal _num_squeue_calls
             job_ids = squeue_output[_num_squeue_calls]
             _num_squeue_calls += 1
@@ -465,22 +465,36 @@ async def test_cancel_new_jobs_on_interrupt(
         stderr = ""
         return subprocess.CompletedProcess(command, 0, output, stderr)
 
-    mock_run = Mock(side_effect=_run)
+    mock_run = Mock(spec=RemoteV2.run, side_effect=_run)
 
     async def _run_async(command: str, input: str | None = None, *args, **kwargs):
         # Just call `run`, doesn't matter.
         await asyncio.sleep(0.1)
-        return _run(command=command, input=input, *args, **kwargs)
+        output = _run(command=command, input=input, *args, **kwargs)
+        return output
 
-    mock_run_async = AsyncMock(side_effect=_run_async)
+    async def _get_output_async(*args, **kwargs) -> str:
+        return (await _run_async(*args, **kwargs)).stdout.strip()
 
-    monkeypatch.setattr(login_node_v2, login_node_v2.run.__name__, mock_run)
-    monkeypatch.setattr(login_node_v2, login_node_v2.run_async.__name__, mock_run_async)
+    mock_run_async = AsyncMock(spec=RemoteV2.run_async, side_effect=_run_async)
+
+    mock_login_node = Mock(
+        spec=RemoteV2,
+        hostname="some_cluster",
+    )
+    mock_login_node.configure_mock(
+        run=mock_run,
+        mock_run_async=mock_run_async,
+        get_output=Mock(
+            side_effect=lambda *args, **kwargs: _run(*args, **kwargs).stdout.strip()
+        ),
+        get_output_async=AsyncMock(side_effect=_get_output_async),
+    )
 
     with pytest.raises(exception_type), caplog.at_level(
         logging.WARNING, logger="milatools"
     ):
-        async with cancel_new_jobs_on_interrupt(login_node_v2, job_name="foo"):
+        async with cancel_new_jobs_on_interrupt(mock_login_node, job_name=job_name):
             # Here we would do something like 'salloc' or 'sbatch' over SSH.
             # For the sake of testing we don't need to actually launch a job, we can
             # just mock the output of squeue to look like we made a job allocation (or
@@ -500,7 +514,7 @@ async def test_cancel_new_jobs_on_interrupt(
         # allocation, so they can perhaps look for any potentially dangling job
         # allocations on the cluster themselves.
         assert any(
-            "Unable to find any new job IDs with name 'foo' since the last job allocation."
+            f"Unable to find any new job IDs with name '{job_name}' since the last job allocation."
             in warning.message
             for warning in warnings
         )
