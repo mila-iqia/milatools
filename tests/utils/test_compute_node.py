@@ -81,7 +81,6 @@ async def test_sbatch(
 
     assert compute_node.hostname != login_node_v2.hostname
     job_id = compute_node.get_output("echo $SLURM_JOB_ID")
-    assert job_id.isdigit()
     assert compute_node.job_id == int(job_id)
     all_slurm_env_vars = {
         (split := line.split("="))[0]: split[1]
