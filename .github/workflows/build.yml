@@ -78,7 +78,7 @@ jobs:
       run: poetry run pytest --cov=milatools --cov-report=xml --cov-append
 
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4.3.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         file: ./coverage.xml
@@ -152,7 +152,7 @@ jobs:
           SLURM_CLUSTER: localhost
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4.3.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
