@@ -6,6 +6,7 @@ from subprocess import PIPE
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
+from milatools.cli.utils import SSH_CONFIG_FILE
 from milatools.utils.local_v1 import CommandNotFoundError, LocalV1, check_passwordless
 from milatools.utils.remote_v2 import is_already_logged_in
 
@@ -15,7 +16,7 @@ from ..cli.common import (
     output_tester,
     passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
-    skip_if_on_github_CI,
+    skip_if_on_github_cloud_CI,
     xfails_on_windows,
 )
 
@@ -152,7 +153,7 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
             False,
             marks=[
                 paramiko_openssh_key_parsing_issue,
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
             ],
         ),
         # For the clusters with 2FA, we expect `check_passwordless` to return True if
@@ -161,7 +162,7 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
             "blablabob@narval",
             False,
             marks=[
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
                 paramiko_openssh_key_parsing_issue,
             ],
         ),
@@ -172,7 +173,10 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
                 drac_cluster,
                 True,
                 marks=pytest.mark.skipif(
-                    sys.platform == "win32" or not is_already_logged_in(drac_cluster),
+                    sys.platform == "win32"
+                    or not is_already_logged_in(
+                        drac_cluster, ssh_config_path=SSH_CONFIG_FILE
+                    ),
                     reason="Should give True when we're already logged in.",
                 ),
             )
@@ -182,7 +186,7 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
             "niagara",
             False,
             marks=[
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
                 paramiko_openssh_key_parsing_issue,
             ],
         ),  # SSH access to niagara isn't enabled by default.

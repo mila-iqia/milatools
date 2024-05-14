@@ -26,7 +26,11 @@ from typing_extensions import ParamSpec, TypeGuard
 if typing.TYPE_CHECKING:
     from milatools.utils.remote_v1 import RemoteV1
 
+
 control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
+
+SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
+SSH_CACHE_DIR = Path.home() / ".cache" / "ssh"
 
 
 T = blessed.Terminal()
@@ -254,23 +258,47 @@ class SSHConfig:
         return "\n".join(lines)
 
 
-def get_fully_qualified_hostname_of_compute_node(
-    node_name: str, cluster: str = "mila"
+def get_hostname_to_use_for_compute_node(
+    node_name: str, cluster: str = "mila", ssh_config_path: Path = SSH_CONFIG_FILE
 ) -> str:
-    """Return the fully qualified name corresponding to this node name."""
-    if cluster == "mila":
-        if node_name.endswith(".server.mila.quebec"):
-            return node_name
-        return f"{node_name}.server.mila.quebec"
-    if cluster in CLUSTERS:
-        # For the other explicitly supported clusters in the SSH config, the node name
-        # of the compute node can be used directly with ssh from the local machine, no
-        # need to use a fully qualified name.
+    """Return the hostname to use to connect to this compute node via ssh."""
+    if not ssh_config_path.exists():
+        # If the SSH config file doesn't exist, we can't do much.
+        raise MilatoolsUserError(
+            f"SSH Config doesn't exist at {ssh_config_path}, did you run `mila init`?"
+        )
+
+    ssh_config = paramiko.SSHConfig.from_path(str(ssh_config_path))
+
+    # If there is an entry matching for the compute node name (cn-a001) and there
+    # isn't one matching the fully qualified compute node name
+    # (cn-a001.(...).quebec),
+    # then use the compute node name.
+
+    def should_be_used_to_connect(hostname: str) -> bool:
+        """Returns whether `hostname` should be used to run `ssh {hostname}`.
+
+        Returns True if an entry matches `hostname` and returns a different hostname to
+        use, or if the "proxyjump" option is set.
+        """
+        options = ssh_config.lookup(hostname)
+        return bool(options.get("proxyjump")) or options["hostname"] != hostname
+
+    if should_be_used_to_connect(node_name):
+        # There is an entry in the sshconfig for e.g. `cn-a001` that sets the
+        # hostname to use as `cn-a001.(...).quebec` or similar.
         return node_name
+    if cluster == "mila" and should_be_used_to_connect(
+        fully_qualified_name := f"{node_name}.server.mila.quebec"
+    ):
+        return fully_qualified_name
     warnings.warn(
         UserWarning(
-            f"Using a custom cluster {cluster}. Assuming that we can ssh directly to "
-            f"its compute node {node_name!r}."
+            f"Unable to find the hostname to use to connect to node {node_name} of "
+            f"the {cluster} cluster.\n"
+            f"Assuming that we can ssh directly to {node_name} for now. To fix "
+            f"this, consider adding an entry that matches the compute node "
+            f"{node_name} in the SSH config file at {ssh_config_path}"
         )
     )
     return node_name

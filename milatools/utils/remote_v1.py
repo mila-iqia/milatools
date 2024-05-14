@@ -109,6 +109,7 @@ def get_first_node_name(node_names_out: str) -> str:
     return base + inside_brackets.split("-")[0]
 
 
+@deprecated("RemoteV1 is being deprecated. Use RemoteV2 instead.", category=None)
 class RemoteV1:
     def __init__(
         self,
@@ -444,6 +445,7 @@ class RemoteV1:
         return self.extract(shlex.join([dest, *args]), pattern=pattern, **kwargs)
 
 
+@deprecated("SlurmRemote is being deprecated. Use ComputeNode instead.", category=None)
 class SlurmRemote(RemoteV1):
     def __init__(
         self,

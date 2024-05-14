@@ -1,40 +1,87 @@
 from __future__ import annotations
 
-import contextlib
-import shutil
+import datetime
+import functools
+import os
+import re
+import socket
 import sys
-import time
 from collections.abc import Generator
 from logging import getLogger as get_logger
 from pathlib import Path
 from unittest.mock import Mock
 
-import paramiko.ssh_exception
 import pytest
+import pytest_asyncio
+import questionary
+import rich
 from fabric.connection import Connection
 
+import milatools.cli
+import milatools.cli.commands
+import milatools.utils
+import milatools.utils.compute_node
+import milatools.utils.local_v2
+import milatools.utils.parallel_progress
+import milatools.utils.remote_v2
 from milatools.cli import console
-from milatools.cli.init_command import DRAC_CLUSTERS
+from milatools.cli.init_command import setup_ssh_config
+from milatools.cli.utils import SSH_CONFIG_FILE
+from milatools.utils.compute_node import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     RemoteV2,
-    get_controlpath_for,
+    UnsupportedPlatformError,
     is_already_logged_in,
 )
-from tests.integration.conftest import SLURM_CLUSTER
+
+from .cli.common import (
+    in_self_hosted_github_CI,
+    passwordless_ssh_connection_to_localhost_is_setup,
+    xfails_on_windows,
+)
+from .integration.conftest import (
+    JOB_NAME,
+    MAX_JOB_DURATION,
+    SLURM_CLUSTER,
+    WCKEY,
+)
+from .utils import test_parallel_progress
+
+
+@pytest.fixture(autouse=True)
+def use_wider_console_during_tests(monkeypatch: pytest.MonkeyPatch):
+    """Make the console very wide so commands are not wrapped across multiple lines.
+
+    This makes tests that check the output of commands easier to write. Also removes the
+    path to the log and the log time from the console output.
+    """
+    regular_console = console
+    test_console = rich.console.Console(
+        record=True, width=200, log_time=False, log_path=False
+    )
+    monkeypatch.setattr(milatools.cli, "console", test_console)
+    monkeypatch.setitem(globals(), "console", test_console)
+    for module in [
+        milatools.cli.commands,
+        milatools.utils.compute_node,
+        milatools.utils.local_v2,
+        milatools.utils.parallel_progress,
+        milatools.utils.remote_v2,
+        test_parallel_progress,
+    ]:
+        # These modules import the console from milatools.cli before this runs, so we
+        # need to patch them also.
+        assert hasattr(module, "console")
+        assert module.console is regular_console
+        monkeypatch.setattr(module, "console", test_console)
+
 
 logger = get_logger(__name__)
-passwordless_ssh_connection_to_localhost_is_setup = False
+unsupported_on_windows = xfails_on_windows(raises=UnsupportedPlatformError, strict=True)
 
-try:
-    Connection("localhost").open()
-except (
-    paramiko.ssh_exception.SSHException,
-    paramiko.ssh_exception.NoValidConnectionsError,
-):
-    pass
-else:
-    passwordless_ssh_connection_to_localhost_is_setup = True
+
+pytest.register_assert_rewrite("tests.utils.runner_tests")
 
 
 @pytest.fixture(
@@ -126,13 +173,34 @@ def login_node(cluster: str) -> RemoteV1 | RemoteV2:
     compute nodes because a previous test kept the same connection object while doing
     salloc (just in case that were to happen).
     """
-    if cluster not in ["mila", "localhost"] and not is_already_logged_in(cluster):
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    ):
         pytest.skip(
             f"Requires ssh access to the login node of the {cluster} cluster, and a "
             "prior connection to the cluster."
         )
     if sys.platform == "win32":
         return RemoteV1(cluster)
+    return RemoteV2(cluster)
+
+
+@pytest.fixture(scope="session")
+def login_node_v2(cluster: str) -> RemoteV2:
+    """Fixture that gives a Remote connected to the login node of a slurm cluster.
+
+    This fixture is session-scoped, because RemoteV2 is pretty much stateless and can be
+    safely reused.
+    """
+    if sys.platform == "win32":
+        pytest.skip("Test uses RemoteV2.")
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    ):
+        pytest.skip(
+            f"Requires ssh access to the login node of the {cluster} cluster, and a "
+            "prior connection to the cluster."
+        )
     return RemoteV2(cluster)
 
 
@@ -149,103 +217,218 @@ def cluster(request: pytest.FixtureRequest) -> str:
     ```
     """
 
-    slurm_cluster_hostname = request.param
-
-    if not slurm_cluster_hostname:
+    cluster_name = request.param
+    if not cluster_name:
         pytest.skip("Requires ssh access to a SLURM cluster.")
 
-    # TODO: Re-enable this, but only on tests that say that they run jobs on the
-    # cluster.
-    # with cancel_all_milatools_jobs_before_and_after_tests(slurm_cluster_hostname):
-    return slurm_cluster_hostname
+    return cluster_name
 
 
-@contextlib.contextmanager
-def cancel_all_milatools_jobs_before_and_after_tests(login_node: RemoteV1 | RemoteV2):
-    from .integration.conftest import WCKEY
+@pytest.fixture(scope="session")
+def job_name(request: pytest.FixtureRequest) -> str | None:
+    # TODO: Make the job name different based on the runner that is launching tests, so
+    # that the `launches_job_fixture` doesn't scancel the test jobs launched from
+    # another runner (e.g. me on my dev machine or laptop) on a cluster
 
-    logger.info(
-        f"Cancelling milatools test jobs on {cluster} before running integration tests."
-    )
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
-    time.sleep(1)
-    # Note: need to recreate this because login_node is a function-scoped fixture.
-    yield
-    logger.info(
-        f"Cancelling milatools test jobs on {cluster} after running integration tests."
-    )
-    login_node.run(f"scancel -u $USER --wckey={WCKEY}")
-    time.sleep(1)
-    # Display the output of squeue just to be sure that the jobs were cancelled.
-    logger.info(f"Checking that all jobs have been cancelked on {cluster}...")
-    login_node.run("squeue --me")
+    return getattr(request, "param", get_job_name_for_tests(request))
 
 
-@pytest.fixture(
-    scope="session", params=[True, False], ids=["already_logged_in", "not_logged_in"]
-)
-def already_logged_in(
-    cluster: str,
-    request: pytest.FixtureRequest,
-    tmp_path_factory: pytest.TempPathFactory,
-) -> Generator[bool, None, None]:
-    # TODO: Make a fixture that goes through 2FA on all the DRAC clusters, then runs
-    # all integration tests with and without existing connections already setup.
-    # saves those controlpaths (by moving them?) into a temp directory of some sort,
-    # then runs all the integration tests with "no initial connection", then runs them
-    # again with the controlpaths at the right place again connections to the DRAC cluster, then, go through 2FA on the clusters
-    should_already_be_logged_in_during_tests = request.param
-    assert isinstance(should_already_be_logged_in_during_tests, bool)
+def get_job_name_for_tests(request: pytest.FixtureRequest) -> str | None:
+    this_machine = socket.gethostname()
+    this_test_name = request.node.name
+    job_name = f"{JOB_NAME}_{this_test_name}_{this_machine}"
+    if in_self_hosted_github_CI:
+        # NOTE: We use this in the `build.yml` file to limit concurrent jobs for the
+        # same branch/workflow
+        # group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+        # here we do something similar
+        github_ref = os.environ["GITHUB_REF"]
+        workflow_name = os.environ["GITHUB_WORKFLOW"]
+        job_name += f"_{workflow_name}_{github_ref}"
+    # remove anything weird like spaces, /, etc.
+    job_name = re.sub(r"\W+", "-", job_name)
+    return job_name
 
-    logged_in_before_tests = is_already_logged_in(cluster)
-    control_path = get_controlpath_for(cluster)
-    if logged_in_before_tests and should_already_be_logged_in_during_tests:
-        # All good.
-        console.log(f"Reusing an existing connection to {cluster} in tests.")
-        yield True
-        return
 
-    if not logged_in_before_tests and not should_already_be_logged_in_during_tests:
-        # All good.
-        console.log(
-            f"No prior connection to {cluster} before running tests, as desired."
-        )
-        yield False
-        return
-
-    if not logged_in_before_tests and should_already_be_logged_in_during_tests:
-        console.log(
-            f"No prior connection to {cluster} before running tests, creating one."
-        )
-
-        if cluster in DRAC_CLUSTERS:
-            # todo: Seems like logger.warning is not being displayed in the test output
-            # somehow?
-            console.log(
-                f"Going through 2FA with cluster {cluster} only once before tests."
-            )
-
-        RemoteV2(cluster)
-        assert is_already_logged_in(cluster, also_run_command_to_check=True)
-        yield True
-        # TODO: Should we remove the connection after running the tests?
-        return
-
-    control_path = get_controlpath_for(cluster)
-    assert control_path.exists()
-    backup_dir = tmp_path_factory.mktemp("backup")
-
-    console.log(
-        f"Temporarily moving {control_path} to {backup_dir} so tests are run without "
-        f"an existing connection."
-    )
-    moved_path = shutil.move(str(control_path), str(backup_dir))
-    moved_path = Path(moved_path)
+@pytest_asyncio.fixture(scope="session")
+async def launches_job_fixture(login_node_v2: RemoteV2, job_name: str):
+    jobs_before = await get_queued_milatools_job_ids(login_node_v2, job_name=job_name)
+    if jobs_before:
+        logger.debug(f"Jobs in squeue before tests: {jobs_before}")
     try:
-        yield False
+        yield
     finally:
-        console.log(f"Restoring the Control socket from {moved_path} to {control_path}")
-        assert moved_path.exists()
-        if control_path.exists():
-            control_path.unlink()
-        shutil.move(moved_path, control_path)
+        jobs_after = await get_queued_milatools_job_ids(
+            login_node_v2, job_name=job_name
+        )
+        if jobs_before:
+            logger.debug(f"Jobs after tests: {jobs_before}")
+
+        new_jobs = jobs_after - jobs_before
+        if new_jobs:
+            console.log(f"Cancelling jobs {new_jobs} after running tests...")
+            login_node_v2.run(
+                "scancel " + " ".join(str(job_id) for job_id in new_jobs), display=True
+            )
+        else:
+            logger.debug("Test apparently didn't launch any new jobs.")
+
+
+launches_jobs = pytest.mark.usefixtures(launches_job_fixture.__name__)
+
+
+@functools.lru_cache
+def get_slurm_account(cluster: str) -> str:
+    """Gets the SLURM account of the user using sacctmgr on the slurm cluster.
+
+    When there are multiple accounts, this selects the first account, alphabetically.
+
+    On DRAC cluster, this uses the `def` allocations instead of `rrg`, and when
+    the rest of the accounts are the same up to a '_cpu' or '_gpu' suffix, it uses
+    '_cpu'.
+
+    For example:
+
+    ```text
+    def-someprofessor_cpu  <-- this one is used.
+    def-someprofessor_gpu
+    rrg-someprofessor_cpu
+    rrg-someprofessor_gpu
+    ```
+    """
+    logger.info(
+        f"Fetching the list of SLURM accounts available on the {cluster} cluster."
+    )
+    assert cluster in ["mila", "localhost"] or is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    )
+    result = RemoteV2(cluster).run(
+        "sacctmgr --noheader show associations where user=$USER format=Account%50"
+    )
+    accounts = [line.strip() for line in result.stdout.splitlines()]
+    assert accounts
+    logger.info(f"Accounts on the slurm cluster {cluster}: {accounts}")
+    account = sorted(accounts)[0]
+    logger.info(f"Using account {account} to launch jobs in tests.")
+    return account
+
+
+@pytest.fixture(scope="session")
+def slurm_account_on_cluster(cluster: str) -> str:
+    if cluster not in ["mila", "localhost"] and not is_already_logged_in(
+        cluster, ssh_config_path=SSH_CONFIG_FILE
+    ):
+        # avoid test hanging on 2FA prompt.
+        pytest.skip(reason=f"Test needs an existing connection to {cluster} to run.")
+    return get_slurm_account(cluster)
+
+
+@pytest.fixture(scope="session")
+def max_job_duration(
+    request: pytest.FixtureRequest, cluster: str
+) -> datetime.timedelta:
+    """Fixture that allows test to parametrize the duration of their jobs."""
+    return getattr(request, "param", MAX_JOB_DURATION)
+
+
+@pytest.fixture(scope="session")
+def allocation_flags(
+    request: pytest.FixtureRequest,
+    slurm_account_on_cluster: str,
+    job_name: str | None,
+    max_job_duration: datetime.timedelta,
+) -> list[str]:
+    """Flags passed to salloc or sbatch during tests.
+
+    When parametrized, overrides individual flags:
+    ```python
+    @pytest.mark.parametrize("allocation_flags", [{"some_flag": "some_value"}], indirect=True)
+    def some_test(allocation_flags: list[str])
+        assert "--some_flag=some_value" in allocation_flags
+    ```
+    """
+    default_allocation_options = {
+        "wckey": WCKEY,
+        "account": slurm_account_on_cluster,
+        "nodes": 1,
+        "ntasks": 1,
+        "cpus-per-task": 1,
+        "mem": "1G",
+        "time": max_job_duration,
+        "oversubscribe": None,  # allow multiple such jobs to share resources.
+    }
+    if job_name is not None:
+        # Only set the job name when needed. For example, `mila code` tests don't want
+        # it to be set.
+        default_allocation_options["job-name"] = job_name
+    overrides = getattr(request, "param", {})
+    assert isinstance(overrides, dict)
+    if overrides:
+        print(f"Overriding allocation options with {overrides}")
+        default_allocation_options = default_allocation_options.copy()
+        default_allocation_options.update(overrides)
+    return [
+        f"--{key}={value}" if value is not None else f"--{key}"
+        for key, value in default_allocation_options.items()
+    ]
+
+
+@pytest.fixture()
+def ssh_config_file(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Fixture that creates the SSH config as setup by `mila init`."""
+    from milatools.cli.init_command import yn
+
+    # NOTE: might want to put this in a fixture if we wanted the "real" mila / drac
+    # usernames in the config.
+    mila_username = drac_username = "bob"
+
+    ssh_config_path = tmp_path_factory.mktemp(".ssh") / "ssh_config"
+
+    def _yn(question: str) -> bool:
+        question = question.strip()
+        known_questions = {
+            f"There is no {ssh_config_path} file. Create one?": True,
+            "Do you also have an account on the ComputeCanada/DRAC clusters?": True,
+            "Is this OK?": True,
+        }
+        if question in known_questions:
+            return known_questions[question]
+        raise NotImplementedError(f"Unexpected question: {question}")
+
+    mock_yn = Mock(spec=yn, side_effect=_yn)
+
+    import milatools.cli.init_command
+
+    monkeypatch.setattr(milatools.cli.init_command, yn.__name__, mock_yn)
+
+    def _mock_unsafe_ask(question: str, *args, **kwargs) -> str:
+        question = question.strip()
+        known_questions = {
+            "What's your username on the mila cluster?": mila_username,
+            "What's your username on the CC/DRAC clusters?": drac_username,
+        }
+        if question in known_questions:
+            return known_questions[question]
+        raise NotImplementedError(f"Unexpected question: {question}")
+
+    def _mock_text(message: str, *args, **kwargs):
+        return Mock(
+            spec=questionary.Question,
+            unsafe_ask=Mock(
+                spec=questionary.Question.unsafe_ask,
+                side_effect=functools.partial(_mock_unsafe_ask, message),
+            ),
+        )
+
+    mock_text = Mock(
+        spec=questionary.text,
+        side_effect=_mock_text,
+    )
+    monkeypatch.setattr(questionary, questionary.text.__name__, mock_text)
+
+    setup_ssh_config(ssh_config_path)
+    assert ssh_config_path.exists()
+    return ssh_config_path

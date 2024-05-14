@@ -36,11 +36,13 @@ pytest-timeout = "^2.2.0"
 Sphinx = "^5.0.1"
 sphinx-rtd-theme = "^1.0.0"
 toml = "^0.10.0"
+pytest-asyncio = "^0.23.6"
 
 
 [tool.pytest.ini_options]
 addopts = "--doctest-modules"
 markers = "--enable-internet: Allow some tests to run using real connections to the cluster."
+
 
 [tool.poetry-dynamic-versioning]
 enable = true

@@ -2,9 +2,12 @@
 
 Cluster documentation: https://docs.mila.quebec/
 """
+
 from __future__ import annotations
 
 import argparse
+import asyncio
+import inspect
 import logging
 import operator
 import re
@@ -29,6 +32,8 @@ import rich.logging
 from typing_extensions import TypedDict
 
 from milatools.cli import console
+from milatools.utils.local_v1 import LocalV1
+from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
 from milatools.utils.remote_v2 import RemoteV2
 from milatools.utils.vscode_utils import (
     get_code_command,
@@ -38,8 +43,6 @@ from milatools.utils.vscode_utils import (
 )
 
 from ..__version__ import __version__
-from ..utils.local_v1 import LocalV1
-from ..utils.remote_v1 import RemoteV1, SlurmRemote
 from .init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
@@ -58,8 +61,8 @@ from .utils import (
     T,
     cluster_to_connect_kwargs,
     currently_in_a_test,
-    get_fully_qualified_hostname_of_compute_node,
     get_fully_qualified_name,
+    get_hostname_to_use_for_compute_node,
     make_process,
     no_internet_on_compute_nodes,
     randname,
@@ -426,6 +429,14 @@ def mila():
     setup_logging(verbose)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
+
+    if inspect.iscoroutinefunction(function):
+        try:
+            return asyncio.run(function(**args_dict))
+        except KeyboardInterrupt:
+            console.log("Terminated by user.")
+        return
+
     assert callable(function)
     return function(**args_dict)
 
@@ -641,7 +652,7 @@ def code(
     # NOTE: Since we have the config entries for the DRAC compute nodes, there is no
     # need to use the fully qualified hostname here.
     if cluster == "mila":
-        node_name = get_fully_qualified_hostname_of_compute_node(node_name)
+        node_name = get_hostname_to_use_for_compute_node(node_name)
 
     # Try to detect if this is being run from within the Windows Subsystem for Linux.
     # If so, then we run `code` through a powershell.exe command to open VSCode without
@@ -1110,7 +1121,7 @@ def _standard_server(
 
     local_proc, local_port = _forward(
         local=LocalV1(),
-        node=get_fully_qualified_hostname_of_compute_node(node_name, cluster="mila"),
+        node=get_hostname_to_use_for_compute_node(node_name, cluster="mila"),
         to_forward=to_forward,
         options=options,
         port=port,
@@ -1275,7 +1286,7 @@ def _find_allocation(
         exit("ERROR: --node, --job and --alloc are mutually exclusive")
 
     if node is not None:
-        node_name = get_fully_qualified_hostname_of_compute_node(node, cluster=cluster)
+        node_name = get_hostname_to_use_for_compute_node(node, cluster=cluster)
         return RemoteV1(
             node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
         )

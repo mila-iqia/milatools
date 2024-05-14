@@ -36,7 +36,7 @@ from ..cli.common import (
     in_github_CI,
     in_self_hosted_github_CI,
     requires_ssh_to_localhost,
-    skip_if_on_github_CI,
+    skip_if_on_github_cloud_CI,
     xfails_on_windows,
 )
 
@@ -317,7 +317,7 @@ def test_extensions_to_install(
             "~/vscode",
             False,
             marks=[
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
                 requires_ssh_to_localhost,
                 requires_vscode,
             ],
@@ -327,7 +327,7 @@ def test_extensions_to_install(
             "~/.vscode-server",
             True,
             marks=[
-                skip_if_on_github_CI,
+                skip_if_on_github_cloud_CI,
                 skip_if_not_already_logged_in("mila"),
             ],
         ),
