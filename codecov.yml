@@ -1,0 +1,18 @@
+ignore:
+  - "tests/**/*"
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        paths:
+          - "milatools"
+    patch:
+      default:
+        target: auto
+        threshold: 0%
+
+github_checks:
+  annotations: true
