@@ -27,5 +27,22 @@ jobs:
       cluster: ${{ matrix.cluster }}
       python-version: ${{ matrix.python-version }}
       timeout-minutes: 60
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  # https://about.codecov.io/blog/uploading-code-coverage-in-a-separate-job-on-github-actions/
+  upload-coverage-codecov:
+    needs: [real-slurm-integration-tests]
+    runs-on: ubuntu-latest
+    name: Upload coverage reports to Codecov
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # file: ./coverage.xml  # Search for all coverage files from each workflow.
+          flags: integrationtests
+          # env_vars: PLATFORM,PYTHON
+          # name: codecov-umbrella
+          fail_ci_if_error: true

@@ -12,9 +12,6 @@ on:
         required: false
         type: number
         default: 30
-    secrets:
-      CODECOV_TOKEN:
-        required: true
 
   workflow_dispatch:
 
@@ -53,12 +50,8 @@ jobs:
         env:
           SLURM_CLUSTER: ${{ inputs.cluster }}
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+      - name: Store coverage report as an artifact
+        uses: actions/upload-artifact@v2
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
-          flags: integrationtests
-          env_vars: PLATFORM,PYTHON
-          name: codecov-umbrella
-          fail_ci_if_error: false
+          name: coverage-reports
+          path: ./coverage.xml

@@ -77,15 +77,11 @@ jobs:
     - name: Test with pytest
       run: poetry run pytest --cov=milatools --cov-report=xml --cov-append
 
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v4.3.1
+    - name: Store coverage report as an artifact
+      uses: actions/upload-artifact@v2
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        file: ./coverage.xml
-        flags: unittests
-        env_vars: PLATFORM,PYTHON
-        name: codecov-umbrella
-        fail_ci_if_error: false
+        name: coverage-reports
+        path: ./coverage.xml
 
   mock-slurm-integration-tests:
     name: integration tests with a mock slurm cluster
@@ -151,15 +147,11 @@ jobs:
         env:
           SLURM_CLUSTER: localhost
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4.3.1
+      - name: Store coverage report as an artifact
+        uses: actions/upload-artifact@v2
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
-          flags: integrationtests
-          env_vars: PLATFORM,PYTHON
-          name: codecov-umbrella
-          fail_ci_if_error: false
+          name: coverage-reports
+          path: ./coverage.xml
 
   real-slurm-integration-tests:
 
@@ -178,5 +170,23 @@ jobs:
       cluster: ${{ matrix.cluster }}
       python-version: ${{ matrix.python-version }}
       timeout-minutes: 30
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # https://about.codecov.io/blog/uploading-code-coverage-in-a-separate-job-on-github-actions/
+  upload-coverage-codecov:
+    needs: [real-slurm-integration-tests]
+    runs-on: ubuntu-latest
+    name: Upload coverage reports to Codecov
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # file: ./coverage.xml  # Search for all coverage files from each workflow.
+          # flags: integrationtests
+          # env_vars: PLATFORM,PYTHON
+          # name: codecov-umbrella
+          fail_ci_if_error: true
