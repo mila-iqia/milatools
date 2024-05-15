@@ -78,7 +78,7 @@ jobs:
       run: poetry run pytest --cov=milatools --cov-report=xml --cov-append
 
     - name: Store coverage report as an artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-reports
         path: ./coverage.xml
@@ -148,7 +148,7 @@ jobs:
           SLURM_CLUSTER: localhost
 
       - name: Store coverage report as an artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-reports
           path: ./coverage.xml
