@@ -80,7 +80,7 @@ jobs:
     - name: Store coverage report as an artifact
       uses: actions/upload-artifact@v4
       with:
-        name: coverage-reports
+        name: coverage-reports-unit-${{ matrix.platform }}-${{ matrix.python-version }}
         path: ./coverage.xml
 
   mock-slurm-integration-tests:
@@ -150,7 +150,7 @@ jobs:
       - name: Store coverage report as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-reports
+          name: coverage-reports-mock-${{ matrix.platform }}-${{ matrix.python-version }}
           path: ./coverage.xml
 
   real-slurm-integration-tests:
@@ -182,9 +182,11 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: coverage-reports
+          pattern: coverage-reports-*
+          merge-multiple: false
+          # download all the artifacts in this directory (each .coverage.xml will be in a subdirectory)
+          # Next step if this doesn't work would be to give the coverage files a unique name and use merge-multiple: true
           path: coverage_reports
-          # merge-multiple: false
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
         with:

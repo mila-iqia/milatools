@@ -53,5 +53,5 @@ jobs:
       - name: Store coverage report as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-reports
+          name: coverage-reports-integration-${{ inputs.cluster }}-${{ inputs.python-version }}
           path: ./coverage.xml
