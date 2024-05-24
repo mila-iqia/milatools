@@ -1,0 +1,13 @@
+Checking disk quota on $HOME...
+Disk usage: X / LIMIT GiB and X / LIMIT files
+(mila) $ cd $SCRATCH && salloc --wckey=milatools_test --account=SLURM_ACCOUNT --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=0:05:00 --oversubscribe --job-name=mila-code
+salloc: [00;36m--------------------------------------------------------------------------------------------------
+salloc: # Using default long partition
+salloc: --------------------------------------------------------------------------------------------------[00m
+salloc: Granted job allocation JOB_ID
+Waiting for job JOB_ID to start.
+(localhost) $ echo --new-window --wait --remote ssh-remote+COMPUTE_NODE $HOME/bob
+--new-window --wait --remote ssh-remote+COMPUTE_NODE $HOME/bob
+
+The editor was closed. Reopen it with <Enter> or terminate the process with <Ctrl+C> (maybe twice).
+Ended session on 'COMPUTE_NODE'
