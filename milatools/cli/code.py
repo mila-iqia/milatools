@@ -15,7 +15,6 @@ from milatools.cli.utils import (
 )
 from milatools.utils.compute_node import ComputeNode, salloc, sbatch
 from milatools.utils.disk_quota import check_disk_quota
-from milatools.utils.local_v1 import LocalV1
 from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v2 import RemoteV2
 from milatools.utils.vscode_utils import sync_vscode_extensions
@@ -81,9 +80,8 @@ async def code(
         # extensions?
         # TODO: If the remote is a cluster that doesn't yet have `vscode-server`, we
         # could launch vscode at the same time (or before) syncing the vscode extensions?
-        sync_vscode_extensions_task = asyncio.to_thread(
-            sync_vscode_extensions,
-            LocalV1(),
+        sync_vscode_extensions_task = sync_vscode_extensions(
+            LocalV2(),
             [login_node],
         )
 

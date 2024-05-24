@@ -64,10 +64,7 @@ from milatools.utils.remote_v1 import (
     RemoteV1,
     SlurmRemote,
 )
-from milatools.utils.vscode_utils import (
-    get_code_command,
-    sync_vscode_extensions_with_hostnames,
-)
+from milatools.utils.vscode_utils import get_code_command, sync_vscode_extensions
 
 from ..__version__ import __version__
 
@@ -290,7 +287,7 @@ def mila():
             "extensions locally. Defaults to all the available SLURM clusters."
         ),
     )
-    sync_vscode_parser.set_defaults(function=sync_vscode_extensions_with_hostnames)
+    sync_vscode_parser.set_defaults(function=sync_vscode_extensions)
 
     # ----- mila serve ------
 

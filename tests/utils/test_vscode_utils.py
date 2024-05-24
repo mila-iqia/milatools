@@ -1,42 +1,45 @@
 from __future__ import annotations
 
-import multiprocessing
+import functools
 import shutil
 import sys
 from logging import getLogger as get_logger
-from multiprocessing.managers import DictProxy
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+import pytest_asyncio
 
-from milatools.cli.utils import running_inside_WSL
-from milatools.utils.local_v1 import LocalV1
-from milatools.utils.parallel_progress import ProgressDict
+from milatools.cli.utils import MilatoolsUserError, running_inside_WSL
+from milatools.utils import vscode_utils
+from milatools.utils.local_v2 import LocalV2
+from milatools.utils.parallel_progress import (
+    ProgressDict,
+    report_progress,
+)
 from milatools.utils.remote_v1 import RemoteV1
-from milatools.utils.remote_v2 import RemoteV2, UnsupportedPlatformError
+from milatools.utils.remote_v2 import RemoteV2
 from milatools.utils.vscode_utils import (
-    extensions_to_install,
-    find_code_server_executable,
+    _extensions_to_install,
+    _find_code_server_executable,
+    _get_local_vscode_executable_path,
+    _get_vscode_extensions,
+    _get_vscode_extensions_dict,
+    _install_vscode_extension,
+    _install_vscode_extensions_task_function,
     get_code_command,
     get_expected_vscode_settings_json_path,
-    get_local_vscode_extensions,
-    get_remote_vscode_extensions,
-    get_vscode_executable_path,
-    install_vscode_extension,
-    install_vscode_extensions_task_function,
     sync_vscode_extensions,
     vscode_installed,
 )
-from tests.integration.conftest import skip_if_not_already_logged_in
 
 from ..cli.common import (
     in_github_CI,
     in_self_hosted_github_CI,
     requires_ssh_to_localhost,
     skip_if_on_github_cloud_CI,
-    xfails_on_windows,
 )
+from .test_remote_v2 import uses_remote_v2
 
 logger = get_logger(__name__)
 
@@ -67,10 +70,6 @@ requires_vscode = pytest.mark.xfail(
     strict=True,
 )
 
-uses_remote_v2 = xfails_on_windows(
-    raises=UnsupportedPlatformError, reason="Uses RemoteV2", strict=True
-)
-
 
 @requires_vscode
 def test_get_expected_vscode_settings_json_path():
@@ -89,62 +88,64 @@ def test_running_inside_WSL():
 
 
 def test_get_vscode_executable_path():
-    code = get_vscode_executable_path()
     if vscode_installed():
-        assert code is not None and Path(code).exists()
+        code = _get_local_vscode_executable_path()
+        assert Path(code).exists()
     else:
-        assert code is None
+        with pytest.raises(
+            MilatoolsUserError, match="Command 'code' does not exist locally."
+        ):
+            _get_local_vscode_executable_path()
 
 
 @pytest.fixture
 def mock_find_code_server_executable(monkeypatch: pytest.MonkeyPatch):
-    """Makes it so we use the local `code` executable instead of `code-server`."""
+    """Makes it so we use the local `code` executable instead of `code-server`.
+
+    This makes it possible to treat the `code` executable on localhost just like the
+    `code-server` executable on remote machines because they have mostly the same CLI.
+    """
     import milatools.utils.vscode_utils
 
-    mock_find_code_server_executable = Mock(
-        spec=find_code_server_executable, return_value=get_vscode_executable_path()
+    mock_find_code_server_executable = AsyncMock(
+        spec=_find_code_server_executable,
+        return_value=_get_local_vscode_executable_path(),
     )
     monkeypatch.setattr(
         milatools.utils.vscode_utils,
-        find_code_server_executable.__name__,
+        _find_code_server_executable.__name__,
         mock_find_code_server_executable,
     )
     return mock_find_code_server_executable
 
 
-@xfails_on_windows(raises=UnsupportedPlatformError, reason="Uses RemoteV2", strict=True)
+@uses_remote_v2
 @requires_vscode
 @requires_ssh_to_localhost
-def test_sync_vscode_extensions_in_parallel_with_hostnames(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.asyncio
+async def test_sync_vscode_extensions(
+    mock_find_code_server_executable: Mock, monkeypatch: pytest.MonkeyPatch
 ):
-    import milatools.utils.vscode_utils
-
-    # Make it so we use the local `code` executable instead of `code-server`.
+    # Skip the check that removes the source from the destinations.
     monkeypatch.setattr(
-        milatools.utils.vscode_utils,
-        find_code_server_executable.__name__,
-        Mock(
-            spec=find_code_server_executable, return_value=get_vscode_executable_path()
-        ),
-    )
-    sync_vscode_extensions(
-        # Make the destination slightly different so it actually gets wrapped as a
-        # `Remote(v2)` object.
-        LocalV1(),
-        [RemoteV2("localhost")],
+        vscode_utils,
+        vscode_utils._remove_source_from_destinations.__name__,
+        lambda source, destinations: destinations,
     )
 
+    remote = await RemoteV2.connect("localhost")
+    results = await sync_vscode_extensions(
+        remote,
+        # Make the destination slightly different to avoid the duplicate hostname
+        # detection that happens in `sync_vscode_extensions`.
+        destinations=[remote],
+    )
+    assert results == {"localhost": []}
+    mock_find_code_server_executable.assert_called()
 
-@requires_vscode
-@requires_ssh_to_localhost
-def test_sync_vscode_extensions_in_parallel():
-    results = sync_vscode_extensions(LocalV1(), dest_clusters=[LocalV1()])
-    assert results == {"localhost": {"info": "Done.", "progress": 0, "total": 0}}
 
-
-@pytest.fixture
-def vscode_extensions(
+@pytest_asyncio.fixture
+async def vscode_extensions(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     """Returns a dict of vscode extension names and versions to be installed locally.
@@ -152,7 +153,7 @@ def vscode_extensions(
     Here we pretend like some local vscode extensions are missing by patching the
     function that returns the local extensions to return only part of its actual result.
     """
-    all_extensions = get_local_vscode_extensions()
+    all_extensions = await _get_vscode_extensions(LocalV2())
 
     installed_extensions = all_extensions.copy()
     num_missing_extensions = 3
@@ -165,13 +166,13 @@ def vscode_extensions(
 
     # `localhost` is the source, so it has all the extensions
     # the "remote" (just to localhost during tests) is missing some extensions
-    mock_remote_extensions = Mock(
-        spec=get_remote_vscode_extensions,
-        return_value=(installed_extensions, str(get_vscode_executable_path())),
+    mock_remote_extensions = AsyncMock(
+        spec=_get_vscode_extensions_dict,
+        return_value=(installed_extensions, str(_get_local_vscode_executable_path())),
     )
     monkeypatch.setattr(
         milatools.utils.vscode_utils,
-        get_remote_vscode_extensions.__name__,
+        _get_vscode_extensions_dict.__name__,
         mock_remote_extensions,
     )
 
@@ -210,49 +211,54 @@ def _remote(hostname: str):
 @uses_remote_v2
 @requires_ssh_to_localhost
 @requires_vscode
-def test_install_vscode_extensions_task_function(
+@pytest.mark.asyncio
+async def test_install_vscode_extensions_task_function(
     installed_extensions: dict[str, str],
     missing_extensions: dict[str, str],
     mock_find_code_server_executable: Mock,
 ):
-    with multiprocessing.Manager() as manager:
-        from milatools.utils.parallel_progress import TaskID
+    from milatools.utils.parallel_progress import TaskID
 
-        logger.debug(f"{len(installed_extensions)=}, {len(missing_extensions)=}")
-        # Pretend like we don't already have these extensions locally.
+    logger.debug(f"{len(installed_extensions)=}, {len(missing_extensions)=}")
+    # Pretend like we don't already have these extensions locally.
 
-        task_progress_dict: DictProxy[TaskID, ProgressDict] = manager.dict()
-
-        _fake_remote = _remote("localhost")
-
-        result = install_vscode_extensions_task_function(
-            task_progress_dict=task_progress_dict,
+    task_progress_dict: dict[TaskID, ProgressDict] = {}
+    _fake_remote = await RemoteV2.connect("localhost")
+    result = await _install_vscode_extensions_task_function(
+        report_progress=functools.partial(
+            report_progress,
+            progress_dict=task_progress_dict,
             task_id=TaskID(0),
-            dest_hostname="fake_cluster",
-            source_extensions=missing_extensions,
-            remote=_fake_remote,
-            source_name="localhost",
-        )
-        mock_find_code_server_executable.assert_called_once_with(
-            _fake_remote, remote_vscode_server_dir="~/.vscode-server"
-        )
+        ),
+        dest_hostname="fake_cluster",
+        source_extensions=missing_extensions,
+        remote=_fake_remote,
+        source_name="localhost",
+    )
+    mock_find_code_server_executable.assert_called_once_with(
+        _fake_remote, remote_vscode_server_dir="~/.vscode-server"
+    )
 
-        assert result == {
-            "info": "Done.",
-            "progress": len(missing_extensions),
-            "total": len(missing_extensions),
-        }
-        assert task_progress_dict[TaskID(0)] == result
+    assert result == [
+        f"{ext_name}@{ext_version}"
+        for ext_name, ext_version in missing_extensions.items()
+    ]
+    assert task_progress_dict[TaskID(0)] == {
+        "info": "Done.",
+        "progress": len(missing_extensions),
+        "total": len(missing_extensions),
+    }
 
 
 @uses_remote_v2
 @requires_ssh_to_localhost
 @requires_vscode
-def test_install_vscode_extension(missing_extensions: dict[str, str]):
+@pytest.mark.asyncio
+async def test_install_vscode_extension(missing_extensions: dict[str, str]):
     extension_name, version = next(iter(missing_extensions.items()))
-    result = install_vscode_extension(
-        remote=_remote("localhost"),
-        code_server_executable=str(get_vscode_executable_path()),
+    result = await _install_vscode_extension(
+        remote=(await RemoteV2.connect("localhost")),
+        code_server_executable=str(_get_local_vscode_executable_path()),
         extension=f"{extension_name}@{version}",
         verbose=False,
     )
@@ -265,8 +271,10 @@ def test_install_vscode_extension(missing_extensions: dict[str, str]):
 
 @requires_ssh_to_localhost
 @requires_vscode
-def test_get_local_vscode_extensions():
-    local_extensions = get_local_vscode_extensions()
+@pytest.mark.asyncio
+async def test_get_local_vscode_extensions():
+    local_extensions = await _get_vscode_extensions(LocalV2())
+
     assert local_extensions and all(
         isinstance(ext, str) and isinstance(version, str)
         for ext, version in local_extensions.items()
@@ -276,19 +284,19 @@ def test_get_local_vscode_extensions():
 @uses_remote_v2
 @requires_ssh_to_localhost
 @requires_vscode
-def test_get_remote_vscode_extensions():
+@pytest.mark.asyncio
+async def test_get_remote_vscode_extensions(mock_find_code_server_executable):
     # We make it so this calls the local `code` command over SSH to localhost,
     # therefore the "remote" extensions are the same as the local extensions.
-    fake_remote = _remote("localhost")
+    fake_remote = await RemoteV2.connect("localhost")
 
-    local_vscode_executable = get_vscode_executable_path()
+    local_vscode_executable = _get_local_vscode_executable_path()
     assert local_vscode_executable is not None
 
-    fake_remote_extensions = get_remote_vscode_extensions(
-        fake_remote, remote_code_server_executable=local_vscode_executable
+    fake_remote_extensions = await _get_vscode_extensions_dict(
+        fake_remote, code_server_executable=local_vscode_executable
     )
-    # Because of the mocking we did above, this should be true
-    assert fake_remote_extensions == get_local_vscode_extensions()
+    assert fake_remote_extensions == await _get_vscode_extensions(LocalV2())
 
 
 @requires_vscode
@@ -297,7 +305,7 @@ def test_extensions_to_install(
     installed_extensions: dict[str, str],
     missing_extensions: dict[str, str],
 ):
-    to_install = extensions_to_install(
+    to_install = _extensions_to_install(
         source_extensions=all_extensions,
         dest_extensions=installed_extensions,
         source_name="foo",
@@ -306,40 +314,35 @@ def test_extensions_to_install(
     assert to_install == missing_extensions
 
 
-@uses_remote_v2
+# TODO: This test assumes that the `code-server` executable already exists for you (the
+# dev) on the slurm cluster used in tests.. This is not ideal!
+# Perhaps we could remove `vscode-server` from one of the clusters before running the
+# tests? However this sounds a bit dangerous.
+@pytest.mark.slow
+@skip_if_on_github_cloud_CI
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("cluster", "remote_vscode_server_dir", "should_exist"),
+    ("remote_vscode_server_dir", "should_exist"),
     [
-        pytest.param(
-            "localhost",
-            "~/vscode",
-            False,
-            marks=[
-                skip_if_on_github_cloud_CI,
-                requires_ssh_to_localhost,
-                requires_vscode,
-            ],
-        ),
-        pytest.param(
-            "mila",
+        (
             "~/.vscode-server",
-            True,
-            marks=[
-                skip_if_on_github_cloud_CI,
-                skip_if_not_already_logged_in("mila"),
-            ],
+            True,  # todo: Replace this hard-coded value with something smarter.
         ),
+        ("~/.vscode-server-dir-that-doesnt-exist", False),
     ],
 )
-def test_find_code_server_executable(
-    cluster: str, remote_vscode_server_dir: str, should_exist: bool
+async def test_find_code_server_executable(
+    login_node_v2: RemoteV2, remote_vscode_server_dir: str, should_exist: bool
 ):
-    code_server_exe_path = find_code_server_executable(
-        RemoteV2(cluster), remote_vscode_server_dir=remote_vscode_server_dir
+    # NOTE: The `find` command in $HOME takes a very long time to run!
+    code_server_exe_path = await _find_code_server_executable(
+        login_node_v2,
+        remote_vscode_server_dir=remote_vscode_server_dir,
     )
     if not should_exist:
         assert code_server_exe_path is None
     else:
-        assert code_server_exe_path and code_server_exe_path.startswith(
-            code_server_exe_path
-        )
+        assert code_server_exe_path
+        remote_home = await login_node_v2.get_output_async("echo $HOME")
+        expected_dir = remote_vscode_server_dir.replace("~", remote_home)
+        assert code_server_exe_path.startswith(expected_dir)
