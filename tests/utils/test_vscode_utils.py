@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import getpass
 import multiprocessing
 import shutil
 import sys
@@ -27,7 +26,6 @@ from milatools.utils.vscode_utils import (
     install_vscode_extension,
     install_vscode_extensions_task_function,
     sync_vscode_extensions,
-    sync_vscode_extensions_with_hostnames,
     vscode_installed,
 )
 from tests.integration.conftest import skip_if_not_already_logged_in
@@ -130,11 +128,11 @@ def test_sync_vscode_extensions_in_parallel_with_hostnames(
             spec=find_code_server_executable, return_value=get_vscode_executable_path()
         ),
     )
-    sync_vscode_extensions_with_hostnames(
+    sync_vscode_extensions(
         # Make the destination slightly different so it actually gets wrapped as a
         # `Remote(v2)` object.
-        "localhost",
-        destinations=[f"{getpass.getuser()}@localhost"],
+        LocalV1(),
+        [RemoteV2("localhost")],
     )
 
 

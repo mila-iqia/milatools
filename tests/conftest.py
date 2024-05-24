@@ -17,10 +17,10 @@ import questionary
 import rich
 from fabric.connection import Connection
 
-import milatools.cli
+import milatools.cli.code
 import milatools.cli.commands
-import milatools.utils
 import milatools.utils.compute_node
+import milatools.utils.disk_quota
 import milatools.utils.local_v2
 import milatools.utils.parallel_progress
 import milatools.utils.remote_v2
@@ -60,15 +60,19 @@ def use_wider_console_during_tests(monkeypatch: pytest.MonkeyPatch):
     test_console = rich.console.Console(
         record=True, width=200, log_time=False, log_path=False
     )
+
     monkeypatch.setattr(milatools.cli, "console", test_console)
     monkeypatch.setitem(globals(), "console", test_console)
+
     for module in [
         milatools.cli.commands,
         milatools.utils.compute_node,
         milatools.utils.local_v2,
         milatools.utils.parallel_progress,
         milatools.utils.remote_v2,
+        milatools.utils.disk_quota,
         test_parallel_progress,
+        milatools.cli.code,
     ]:
         # These modules import the console from milatools.cli before this runs, so we
         # need to patch them also.

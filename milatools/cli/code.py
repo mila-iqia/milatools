@@ -14,6 +14,7 @@ from milatools.cli.utils import (
     internet_on_compute_nodes,
 )
 from milatools.utils.compute_node import ComputeNode, salloc, sbatch
+from milatools.utils.disk_quota import check_disk_quota
 from milatools.utils.local_v1 import LocalV1
 from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v2 import RemoteV2
@@ -57,9 +58,7 @@ async def code(
         path = home if path == "." else f"{home}/{path}"
 
     try:
-        from milatools.cli.commands import check_disk_quota
-
-        check_disk_quota(login_node)
+        await check_disk_quota(login_node)
     except MilatoolsUserError:
         # Raise errors that are meant to be shown to the user (disk quota is reached).
         raise

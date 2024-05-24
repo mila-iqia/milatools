@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import logging
 import re
-import subprocess
 import time
 from datetime import timedelta
 from logging import getLogger as get_logger
 
 import pytest
 
-from milatools.cli.commands import check_disk_quota, code
+from milatools.cli.commands import code
 from milatools.cli.utils import get_hostname_to_use_for_compute_node
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
@@ -18,25 +16,6 @@ from ..conftest import launches_jobs
 from .test_slurm_remote import PARAMIKO_SSH_BANNER_BUG, get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
-
-
-@pytest.mark.slow
-def test_check_disk_quota(
-    login_node: RemoteV1 | RemoteV2,
-    capsys: pytest.LogCaptureFixture,
-    caplog: pytest.LogCaptureFixture,
-):
-    if login_node.hostname.startswith("graham") or login_node.hostname == "localhost":
-        with pytest.raises(subprocess.CalledProcessError):
-            check_disk_quota(remote=login_node)
-    else:
-        with caplog.at_level(logging.DEBUG):
-            check_disk_quota(remote=login_node)
-    # TODO: Maybe figure out a way to actually test this, (not just by running it and
-    # expecting no errors).
-    # Check that it doesn't raise any errors.
-    # IF the quota is nearly met, then a warning is logged.
-    # IF the quota is met, then a `MilatoolsUserError` is logged.
 
 
 @pytest.mark.slow
