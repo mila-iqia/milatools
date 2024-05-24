@@ -192,10 +192,11 @@ class ComputeNode(Runner):
 
 
 async def get_queued_milatools_job_ids(
-    login_node: RemoteV2, job_name="mila-code"
+    login_node: RemoteV2, job_name: str | None = "mila-code"
 ) -> set[int]:
     jobs = await login_node.get_output_async(
-        f"squeue --noheader --me --format=%A --name={job_name}"
+        "squeue --noheader --me --format=%A"
+        + (f" --name={job_name}" if job_name is not None else "")
     )
     return set([int(job_id_str) for job_id_str in jobs.splitlines()])
 
