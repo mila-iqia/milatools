@@ -11,7 +11,7 @@ import sys
 import textwrap
 from functools import partial
 from logging import getLogger as get_logger
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PosixPath, PurePosixPath
 from unittest.mock import Mock
 
 import invoke
@@ -42,7 +42,7 @@ from milatools.cli.utils import (
     SSHConfig,
     running_inside_WSL,
 )
-from milatools.utils.local_v1 import LocalV1, check_passwordless
+from milatools.utils.local_v1 import LocalV1
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     SSH_CACHE_DIR,
@@ -542,8 +542,8 @@ def test_with_existing_entries(
                     User Bob
                 """
             ),
-            ["bob\r"],
-            "bob",
+            [],  # user input doesn't matter (won't get asked).
+            "george",
             id="two_matching_entries",
         ),
         pytest.param(
@@ -579,7 +579,7 @@ def test_get_username(
     ssh_config_path = tmp_path / "config"
     with open(ssh_config_path, "w") as f:
         f.write(contents)
-    ssh_config = SSHConfig(ssh_config_path)
+    ssh_config = paramiko.SSHConfig.from_path(str(ssh_config_path))
     if not prompt_inputs:
         input_pipe.close()
     for prompt_input in prompt_inputs:
@@ -639,8 +639,8 @@ def test_get_username(
                     User Bob
                 """
             ),
-            ["y", "bob\r"],
-            "bob",
+            [],  # will not get asked for input.
+            "george",
             id="two_matching_entries",
         ),
         pytest.param(
@@ -675,7 +675,7 @@ def test_get_drac_username(
     ssh_config_path = tmp_path / "config"
     with open(ssh_config_path, "w") as f:
         f.write(contents)
-    ssh_config = SSHConfig(ssh_config_path)
+    ssh_config = paramiko.SSHConfig.from_path(str(ssh_config_path))
     if not prompt_inputs:
         input_pipe.close()
     for prompt_input in prompt_inputs:
@@ -863,7 +863,9 @@ def test_setup_windows_ssh_config_from_wsl(
     for prompt in user_inputs:
         input_pipe.send_text(prompt)
 
-    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+    setup_windows_ssh_config_from_wsl(
+        linux_ssh_config_path=PosixPath(linux_ssh_config.path)
+    )
 
     assert windows_ssh_config_path.exists()
     assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
@@ -1029,7 +1031,9 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     input_pipe.send_text("y")  # accept creating the Windows config file
     input_pipe.send_text("y")  # accept the changes
 
-    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+    setup_windows_ssh_config_from_wsl(
+        linux_ssh_config_path=PosixPath(linux_ssh_config.path)
+    )
 
     windows_private_key_path = windows_home / ".ssh" / "id_rsa"
     windows_public_key_path = windows_private_key_path.with_suffix(".pub")
@@ -1283,8 +1287,6 @@ def test_setup_passwordless_ssh_access_to_cluster(
     assert ssh_public_key_path.exists()
 
     def have_passwordless_ssh_access_to(cluster: str) -> bool:
-        if sys.platform == "win32":
-            return check_passwordless(cluster)
         return is_already_logged_in(cluster, ssh_config_path=SSH_CONFIG_FILE)
 
     def _exists(file: PurePosixPath | Path):
@@ -1340,7 +1342,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
                 # subprocess.check_call(
                 #     ["ssh", "-O", "exit", f"-oControlPath={control_path}", cluster]
                 # )
-            assert not check_passwordless(cluster)
+            assert not is_already_logged_in(cluster)
         else:
             assert passwordless_ssh_was_previously_setup
             if _exists(authorized_keys_file):
@@ -1356,7 +1358,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
                     hide=False,
                 )
             # todo: might not work well for the DRAC clusters!
-            assert not check_passwordless(cluster)
+            assert not is_already_logged_in(cluster)
 
     def reenable_ssh_access_to_cluster():
         if cluster == "localhost":
@@ -1376,7 +1378,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
                 ssh_dir.mkdir(exist_ok=True, mode=0o700)
                 assert not passwordless_ssh_was_previously_setup
                 shutil.copy(backup_authorized_keys_file, authorized_keys_file)
-            assert check_passwordless(cluster)
+            assert is_already_logged_in(cluster)
         else:
             logger.info(
                 f"Restoring the original {authorized_keys_file} from backup at "

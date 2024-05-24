@@ -19,9 +19,10 @@ from paramiko.config import SSHConfig as SSHConfigReader
 from milatools.cli import console
 from milatools.cli.utils import SSHConfig as SSHConfigWriter
 from milatools.cli.utils import T, running_inside_WSL, yn
-from milatools.utils.local_v1 import check_passwordless, display
+from milatools.utils.local_v1 import display
 from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v1 import RemoteV1
+from milatools.utils.remote_v2 import control_socket_is_running, get_controlpath_for
 from milatools.utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
@@ -345,7 +346,6 @@ def setup_passwordless_ssh_access_to_cluster(
     # their SSH config proposed by the first part of `mila init`.
     # - Instead of making the code complicated with lots of corner cases, just raise an
     #   error if the SSH config doesn't match what we expect to see after `mila init`.
-    raise NotImplementedError()
     if ssh_private_key_path is None:
         # TODO: What to do if there isn't a private key set in the SSH config, but there
         # is already a private key in the SSH dir? (it would be used by ssh).
@@ -399,17 +399,21 @@ def setup_passwordless_ssh_access_to_cluster(
             subprocess.run(command, check=True, text=False, stdin=f)
     else:
         here.run(
-            "ssh-copy-id",
-            "-i",
-            str(ssh_private_key_path),
-            "-o",
-            "StrictHostKeyChecking=no",
-            cluster,
-            check=True,
+            (
+                "ssh-copy-id",
+                "-i",
+                str(ssh_private_key_path),
+                "-o",
+                "StrictHostKeyChecking=no",
+                cluster,
+            ),
         )
 
     # double-check that this worked.
-    if not check_passwordless(cluster):
+    if not control_socket_is_running(
+        cluster,
+        control_path=get_controlpath_for(cluster, ssh_config_path=ssh_config_path),
+    ):
         print(f"'ssh-copy-id {cluster}' appears to have failed!")
         return False
     return True
@@ -699,7 +703,7 @@ def _get_drac_username(ssh_config: SSHConfigReader) -> str | None:
     if len(users_from_drac_config_entries) == 1:
         return users_from_drac_config_entries.pop().strip()
 
-    username: str | None
+    username: str | None = None
     # Note: If there are none, or more than one, then we'll ask the user for their
     # username, just to be sure.
     if yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
