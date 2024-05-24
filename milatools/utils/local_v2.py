@@ -208,7 +208,7 @@ async def run_async(
         logger.debug(message)
         if not warn:
             if stderr:
-                logger.error(stderr)
+                logger.error(stderr.decode())
             raise subprocess.CalledProcessError(
                 returncode=proc.returncode,
                 cmd=program_and_args,
