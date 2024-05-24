@@ -1146,8 +1146,9 @@ def _find_allocation(
 
     elif job is not None:
         node_name = remote.get_output(f"squeue --jobs {job} -ho %N")
+        node_hostname = get_hostname_to_use_for_compute_node(node_name, cluster=cluster)
         return RemoteV1(
-            node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+            node_hostname, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
         )
 
     else:
