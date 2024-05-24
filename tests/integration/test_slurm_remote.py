@@ -101,7 +101,9 @@ def fabric_connection_to_login_node(login_node: RemoteV1 | RemoteV2):
 
 @pytest.fixture
 def salloc_slurm_remote(
-    fabric_connection_to_login_node: fabric.Connection, allocation_flags: list[str]
+    fabric_connection_to_login_node: fabric.Connection,
+    allocation_flags: list[str],
+    job_name: str,
 ):
     """Fixture that creates a `SlurmRemote` that uses `salloc` (persist=False).
 
@@ -111,18 +113,20 @@ def salloc_slurm_remote(
     """
     return SlurmRemote(
         connection=fabric_connection_to_login_node,
-        alloc=allocation_flags,
+        alloc=allocation_flags + ["--job-name", job_name],
     )
 
 
 @pytest.fixture
 def sbatch_slurm_remote(
-    fabric_connection_to_login_node: fabric.Connection, allocation_flags: list[str]
+    fabric_connection_to_login_node: fabric.Connection,
+    allocation_flags: list[str],
+    job_name: str,
 ):
     """Fixture that creates a `SlurmRemote` that uses `sbatch` (persist=True)."""
     return SlurmRemote(
         connection=fabric_connection_to_login_node,
-        alloc=allocation_flags,
+        alloc=allocation_flags + ["--job-name", job_name],
         persist=True,
     )
 
