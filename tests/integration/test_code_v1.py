@@ -7,7 +7,7 @@ from logging import getLogger as get_logger
 
 import pytest
 
-from milatools.cli.commands import code
+from milatools.cli.commands import code_v1
 from milatools.cli.utils import get_hostname_to_use_for_compute_node
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 @launches_jobs
 @PARAMIKO_SSH_BANNER_BUG
 @pytest.mark.parametrize("persist", [True, False])
-def test_code(
+def test_code_v1(
     login_node: RemoteV1 | RemoteV2,
     persist: bool,
     capsys: pytest.CaptureFixture,
@@ -35,7 +35,7 @@ def test_code(
     home = login_node.run("echo $HOME", display=False, hide=True).stdout.strip()
     scratch = login_node.get_output("echo $SCRATCH")
     relative_path = "bob"
-    code(
+    code_v1(
         path=relative_path,
         command="echo",  # replace the usual `code` with `echo` for testing.
         persist=persist,
@@ -75,7 +75,7 @@ def test_code(
     node_hostname = get_hostname_to_use_for_compute_node(
         node, cluster=login_node.hostname
     )
-    expected_line = f"(local) $ /usr/bin/echo -nw --remote ssh-remote+{node_hostname} {home}/{relative_path}"
+    expected_line = f"(localhost) $ /usr/bin/echo -nw --remote ssh-remote+{node_hostname} {home}/{relative_path}"
     assert any((expected_line in line) for line in captured_output.splitlines()), (
         captured_output,
         expected_line,
