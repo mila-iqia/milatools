@@ -99,16 +99,13 @@ jobs:
           distribution: Ubuntu-22.04
       - uses: actions/checkout@v4
       # - uses: Ubuntu/WSL/.github/actions/wsl-checkout@main #?
-      - name: Install poetry
-        run: pip install poetry
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'poetry'
 
-      - name: Install poetry (only on MacOS)
-        if: runner.os == 'macOS'
+      - name: Install poetry
         run: pip install poetry
 
       - name: Install dependencies
