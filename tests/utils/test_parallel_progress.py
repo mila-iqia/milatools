@@ -24,6 +24,21 @@ logger = get_logger(__name__)
 OutT = TypeVar("OutT")
 
 
+@pytest.fixture()
+def mock_time_elapsed_column(monkeypatch: pytest.MonkeyPatch):
+    from rich.progress import Task, TimeElapsedColumn
+    from rich.text import Text
+
+    def render(self, task: Task) -> Text:
+        """Show time elapsed."""
+        elapsed = task.finished_time if task.finished else task.elapsed
+        if elapsed is None:
+            return Text("-:--:--", style="progress.elapsed")
+        return Text("", style="progress.elapsed")
+
+    monkeypatch.setattr(TimeElapsedColumn, "render", render)
+
+
 async def _async_task_fn(
     report_progress: ReportProgressFn,
     task_id: int,
@@ -47,7 +62,9 @@ async def _async_task_fn(
     strict=True,
 )
 @pytest.mark.asyncio
-async def test_async_progress_bar(file_regression: FileRegressionFixture):
+async def test_async_progress_bar(
+    file_regression: FileRegressionFixture, mock_time_elapsed_column: None
+):
     num_tasks = 4
     task_length = 5
     task_lengths = [task_length for _ in range(num_tasks)]
@@ -85,7 +102,7 @@ async def test_async_progress_bar(file_regression: FileRegressionFixture):
 
 
 @pytest.mark.asyncio
-async def test_interrupt_progress_bar():
+async def test_interrupt_progress_bar(mock_time_elapsed_column: None):
     """Test the case where one of the tasks raises an exception."""
     num_tasks = 4
     task_length = 5

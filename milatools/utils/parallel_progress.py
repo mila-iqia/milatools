@@ -24,7 +24,6 @@ from rich.progress import (
 from typing_extensions import NotRequired
 
 from milatools.cli import console
-from milatools.cli.utils import currently_in_a_test
 
 logger = get_logger(__name__)
 OutT_co = TypeVar("OutT_co", covariant=True)
@@ -117,10 +116,9 @@ async def run_async_tasks_with_progress_bar(
         MofNCompleteColumn(),
         BarColumn(bar_width=None),
         TaskProgressColumn(),
+        TimeElapsedColumn(),
         TimeRemainingColumn(),
     ]
-    if not currently_in_a_test():
-        columns.append(TimeElapsedColumn())
     progress = Progress(
         *columns,
         console=console,
