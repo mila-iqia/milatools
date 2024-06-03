@@ -159,8 +159,9 @@ async def code(
 
     await launch_vscode_loop(command, compute_node, path)
 
-    if not persist:
-        # Cancel the job explicitly.
+    if not persist and not (job or node):
+        # Cancel the job if it was not persistent.
+        # (--job and --node are used to connect to persistent jobs)
         await compute_node.close_async()
         console.print(f"Ended session on '{compute_node.hostname}'")
         return compute_node.job_id
