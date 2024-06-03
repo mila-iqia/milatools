@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from contextlib import ExitStack
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlencode
 
 import questionary as qn
@@ -44,6 +44,7 @@ from milatools.cli.init_command import (
 from milatools.cli.profile import ensure_program, setup_profile
 from milatools.cli.utils import (
     CLUSTERS,
+    AllocationFlagsAction,
     CommandNotFoundError,
     MilatoolsUserError,
     SSHConnectionError,
@@ -130,6 +131,13 @@ def main():
 
 def mila():
     parser = ArgumentParser(prog="mila", description=__doc__, add_help=True)
+    add_arguments(parser)
+    verbose, function, args_dict = parse_args(parser)
+    setup_logging(verbose)
+    return function(**args_dict)
+
+
+def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--version",
         action="version",
@@ -198,23 +206,25 @@ def mila():
     code_parser = subparsers.add_parser(
         "code",
         help="Open a remote VSCode session on a compute node.",
-        formatter_class=SortingHelpFormatter,
     )
     code_parser.add_argument(
-        "PATH", help="Path to open on the remote machine", type=str
+        "PATH",
+        help=(
+            "Path to open on the remote machine. Defaults to $HOME.\n"
+            "Can be a relative or absolute path. When a relative path (that doesn't "
+            "start with a '/', like foo/bar) is passed, the path is relative to the "
+            "$HOME directory on the selected cluster.\n"
+            "For example, foo/project will be interpreted as $HOME/foo/project."
+        ),
+        type=str,
+        default=".",
+        nargs="?",
     )
     code_parser.add_argument(
         "--cluster",
         choices=CLUSTERS,
         default="mila",
         help="Which cluster to connect to.",
-    )
-    code_parser.add_argument(
-        "--alloc",
-        nargs=argparse.REMAINDER,
-        help="Extra options to pass to slurm",
-        metavar="VALUE",
-        default=[],
     )
     code_parser.add_argument(
         "--command",
@@ -230,20 +240,17 @@ def mila():
         type=int,
         default=None,
         help="Job ID to connect to",
-        metavar="VALUE",
+        metavar="JOB_ID",
     )
     code_parser.add_argument(
         "--node",
         type=str,
         default=None,
         help="Node to connect to",
-        metavar="VALUE",
+        metavar="NODE",
     )
-    code_parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Whether the server should persist or not",
-    )
+
+    _add_allocation_options(code_parser)
 
     if sys.platform == "win32":
         code_parser.set_defaults(function=code_v1)
@@ -357,7 +364,6 @@ def mila():
     serve_lab_parser = serve_subparsers.add_parser(
         "lab",
         help="Start a Jupyterlab server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_lab_parser.add_argument(
         "PATH",
@@ -373,7 +379,6 @@ def mila():
     serve_notebook_parser = serve_subparsers.add_parser(
         "notebook",
         help="Start a Jupyter Notebook server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_notebook_parser.add_argument(
         "PATH",
@@ -389,7 +394,6 @@ def mila():
     serve_tensorboard_parser = serve_subparsers.add_parser(
         "tensorboard",
         help="Start a Tensorboard server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_tensorboard_parser.add_argument(
         "LOGDIR", type=str, help="Path to the experiment logs"
@@ -402,7 +406,6 @@ def mila():
     serve_mlflow_parser = serve_subparsers.add_parser(
         "mlflow",
         help="Start an MLFlow server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_mlflow_parser.add_argument(
         "LOGDIR", type=str, help="Path to the experiment logs"
@@ -415,7 +418,6 @@ def mila():
     serve_aim_parser = serve_subparsers.add_parser(
         "aim",
         help="Start an AIM server.",
-        formatter_class=SortingHelpFormatter,
     )
     serve_aim_parser.add_argument(
         "LOGDIR", type=str, help="Path to the experiment logs"
@@ -423,14 +425,22 @@ def mila():
     _add_standard_server_args(serve_aim_parser)
     serve_aim_parser.set_defaults(function=aim)
 
+
+def parse_args(parser: argparse.ArgumentParser) -> tuple[int, Callable, dict[str, Any]]:
+    """Parses the command-line arguments.
+
+    Returns the verbosity level, the function (or awaitable) to call, and the arguments
+    to the function.
+    """
     args = parser.parse_args()
     args_dict = vars(args)
+
     verbose: int = args_dict.pop("verbose")
+
     function = args_dict.pop("function")
     _ = args_dict.pop("<command>")
     _ = args_dict.pop("<serve_subcommand>", None)
     _ = args_dict.pop("<sync_subcommand>", None)
-    setup_logging(verbose)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
 
@@ -442,7 +452,7 @@ def mila():
         return
 
     assert callable(function)
-    return function(**args_dict)
+    return verbose, function, args_dict
 
 
 def setup_logging(verbose: int) -> None:
@@ -770,7 +780,7 @@ class StandardServerArgs(TypedDict):
     alloc: list[str]
     """Extra options to pass to slurm."""
 
-    job: str | None
+    job: int | None
     """Job ID to connect to."""
 
     name: str | None
@@ -913,20 +923,56 @@ class SortingHelpFormatter(argparse.HelpFormatter):
         super().add_arguments(actions)
 
 
+def _add_allocation_options(parser: ArgumentParser):
+    # note: Ideally we'd like [--persist --alloc] | [--salloc] | [--sbatch] (i.e. a
+    # subgroup with alloc and persist within a mutually exclusive group with salloc and
+    # sbatch) but that doesn't seem possible with argparse as far as I can tell.
+    arg_group = parser.add_argument_group(
+        "Allocation options", description="Extra options to pass to slurm."
+    )
+    alloc_group = arg_group.add_mutually_exclusive_group()
+    common_kwargs = {
+        "dest": "alloc",
+        "nargs": argparse.REMAINDER,
+        "action": AllocationFlagsAction,
+        "metavar": "VALUE",
+        "default": [],
+    }
+    alloc_group.add_argument(
+        "--persist",
+        action="store_true",
+        help="Whether the server should persist or not when using --alloc",
+    )
+    # --persist can be used with --alloc
+    arg_group.add_argument(
+        "--alloc",
+        **common_kwargs,
+        help="Extra options to pass to salloc or to sbatch if --persist is set.",
+    )
+    # --persist cannot be used with --salloc or --sbatch.
+    # Note: REMAINDER args like --alloc, --sbatch and --salloc are already mutually
+    # exclusive in a sense, since it's only possible to use one correctly, the other
+    # args are stored in the first one (e.g. mila code --alloc --salloc bob will have
+    # alloc of ["--salloc", "bob"]).
+    alloc_group.add_argument(
+        "--salloc",
+        **common_kwargs,
+        help="Extra options to pass to salloc. Same as using --alloc without --persist.",
+    )
+    alloc_group.add_argument(
+        "--sbatch",
+        **common_kwargs,
+        help="Extra options to pass to sbatch. Same as using --alloc with --persist.",
+    )
+
+
 def _add_standard_server_args(parser: ArgumentParser):
     parser.add_argument(
-        "--alloc",
-        nargs=argparse.REMAINDER,
-        help="Extra options to pass to slurm",
-        metavar="VALUE",
-        default=[],
-    )
-    parser.add_argument(
         "--job",
-        type=str,
+        type=int,
         default=None,
         help="Job ID to connect to",
-        metavar="VALUE",
+        metavar="JOB_ID",
     )
     parser.add_argument(
         "--name",
@@ -943,11 +989,6 @@ def _add_standard_server_args(parser: ArgumentParser):
         metavar="VALUE",
     )
     parser.add_argument(
-        "--persist",
-        action="store_true",
-        help="Whether the server should persist or not",
-    )
-    parser.add_argument(
         "--port",
         type=int,
         default=None,
@@ -961,6 +1002,8 @@ def _add_standard_server_args(parser: ArgumentParser):
         help="Name of the profile to use",
         metavar="VALUE",
     )
+    # Add these arguments last because we want them to show up last in the usage message
+    _add_allocation_options(parser)
 
 
 def _standard_server(
@@ -974,7 +1017,7 @@ def _standard_server(
     port: int | None,
     name: str | None,
     node: str | None,
-    job: str | None,
+    job: int | None,
     alloc: list[str],
     port_pattern=None,
     token_pattern=None,
@@ -1130,7 +1173,7 @@ def _standard_server(
 def _find_allocation(
     remote: RemoteV1,
     node: str | None,
-    job: str | int | None,
+    job: int | str | None,
     alloc: list[str],
     cluster: str = "mila",
     job_name: str = "mila-tools",
