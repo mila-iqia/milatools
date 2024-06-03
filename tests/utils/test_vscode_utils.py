@@ -230,7 +230,6 @@ async def test_install_vscode_extensions_task_function(
             progress_dict=task_progress_dict,
             task_id=TaskID(0),
         ),
-        dest_hostname="fake_cluster",
         source_extensions=missing_extensions,
         remote=_fake_remote,
         source_name="localhost",
