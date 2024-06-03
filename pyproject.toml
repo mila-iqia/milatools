@@ -23,11 +23,9 @@ mila = "milatools.cli.__main__:main"
 
 [tool.poetry.group.dev.dependencies]
 black = ">= 21.8b0"
-coverage = {extras = ["toml"], version = "^5.0.3"}
 fabric = {extras = ["testing"], version = "^3.2.2"}
 flake8 = {version = ">= 6.0.0", python = "^3.8.1"}
 pytest = "^7.2.1"
-pytest-cov = "^4.1.0"
 pytest-mock = "^3.11.1"
 pytest-regressions = "^2.4.2"
 pytest-skip-slow = "^0.0.5"
@@ -37,6 +35,8 @@ Sphinx = "^5.0.1"
 sphinx-rtd-theme = "^1.0.0"
 toml = "^0.10.0"
 pytest-asyncio = "^0.23.6"
+pytest-testmon = "^2.1.1"
+pytest-cov = "^5.0.0"
 
 
 [tool.pytest.ini_options]
