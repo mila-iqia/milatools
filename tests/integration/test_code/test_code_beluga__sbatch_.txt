@@ -13,6 +13,6 @@ JOB_ID
 The editor was closed. Reopen it with <Enter> or terminate the process with <Ctrl+C> (maybe twice).
 This allocation is persistent and is still active.
 To reconnect to this job, run the following:
-  mila code $HOME/bob --cluster beluga --job JOB_ID
+  mila code bob --cluster beluga --job JOB_ID
 To kill this allocation:
   ssh beluga scancel JOB_ID

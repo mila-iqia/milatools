@@ -292,7 +292,6 @@ doesnt_create_new_jobs = pytest.mark.usefixtures(
 
 @doesnt_create_new_jobs
 @pytest.mark.parametrize("use_v1", [False, True], ids=["code", "code_v1"])
-@pytest.mark.parametrize("persist", [True, False], ids="persist={}".format)
 @pytest.mark.parametrize(
     ("use_node_name", "use_job_id"),
     [(True, False), (False, True), (True, True)],
@@ -304,7 +303,6 @@ async def test_code_with_existing_job(
     existing_job: ComputeNode,
     use_job_id: bool,
     use_node_name: bool,
-    persist: bool,
     use_v1: bool,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -347,26 +345,17 @@ async def test_code_with_existing_job(
         compute_node_or_job_id = await code(
             path=path,
             command="echo",  # replace the usual `code` with `echo` for testing.
-            persist=persist,  # so this doesn't try to cancel the running job on exit.
+            persist=True,  # todo: Doesn't really make sense to pass --persist when using --job or --node!
             job=job,
             node=node,
             alloc=[],
             cluster=cluster,
         )
-        if persist:
-            assert isinstance(compute_node_or_job_id, ComputeNode)
-            assert compute_node_or_job_id.job_id == existing_job.job_id
-            assert compute_node_or_job_id.hostname == existing_job.hostname
-            mock_close_async.assert_not_called()
-            mock_close.assert_not_called()
-        else:
-            assert isinstance(compute_node_or_job_id, int)
-            assert compute_node_or_job_id == existing_job.job_id
-            # BUG: When you use `mila code <path> --job <job_id>` without passing
-            # `--persist` and press ctrl+C, the job is cancelled. This is probably not
-            # what we want to do.
-            mock_close_async.assert_called_once()
-            mock_close.assert_not_called()
+        assert isinstance(compute_node_or_job_id, ComputeNode)
+        assert compute_node_or_job_id.job_id == existing_job.job_id
+        assert compute_node_or_job_id.hostname == existing_job.hostname
+        mock_close_async.assert_not_called()
+        mock_close.assert_not_called()
     else:
         node: str | None = None
         if use_node_name:
@@ -378,7 +367,7 @@ async def test_code_with_existing_job(
         code_v1(
             path=path,
             command="echo",  # replace the usual `code` with `echo` for testing.
-            persist=persist,  # so this doesn't try to cancel the running job on exit.
+            persist=True,  # so this doesn't try to cancel the running job on exit.
             job=job,
             node=node,
             alloc=[],
@@ -388,10 +377,7 @@ async def test_code_with_existing_job(
         # This is correct, but misleading. We should probably print something else.
         ended_session_string = f"Ended session on {existing_job.hostname!r}"
         output = capsys.readouterr().out
-        if not persist:
-            assert ended_session_string in output
-        else:
-            assert ended_session_string not in output
+        assert ended_session_string not in output
 
 
 @doesnt_create_new_jobs

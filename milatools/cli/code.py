@@ -48,6 +48,10 @@ async def code(
     if not shutil.which(command):
         raise CommandNotFoundError(command)
 
+    if (job or node) and not persist:
+        logger.warning("Assuming persist=True since a job or node was specified.")
+        persist = True
+
     # Connect to the cluster's login node.
     login_node = await RemoteV2.connect(cluster)
 
