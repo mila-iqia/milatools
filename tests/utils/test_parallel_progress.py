@@ -24,21 +24,6 @@ logger = get_logger(__name__)
 OutT = TypeVar("OutT")
 
 
-@pytest.fixture()
-def mock_time_elapsed_column(monkeypatch: pytest.MonkeyPatch):
-    from rich.progress import Task, TimeElapsedColumn
-    from rich.text import Text
-
-    def render(self, task: Task) -> Text:
-        """Show time elapsed."""
-        elapsed = task.finished_time if task.finished else task.elapsed
-        if elapsed is None:
-            return Text("-:--:--", style="progress.elapsed")
-        return Text("", style="progress.elapsed")
-
-    monkeypatch.setattr(TimeElapsedColumn, "render", render)
-
-
 async def _async_task_fn(
     report_progress: ReportProgressFn,
     task_id: int,
@@ -62,9 +47,7 @@ async def _async_task_fn(
     strict=True,
 )
 @pytest.mark.asyncio
-async def test_async_progress_bar(
-    file_regression: FileRegressionFixture, mock_time_elapsed_column: None
-):
+async def test_async_progress_bar(file_regression: FileRegressionFixture):
     num_tasks = 4
     task_length = 5
     task_lengths = [task_length for _ in range(num_tasks)]
@@ -80,7 +63,9 @@ async def test_async_progress_bar(
     start_time = time.time()
     with console.capture() as capture:
         # NOTE: the results are returned as a list (all at the same time).
-        results = await run_async_tasks_with_progress_bar(task_fns)
+        results = await run_async_tasks_with_progress_bar(
+            task_fns, _show_elapsed_time=False
+        )
     assert results == task_results
 
     all_output = capture.get()
@@ -102,7 +87,7 @@ async def test_async_progress_bar(
 
 
 @pytest.mark.asyncio
-async def test_interrupt_progress_bar(mock_time_elapsed_column: None):
+async def test_interrupt_progress_bar():
     """Test the case where one of the tasks raises an exception."""
     num_tasks = 4
     task_length = 5
