@@ -1,0 +1,19 @@
+Checking disk quota on $HOME...
+Disk usage: X / LIMIT GiB and X / LIMIT files
+(mila) $ cd $SCRATCH && sbatch --parsable --wckey=milatools_test --account=SLURM_ACCOUNT --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=0:05:00 --oversubscribe --job-name=mila-code --wrap 'srun sleep
+7d'
+JOB_ID
+
+sbatch: [00;36m--------------------------------------------------------------------------------------------------
+sbatch: # Using default long partition
+sbatch: --------------------------------------------------------------------------------------------------[00m
+
+(localhost) $ echo --new-window --wait --remote ssh-remote+COMPUTE_NODE $HOME/bob
+--new-window --wait --remote ssh-remote+COMPUTE_NODE $HOME/bob
+
+The editor was closed. Reopen it with <Enter> or terminate the process with <Ctrl+C> (maybe twice).
+This allocation is persistent and is still active.
+To reconnect to this job, run the following:
+  mila code bob --job JOB_ID
+To kill this allocation:
+  ssh mila scancel JOB_ID

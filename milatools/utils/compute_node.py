@@ -192,10 +192,11 @@ class ComputeNode(Runner):
 
 
 async def get_queued_milatools_job_ids(
-    login_node: RemoteV2, job_name="mila-code"
+    login_node: RemoteV2, job_name: str | None = "mila-code"
 ) -> set[int]:
     jobs = await login_node.get_output_async(
-        f"squeue --noheader --me --format=%A --name={job_name}"
+        "squeue --noheader --me --format=%A"
+        + (f" --name={job_name}" if job_name is not None else "")
     )
     return set([int(job_id_str) for job_id_str in jobs.splitlines()])
 
@@ -226,11 +227,11 @@ async def cancel_new_jobs_on_interrupt(login_node: RemoteV2, job_name: str):
     try:
         yield
     except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.warning("Interrupted before we were able to parse a job id!")
         jobs_after = login_node.get_output(
             f"squeue --noheader --me --format=%A --name={job_name}"
         )
         jobs_after = list(map(int, stripped_lines_of(jobs_after)))
-        logger.warning("Interrupted before we were able to parse a job id!")
         # We were unable to get the job id, so we'll try to cancel only the newly
         # spawned jobs from this user that match the set name.
         new_jobs = list(set(jobs_after) - set(jobs_before))
@@ -284,14 +285,14 @@ async def salloc(
     # trying to go full-async so that the parsing of the job-id from stderr can
     # eventually be done at the same time as something else (while waiting for the
     # job to start) using things like `asyncio.gather` and `asyncio.wait_for`.
-    logger.debug(f"(local) $ {shlex.join(command)}")
-    console.log(
-        f"({login_node.hostname}) $ {salloc_command}", style="green", markup=False
-    )
     async with cancel_new_jobs_on_interrupt(login_node, job_name):
         # NOTE: If stdin were not set to PIPE, then the terminal would actually be live
         # and run commands on the compute node! For instance if you were to do
         # `mila code .` and then write `salloc`, it would spawn a second job!
+        logger.debug(f"(localhost) $ {shlex.join(command)}")
+        console.log(
+            f"({login_node.hostname}) $ {salloc_command}", style="green", markup=False
+        )
         salloc_subprocess = await asyncio.subprocess.create_subprocess_exec(
             *command,
             shell=False,
@@ -314,9 +315,10 @@ async def salloc(
         console.log(f"Waiting for job {job_id} to start.", style="green")
         await wait_while_job_is_pending(login_node, job_id)
     except (KeyboardInterrupt, asyncio.CancelledError):
-        logger.debug("Killing the salloc subprocess following a KeyboardInterrupt.")
-        salloc_subprocess.terminate()
+        logger.warning("Interrupted while waiting for the job to start.")
         login_node.run(f"scancel {job_id}", display=True, hide=False)
+        logger.debug("Killing the salloc subprocess.")
+        salloc_subprocess.terminate()
         raise
 
     # Note: While there are potentially states between `PENDING` and `RUNNING`, here
