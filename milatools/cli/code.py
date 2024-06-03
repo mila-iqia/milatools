@@ -190,4 +190,6 @@ async def launch_vscode_loop(code_command: str, compute_node: ComputeNode, path:
             break
         except asyncio.CancelledError:
             raise
-            # return
+        except Exception as exc:
+            logger.error(f"Error while waiting for user input: {exc}")
+            break
