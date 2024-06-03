@@ -110,8 +110,7 @@ async def code(
         # Set the job name to `mila-code`. This should not be changed by the user
         # ideally, so we can collect some simple stats about the use of `milatools` on
         # the clusters.
-        if any(flag == "-J" or "-J=" in flag or "--job-name" in flag for flag in alloc):
-            # todo: Get the job name from the flags instead?
+        if any(flag.split("=")[0] in ("-J", "--job-name") for flag in alloc):
             raise MilatoolsUserError(
                 "The job name flag (--job-name or -J) should be left unset for now "
                 "because we use the job name to measure how many people use `mila "
