@@ -73,6 +73,7 @@ async def run_async_tasks_with_progress_bar(
     async_task_fns: list[AsyncTaskFn[OutT_co]],
     task_descriptions: list[str] | None = None,
     overall_progress_task_description: str = "[green]All jobs progress:",
+    _show_elapsed_time: bool = True,
 ) -> list[OutT_co]:
     """Run a sequence of async tasks in "parallel" and display a progress bar.
 
@@ -98,7 +99,7 @@ async def run_async_tasks_with_progress_bar(
     >>> tasks = [functools.partial(example_task_fn, len_of_task=i) for i in range(1, 4)]
     >>> import time
     >>> start_time = time.time()
-    >>> results = asyncio.run(run_async_tasks_with_progress_bar(tasks))
+    >>> results = asyncio.run(run_async_tasks_with_progress_bar(tasks, _show_elapsed_time=False))
     ✓ All jobs progress: 6/6 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
     ✓ Task 0 - Done.     1/1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
     ✓ Task 1 - Done.     2/2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
@@ -116,7 +117,7 @@ async def run_async_tasks_with_progress_bar(
         MofNCompleteColumn(),
         BarColumn(bar_width=None),
         TaskProgressColumn(),
-        TimeElapsedColumn(),
+        *([TimeElapsedColumn()] if _show_elapsed_time else []),
         TimeRemainingColumn(),
     ]
     progress = Progress(
