@@ -44,9 +44,8 @@ async def code(
     """
     # Check that the `code` command is in the $PATH so that we can use just `code` as
     # the command.
-    code_command = command
-    if not shutil.which(code_command):
-        raise CommandNotFoundError(code_command)
+    if not shutil.which(command):
+        raise CommandNotFoundError(command)
 
     # Connect to the cluster's login node.
     login_node = await RemoteV2.connect(cluster)
@@ -145,7 +144,7 @@ async def code(
     else:
         compute_node = await compute_node_task
 
-    await launch_vscode_loop(code_command, compute_node, path)
+    await launch_vscode_loop(command, compute_node, path)
 
     if not persist:
         # Cancel the job explicitly.
