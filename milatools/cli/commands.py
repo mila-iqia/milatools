@@ -132,9 +132,18 @@ def main():
 def mila():
     parser = ArgumentParser(prog="mila", description=__doc__, add_help=True)
     add_arguments(parser)
+
     verbose, function, args_dict = parse_args(parser)
     setup_logging(verbose)
-    return function(**args_dict)
+
+    if inspect.iscoroutinefunction(function):
+        try:
+            return asyncio.run(function(**args_dict))
+        except KeyboardInterrupt:
+            console.log("Terminated by user.")
+        return
+    else:
+        return function(**args_dict)
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -443,13 +452,6 @@ def parse_args(parser: argparse.ArgumentParser) -> tuple[int, Callable, dict[str
     _ = args_dict.pop("<sync_subcommand>", None)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
-
-    if inspect.iscoroutinefunction(function):
-        try:
-            return asyncio.run(function(**args_dict))
-        except KeyboardInterrupt:
-            console.log("Terminated by user.")
-        return
 
     assert callable(function)
     return verbose, function, args_dict
