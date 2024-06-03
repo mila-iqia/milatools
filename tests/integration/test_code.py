@@ -26,7 +26,7 @@ from milatools.utils import disk_quota
 from milatools.utils.compute_node import (
     ComputeNode,
     get_queued_milatools_job_ids,
-    sbatch,
+    salloc,
 )
 from milatools.utils.disk_quota import check_disk_quota, check_disk_quota_v1
 from milatools.utils.remote_v1 import RemoteV1
@@ -232,53 +232,45 @@ async def test_code_without_code_command_in_path(
             )
 
 
-@pytest.fixture(scope="session")
-def persistent_job_name(job_name: str) -> str | None:
-    """Name of a job that should be used for tests and not be cancelled when exiting."""
-    return job_name + "_persistent"
-
-
 @pytest_asyncio.fixture(scope="session")
 async def existing_job(
     cluster: str,
     login_node_v2: RemoteV2,
     allocation_flags: list[str],
     job_name: str,
-    persistent_job_name: str,
 ) -> ComputeNode:
     """Gets a compute node connecting to a running job on the cluster.
 
-    This avoids making an allocation if possible, by reusing an already-running job
-    with the name `persistent_job_name` or `job_name`, or any running job if found.
-
-    This will try to use either persistent or temporary jobs (small jobs that are used
-    across test runs, or jobs that are spawned just for a single test run) to avoid
-    making a new allocation on the cluster.
+    This avoids making an allocation if possible, by reusing an already-running job with
+    the name `job_name` if it exists.
     """
     if cluster == "localhost":
         pytest.skip(
             "This test doesn't yet work with the slurm cluster spun up in the GitHub CI."
         )
-    # Try to find a dedicated test job, then a test job from this current test run, then
-    # any running job.
-    for job_name in [persistent_job_name, job_name, None]:
-        existing_test_jobs_on_cluster = await get_queued_milatools_job_ids(
-            login_node_v2, job_name=job_name
-        )
-        # todo: filter to use only the ones that are expected to be up for a little while
-        # longer (e.g. 2-3 minutes)
-        for job_id in existing_test_jobs_on_cluster:
+
+    existing_test_jobs_on_cluster = await get_queued_milatools_job_ids(
+        login_node_v2, job_name=job_name
+    )
+    # todo: filter to use only the ones that are expected to be up for a little while
+    # longer (e.g. 2-3 minutes)
+    for job_id in existing_test_jobs_on_cluster:
+        try:
+            # Note: Connecting to a compute node runs a command with `srun`, so it will
+            # raise an error if the job is no longer running.
             compute_node = await ComputeNode.connect(login_node_v2, job_id)
+        except Exception as exc:
+            logger.debug(f"Unable to reuse job {job_id}: {exc}")
+        else:
             logger.info(
                 f"Reusing existing test job with name {job_name} on the cluster: {job_id}"
             )
             return compute_node
     logger.info(
-        "Unable to find existing test jobs on the cluster. Allocating a new one that "
-        "will persist after tests are finished."
+        "Unable to find existing test jobs on the cluster. Allocating a new one."
     )
-    compute_node = await sbatch(
-        login_node_v2, sbatch_flags=allocation_flags, job_name=persistent_job_name
+    compute_node = await salloc(
+        login_node_v2, salloc_flags=allocation_flags, job_name=job_name
     )
     return compute_node
 
