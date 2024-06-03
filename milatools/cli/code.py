@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 from logging import getLogger as get_logger
+from pathlib import PurePosixPath
 from typing import Awaitable
 
 from milatools.cli import console
@@ -50,10 +51,22 @@ async def code(
     # Connect to the cluster's login node.
     login_node = await RemoteV2.connect(cluster)
 
+    relative_path: PurePosixPath | None = None
+    # Get $HOME because we have to give the full path to the folder to the code command.
+    home = PurePosixPath(
+        await login_node.get_output_async("echo $HOME", display=False, hide=True)
+    )
     if not path.startswith("/"):
-        # Get $HOME because we have to give the full path to code
-        home = await login_node.get_output_async("echo $HOME", display=False, hide=True)
-        path = home if path == "." else f"{home}/{path}"
+        relative_path = PurePosixPath(path)
+        path = str(home if path == "." else home / path)
+    elif (_path := PurePosixPath(path)).is_relative_to(home):
+        relative_path = _path.relative_to(home)
+        console.log(
+            f"Hint: you can use a path relative to your $HOME instead of an absolute path.\n"
+            f"For example, `mila code {path}` is the same as `mila code {relative_path}`.",
+            highlight=True,
+            markup=True,
+        )
 
     try:
         await check_disk_quota(login_node)
@@ -155,7 +168,7 @@ async def code(
     console.print("This allocation is persistent and is still active.")
     console.print("To reconnect to this job, run the following:")
     console.print(
-        f"  mila code {path} "
+        f"  mila code {relative_path or path} "
         + (f"--cluster {cluster} " if cluster != "mila" else "")
         + f"--job {compute_node.job_id}",
         style="bold",
