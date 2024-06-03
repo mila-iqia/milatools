@@ -187,6 +187,10 @@ async def test_code(
                 .replace(node_hostname, "COMPUTE_NODE")
                 .replace(home, "$HOME")
                 .replace(
+                    "salloc: Pending job allocation JOB_ID",
+                    "salloc: Granted job allocation JOB_ID",
+                )
+                .replace(
                     f"--account={slurm_account_on_cluster}", "--account=SLURM_ACCOUNT"
                 )
             )
@@ -281,6 +285,8 @@ def doesnt_create_new_jobs_fixture(capsys: pytest.CaptureFixture):
     out, err = capsys.readouterr()
     assert "Submitted batch job" not in out
     assert "Submitted batch job" not in err
+    assert "salloc: Pending job allocation" not in out
+    assert "salloc: Pending job allocation" not in err
     assert "salloc: Granted job allocation" not in out
     assert "salloc: Granted job allocation" not in err
 
