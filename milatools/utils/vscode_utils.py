@@ -9,7 +9,7 @@ import sys
 import textwrap
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Sequence
 
 from milatools.cli.utils import (
     CommandNotFoundError,
@@ -98,20 +98,16 @@ async def sync_vscode_extensions(
 
     source_extensions = await _get_vscode_extensions(source)
 
-    task_hostnames: list[str] = []
     tasks: list[AsyncTaskFn[list[str]]] = []
     task_descriptions: list[str] = []
 
-    # Connect to the remotes in parallel.
-    dest_runners_and_hostnames = await asyncio.gather(
-        *(_get_runner_and_hostname(dest) for dest in destinations)
-    )
-    for dest_runner, dest_hostname in dest_runners_and_hostnames:
-        task_hostnames.append(dest_hostname)
+    dest_hostnames = [
+        dest if isinstance(dest, str) else dest.hostname for dest in destinations
+    ]
+    for dest_runner, dest_hostname in zip(destinations, dest_hostnames):
         tasks.append(
             functools.partial(
                 _install_vscode_extensions_task_function,
-                dest_hostname=dest_hostname,
                 source_extensions=source_extensions,
                 remote=dest_runner,
                 source_name=source.hostname,
@@ -124,7 +120,7 @@ async def sync_vscode_extensions(
         task_descriptions=task_descriptions,
         overall_progress_task_description="[green]Syncing vscode extensions:",
     )
-    return {hostname: result for hostname, result in zip(task_hostnames, results)}
+    return {hostname: result for hostname, result in zip(dest_hostnames, results)}
 
 
 def _remove_source_from_destinations(
@@ -141,18 +137,6 @@ def _remove_source_from_destinations(
     if len(set(dest_hostnames)) != len(dest_hostnames):
         raise ValueError(f"{dest_hostnames=} contains duplicate hostnames!")
     return destinations
-
-
-async def _get_runner_and_hostname(
-    dest_remote: str | LocalV2 | RemoteV2,
-) -> tuple[LocalV2 | RemoteV2, str]:
-    if isinstance(dest_remote, str):
-        if dest_remote == "localhost":
-            return LocalV2(), dest_remote
-        dest_hostname = dest_remote
-        dest_remote = await RemoteV2.connect(dest_hostname)
-        return dest_remote, dest_hostname
-    return dest_remote, dest_remote.hostname
 
 
 async def _get_vscode_extensions(
@@ -173,9 +157,8 @@ async def _get_vscode_extensions(
 
 async def _install_vscode_extensions_task_function(
     report_progress: ReportProgressFn,
-    dest_hostname: str | Literal["localhost"],
     source_extensions: dict[str, str],
-    remote: RemoteV2 | LocalV2,
+    remote: str | RemoteV2 | LocalV2,
     source_name: str,
     verbose: bool = False,
 ) -> list[str]:
@@ -199,21 +182,22 @@ async def _install_vscode_extensions_task_function(
         info = textwrap.shorten(status, 50, placeholder="...")
         report_progress(progress=progress, total=total, info=info)
 
-    if not remote:
-        if dest_hostname == "localhost":
+    dest_hostname = remote if isinstance(remote, str) else remote.hostname
+
+    if isinstance(remote, str):
+        if remote == "localhost":
             remote = LocalV2()
         else:
             _update_progress(0, "Connecting...")
-            remote = await RemoteV2.connect(dest_hostname)
+            remote = await RemoteV2.connect(remote)
 
     if isinstance(remote, LocalV2):
-        assert dest_hostname == "localhost"
         code_server_executable = _get_local_vscode_executable_path()
+        _update_progress(0, status="fetching installed extensions...")
         extensions_on_dest = await _get_vscode_extensions_dict(
             remote, code_server_executable
         )
     else:
-        dest_hostname = remote.hostname
         remote_vscode_server_dir = "~/.vscode-server"
         _update_progress(0, f"Looking for code-server in {remote_vscode_server_dir}")
         code_server_executable = await _find_code_server_executable(

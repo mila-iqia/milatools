@@ -140,7 +140,7 @@ async def run_async_tasks_with_progress_bar(
         # NOTE: Could set visible=false so we don't have a lot of bars all at once.
         task_id = progress.add_task(
             description=task_description,
-            visible=True,
+            visible=False,
             start=False,
         )
         report_progress_fn = functools.partial(
