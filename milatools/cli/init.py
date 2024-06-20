@@ -9,21 +9,24 @@ import subprocess
 import sys
 import warnings
 from logging import getLogger as get_logger
-from pathlib import Path
+from pathlib import Path, PosixPath
 from typing import Any
 
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
+from paramiko.config import SSHConfig as SSHConfigReader
 
-from milatools.utils.remote_v2 import SSH_CONFIG_FILE
-
-from ..utils.local_v1 import LocalV1, check_passwordless, display
-from ..utils.remote_v1 import RemoteV1
-from ..utils.vscode_utils import (
+from milatools.cli import console
+from milatools.cli.utils import SSHConfig as SSHConfigWriter
+from milatools.cli.utils import T, running_inside_WSL, yn
+from milatools.utils.local_v1 import display
+from milatools.utils.local_v2 import LocalV2
+from milatools.utils.remote_v1 import RemoteV1
+from milatools.utils.remote_v2 import control_socket_is_running, get_controlpath_for
+from milatools.utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
-from .utils import SSHConfig, T, running_inside_WSL, yn
 
 logger = get_logger(__name__)
 
@@ -68,8 +71,8 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
         # cannot share gpus
         "ProxyCommand": (
-            'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
-            'mila-cpu --mem=8G"'
+            "ssh mila "
+            '"/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"'
         ),
         "RemoteCommand": (
             "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu"
@@ -112,9 +115,37 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
 }
 
 
+def init():
+    """Set up your configuration and credentials."""
+
+    #############################
+    # Step 1: SSH Configuration #
+    #############################
+
+    print("Checking ssh config")
+    ssh_config_path = Path("~/.ssh/config").expanduser()
+
+    setup_ssh_config(ssh_config_path=ssh_config_path)
+
+    # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
+    # ~/.ssh/config to the Windows ssh directory (taking care to remove the
+    # ControlMaster-related entries) so that the user doesn't need to install Python on
+    # the Windows side.
+    if running_inside_WSL():
+        assert isinstance(ssh_config_path, PosixPath)  # we're running in linux (WSL).
+        setup_windows_ssh_config_from_wsl(linux_ssh_config_path=ssh_config_path)
+
+    success = setup_passwordless_ssh_access(ssh_config_path)
+    if not success:
+        exit()
+    setup_keys_on_login_node()
+    setup_vscode_settings()
+    print_welcome_message()
+
+
 def setup_ssh_config(
     ssh_config_path: str | Path = "~/.ssh/config",
-) -> SSHConfig:
+) -> SSHConfigReader:
     """Interactively sets up some useful entries in the ~/.ssh/config file on the local
     machine.
 
@@ -134,14 +165,18 @@ def setup_ssh_config(
     """
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
-    ssh_config = SSHConfig(ssh_config_path)
+
+    ssh_config = SSHConfigReader.from_path(str(ssh_config_path))
+    ssh_config_writer = SSHConfigWriter(ssh_config_path)
+
     mila_username: str = _get_mila_username(ssh_config)
     drac_username: str | None = _get_drac_username(ssh_config)
-    orig_config = ssh_config.cfg.config()
+
+    orig_config = ssh_config_writer.cfg.config()
 
     for hostname, entry in MILA_ENTRIES.copy().items():
         entry.update(User=mila_username)
-        _add_ssh_entry(ssh_config, hostname, entry)
+        _add_ssh_entry(ssh_config_writer, hostname, entry)
         _make_controlpath_dir(entry)
 
     if drac_username:
@@ -150,31 +185,31 @@ def setup_ssh_config(
         )
         for hostname, entry in DRAC_ENTRIES.copy().items():
             entry.update(User=drac_username)
-            _add_ssh_entry(ssh_config, hostname, entry)
+            _add_ssh_entry(ssh_config_writer, hostname, entry)
             _make_controlpath_dir(entry)
 
     # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
     old_cnode_pattern = "*.server.mila.quebec"
 
-    if old_cnode_pattern in ssh_config.hosts():
+    if old_cnode_pattern in ssh_config_writer.hosts():
         logger.info(
             f"The '{old_cnode_pattern}' entry in ~/.ssh/config is too general and "
             "should exclude login.server.mila.quebec. Fixing this."
         )
-        ssh_config.remove(old_cnode_pattern)
+        ssh_config_writer.remove(old_cnode_pattern)
 
-    new_config = ssh_config.cfg.config()
+    new_config = ssh_config_writer.cfg.config()
     if orig_config == new_config:
         print("Did not change ssh config")
-    elif not _confirm_changes(ssh_config, previous=orig_config):
+    elif not _confirm_changes(ssh_config_writer, previous=orig_config):
         exit("Did not change ssh config")
     else:
-        ssh_config.save()
+        ssh_config_writer.save()
         print(f"Wrote {ssh_config_path}")
     return ssh_config
 
 
-def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
+def setup_windows_ssh_config_from_wsl(linux_ssh_config_path: PosixPath):
     """Setup the Windows SSH configuration and public key from within WSL.
 
     This copies over the entries from the linux ssh configuration file, except for the
@@ -186,6 +221,8 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     This makes it so the user doesn't need to install Python/Anaconda on the Windows
     side in order to use `mila code` from within WSL.
     """
+    linux_ssh_config = SSHConfigWriter(linux_ssh_config_path)
+
     assert running_inside_WSL()
     # NOTE: This also assumes that a public/private key pair has already been generated
     # at ~/.ssh/id_rsa.pub and ~/.ssh/id_rsa.
@@ -193,7 +230,7 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     windows_ssh_config_path = windows_home / ".ssh/config"
     windows_ssh_config_path = _setup_ssh_config_file(windows_ssh_config_path)
 
-    windows_ssh_config = SSHConfig(windows_ssh_config_path)
+    windows_ssh_config = SSHConfigWriter(windows_ssh_config_path)
 
     initial_windows_config_contents = windows_ssh_config.cfg.config()
     _copy_valid_ssh_entries_to_windows_ssh_config_file(
@@ -228,7 +265,7 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
         _copy_if_needed(linux_key_file, windows_key_file)
 
 
-def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
+def setup_passwordless_ssh_access(ssh_config_path: Path) -> bool:
     """Sets up passwordless ssh access to the Mila and optionally also to DRAC.
 
     Sets up ssh connection to the DRAC clusters if they are present in the SSH config
@@ -236,37 +273,26 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
 
     Returns whether the operation completed successfully or not.
     """
-    print("Checking passwordless authentication")
+    print("Setting up passwordless SSH access.")
 
-    here = LocalV1()
-    sshdir = Path.home() / ".ssh"
+    ssh_config = SSHConfigReader.from_path(str(ssh_config_path))
 
-    # Check if there is a public key file in ~/.ssh
-    if not list(sshdir.glob("id*.pub")):
-        if yn("You have no public keys. Generate one?"):
-            # Run ssh-keygen with the given location and no passphrase.
-            ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
-            create_ssh_keypair(ssh_private_key_path, here)
-        else:
-            print("No public keys.")
-            return False
+    # TODO: Generate SSH keys with ssh-keygen (not setting the passphrase so users can choose to use a passphrase or not).
+    setup_passwordless_ssh_access_to_cluster("mila", ssh_config_path)
 
-    # TODO: This uses the public key set in the SSH config file, which may (or may not)
-    # be the random id*.pub file that was just checked for above.
-    success = setup_passwordless_ssh_access_to_cluster("mila")
-    if not success:
-        return False
-    setup_keys_on_login_node("mila")
+    hosts_in_ssh_config = [
+        hostname
+        for hostname in ssh_config.get_hostnames()
+        if not any(c in hostname for c in "!*?")
+    ]
 
-    drac_clusters_in_ssh_config: list[str] = []
-    hosts_in_config = ssh_config.hosts()
-    for cluster in DRAC_CLUSTERS:
-        if any(cluster in hostname for hostname in hosts_in_config):
-            drac_clusters_in_ssh_config.append(cluster)
+    drac_clusters_in_ssh_config: list[str] = list(
+        set(DRAC_CLUSTERS).intersection(hosts_in_ssh_config)
+    )
 
     if not drac_clusters_in_ssh_config:
         logger.debug(
-            f"There are no DRAC clusters in the SSH config at {ssh_config.path}."
+            f"There are no DRAC clusters in the SSH config at {ssh_config_path}."
         )
         return True
 
@@ -279,14 +305,32 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
     )
     for drac_cluster in drac_clusters_in_ssh_config:
-        success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
+        success = setup_passwordless_ssh_access_to_cluster(
+            drac_cluster, ssh_config_path
+        )
         if not success:
             return False
         setup_keys_on_login_node(drac_cluster)
     return True
 
 
-def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
+def _get_private_key_path_for_hostname(
+    hostname: str, ssh_config_path: Path
+) -> Path | None:
+    config = SSHConfigReader.from_path(str(ssh_config_path))
+    identity_file = config.lookup(hostname).get("identityfile")
+    if not identity_file:
+        return None
+    # Seems to be a list for some reason?
+    if isinstance(identity_file, list):
+        assert identity_file
+        identity_file = identity_file[0]
+    return Path(identity_file).expanduser()
+
+
+def setup_passwordless_ssh_access_to_cluster(
+    cluster: str, ssh_config_path: Path
+) -> bool:
     """Sets up passwordless SSH access to the given hostname.
 
     On Mac/Linux, uses `ssh-copy-id`. Performs the steps of ssh-copy-id manually on
@@ -294,21 +338,31 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
 
     Returns whether the operation completed successfully or not.
     """
-    here = LocalV1()
+    here = LocalV2()
     # Check that it is possible to connect without using a password.
     print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
-    # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
-    # the default.
+    ssh_private_key_path = _get_private_key_path_for_hostname(cluster, ssh_config_path)
+    # TODO: Simplify the code here by assuming that users just accepted the changes to
+    # their SSH config proposed by the first part of `mila init`.
+    # - Instead of making the code complicated with lots of corner cases, just raise an
+    #   error if the SSH config doesn't match what we expect to see after `mila init`.
+    if ssh_private_key_path is None:
+        # TODO: What to do if there isn't a private key set in the SSH config, but there
+        # is already a private key in the SSH dir? (it would be used by ssh).
+        console.log(
+            f"There is no private key set to be used for the {cluster} cluster."
+        )
+        ssh_private_key_path = Path("~/.ssh/id_rsa").expanduser()
 
-    from paramiko.config import SSHConfig
+    if not ssh_private_key_path.exists():
+        console.log(
+            f"The ssh key to use for host {cluster} does not exist at {ssh_private_key_path}. Creating it now."
+        )
+        create_ssh_keypair(ssh_private_key_path)
+    config_writer = SSHConfigWriter(ssh_config_path)
 
-    config = SSHConfig.from_path(str(SSH_CONFIG_FILE))
-    identity_file = config.lookup(cluster).get("identityfile", "~/.ssh/id_rsa")
-    # Seems to be a list for some reason?
-    if isinstance(identity_file, list):
-        assert identity_file
-        identity_file = identity_file[0]
-    ssh_private_key_path = Path(identity_file).expanduser()
+    config_writer.set(cluster, IdentityFile=str(ssh_private_key_path))
+
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
 
@@ -345,17 +399,21 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
             subprocess.run(command, check=True, text=False, stdin=f)
     else:
         here.run(
-            "ssh-copy-id",
-            "-i",
-            str(ssh_private_key_path),
-            "-o",
-            "StrictHostKeyChecking=no",
-            cluster,
-            check=True,
+            (
+                "ssh-copy-id",
+                "-i",
+                str(ssh_private_key_path),
+                "-o",
+                "StrictHostKeyChecking=no",
+                cluster,
+            ),
         )
 
     # double-check that this worked.
-    if not check_passwordless(cluster):
+    if not control_socket_is_running(
+        cluster,
+        control_path=get_controlpath_for(cluster, ssh_config_path=ssh_config_path),
+    ):
         print(f"'ssh-copy-id {cluster}' appears to have failed!")
         return False
     return True
@@ -443,7 +501,7 @@ def get_windows_home_path_in_wsl() -> Path:
 
 def create_ssh_keypair(
     ssh_private_key_path: Path,
-    local: LocalV1 | None = None,
+    local: LocalV2 | None = None,
     passphrase: str | None = "",
 ) -> None:
     """Creates a public/private key pair at the given path using ssh-keygen.
@@ -452,18 +510,17 @@ def create_ssh_keypair(
     Otherwise, if passphrase is an empty string, no passphrase will be used (default).
     If a string is passed, it is passed to ssh-keygen and used as the passphrase.
     """
-    local = local or LocalV1()
-    command = [
+    local = local or LocalV2()
+    command = (
         "ssh-keygen",
         "-f",
         str(ssh_private_key_path.expanduser()),
         "-t",
-        "rsa",
-    ]
+        "rsa",  # note: Could also let the user choose the type of encryption..
+    )
     if passphrase is not None:
-        command.extend(["-N", passphrase])
-    display(command)
-    subprocess.run(command, check=True)
+        command += ("-N", passphrase)
+    local.run(command, display=True)
 
 
 def has_passphrase(ssh_private_key_path: Path) -> bool:
@@ -613,30 +670,18 @@ def ask_to_confirm_changes(before: str, after: str, path: str | Path) -> bool:
     return yn("\nIs this OK?")
 
 
-def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
+def _confirm_changes(ssh_config: SSHConfigWriter, previous: str) -> bool:
     before = previous + "\n"
     after = ssh_config.cfg.config() + "\n"
     return ask_to_confirm_changes(before, after, ssh_config.path)
 
 
-def _get_mila_username(ssh_config: SSHConfig) -> str:
+def _get_mila_username(ssh_config: SSHConfigReader) -> str:
     # Check for a mila entry in ssh config
     # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila'
     # entry.
     # NOTE: ssh_config.host(entry) returns an empty dictionary if there is no entry.
-    username: str | None = None
-    hosts_with_mila_in_name_and_a_user_entry = [
-        host
-        for host in ssh_config.hosts()
-        if "mila" in host.split() and "user" in ssh_config.host(host)
-    ]
-    # Note: If there are none, or more than one, then we'll ask the user for their
-    # username, just to be sure.
-    if len(hosts_with_mila_in_name_and_a_user_entry) == 1:
-        username = ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get(
-            "user"
-        )
-
+    username: str | None = ssh_config.lookup("mila").get("user")
     while not username:
         username = qn.text(
             "What's your username on the mila cluster?\n",
@@ -645,36 +690,32 @@ def _get_mila_username(ssh_config: SSHConfig) -> str:
     return username.strip()
 
 
-def _get_drac_username(ssh_config: SSHConfig) -> str | None:
+def _get_drac_username(ssh_config: SSHConfigReader) -> str | None:
     """Retrieve or ask the user for their username on the ComputeCanada/DRAC
     clusters."""
     # Check for one of the DRAC entries in ssh config
-    username: str | None = None
-    hosts_with_cluster_in_name_and_a_user_entry = [
-        host
-        for host in ssh_config.hosts()
-        if any(
-            cc_cluster in host.split() or f"!{cc_cluster}" in host.split()
-            for cc_cluster in DRAC_CLUSTERS
-        )
-        and "user" in ssh_config.host(host)
-    ]
-    users_from_drac_config_entries = set(
-        ssh_config.host(host)["user"]
-        for host in hosts_with_cluster_in_name_and_a_user_entry
+    users_from_drac_config_entries: set[str] = set(
+        drac_cluster_username
+        for drac_cluster in DRAC_CLUSTERS
+        if (drac_cluster_username := ssh_config.lookup(drac_cluster).get("user"))
+        is not None
     )
+    if len(users_from_drac_config_entries) == 1:
+        return users_from_drac_config_entries.pop().strip()
+
+    username: str | None = None
     # Note: If there are none, or more than one, then we'll ask the user for their
     # username, just to be sure.
-    if len(users_from_drac_config_entries) == 1:
-        username = users_from_drac_config_entries.pop()
-    elif yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
-        while not username:
-            username = qn.text(
+    if yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
+        while not (
+            username := qn.text(
                 "What's your username on the CC/DRAC clusters?\n",
                 validate=functools.partial(
                     _is_valid_username, cluster_name="ComputeCanada/DRAC clusters"
                 ),
             ).unsafe_ask()
+        ):
+            pass
     return username.strip() if username else None
 
 
@@ -693,7 +734,7 @@ def _is_valid_username(text: str, cluster_name: str = "mila cluster") -> bool | 
 
 
 def _add_ssh_entry(
-    ssh_config: SSHConfig,
+    ssh_config: SSHConfigWriter,
     host: str,
     entry: dict[str, str | int],
     *,
@@ -728,7 +769,7 @@ def _add_ssh_entry(
 
 
 def _copy_valid_ssh_entries_to_windows_ssh_config_file(
-    linux_ssh_config: SSHConfig, windows_ssh_config: SSHConfig
+    linux_ssh_config: SSHConfigWriter, windows_ssh_config: SSHConfigWriter
 ):
     unsupported_keys_lowercase = set(k.lower() for k in WINDOWS_UNSUPPORTED_KEYS)
 
