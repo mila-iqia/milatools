@@ -10,6 +10,7 @@ from prompt_toolkit.input.defaults import create_pipe_input
 from milatools.cli.utils import (
     get_fully_qualified_name,
     get_hostname_to_use_for_compute_node,
+    internet_on_compute_nodes,
     make_process,
     qn,
     randname,
@@ -114,3 +115,28 @@ def test_make_process():
     # run the syncing of vscode extensions in the background during `mila code`.
     assert not process.daemon
     assert not process.is_alive()
+
+
+@pytest.mark.parametrize(
+    ("cluster", "expected"),
+    [
+        ("mila", True),
+        ("narval", False),
+        ("beluga", False),
+        ("graham", False),
+        ("cedar", True),
+    ],
+)
+def test_internet_on_compute_nodes(cluster: str, expected: bool):
+    assert internet_on_compute_nodes(cluster) == expected
+
+
+@pytest.mark.parametrize(
+    "cluster",
+    [
+        "unknown_cluster",
+    ],
+)
+def test_internet_on_compute_nodes_unknown_cluster(cluster: str):
+    with pytest.warns(UserWarning, match="Unknown cluster"):
+        assert not internet_on_compute_nodes(cluster)

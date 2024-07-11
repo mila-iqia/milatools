@@ -1,0 +1,18 @@
+Checking disk quota on $HOME...
+Disk usage: X / LIMIT GiB and X / LIMIT files
+Installing VSCode extensions that are on the local machine on beluga.
+(beluga) $ cd $SCRATCH && sbatch --parsable --wckey=milatools_test --account=SLURM_ACCOUNT --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --time=0:05:00 --oversubscribe --job-name=mila-code --wrap
+'srun sleep 7d'
+JOB_ID
+
+✓ Syncing vscode extensions:  N/N ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 H:MM:SS
+✓ localhost -> beluga - Done. N/N ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00 H:MM:SS
+(localhost) $ echo --new-window --wait --remote ssh-remote+COMPUTE_NODE $HOME/bob
+--new-window --wait --remote ssh-remote+COMPUTE_NODE $HOME/bob
+
+The editor was closed. Reopen it with <Enter> or terminate the process with <Ctrl+C> (maybe twice).
+This allocation is persistent and is still active.
+To reconnect to this job, run the following:
+  mila code bob --cluster beluga --job JOB_ID
+To kill this allocation:
+  ssh beluga scancel JOB_ID

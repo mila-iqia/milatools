@@ -29,21 +29,11 @@ from urllib.parse import urlencode
 
 import questionary as qn
 import rich.logging
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, deprecated
 
 from milatools.cli import console
-from milatools.utils.local_v1 import LocalV1
-from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
-from milatools.utils.remote_v2 import RemoteV2
-from milatools.utils.vscode_utils import (
-    get_code_command,
-    # install_local_vscode_extensions_on_remote,
-    sync_vscode_extensions,
-    sync_vscode_extensions_with_hostnames,
-)
-
-from ..__version__ import __version__
-from .init_command import (
+from milatools.cli.code import code
+from milatools.cli.init_command import (
     print_welcome_message,
     setup_keys_on_login_node,
     setup_passwordless_ssh_access,
@@ -51,11 +41,10 @@ from .init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from .profile import ensure_program, setup_profile
-from .utils import (
+from milatools.cli.profile import ensure_program, setup_profile
+from milatools.cli.utils import (
     CLUSTERS,
     AllocationFlagsAction,
-    Cluster,
     CommandNotFoundError,
     MilatoolsUserError,
     SSHConnectionError,
@@ -64,15 +53,24 @@ from .utils import (
     currently_in_a_test,
     get_fully_qualified_name,
     get_hostname_to_use_for_compute_node,
-    make_process,
-    no_internet_on_compute_nodes,
     randname,
     running_inside_WSL,
     with_control_file,
 )
+from milatools.utils.disk_quota import check_disk_quota_v1
+from milatools.utils.local_v1 import LocalV1
+from milatools.utils.local_v2 import LocalV2
+from milatools.utils.remote_v1 import (
+    NodeNameAndJobidDict,
+    RemoteV1,
+    SlurmRemote,
+)
+from milatools.utils.vscode_utils import get_code_command, sync_vscode_extensions
+
+from ..__version__ import __version__
 
 if typing.TYPE_CHECKING:
-    from typing_extensions import Unpack
+    from typing_extensions import Unpack  # pragma: no cover
 
 
 logger = get_logger(__name__)
@@ -89,6 +87,8 @@ def main():
 
     try:
         mila()
+    except KeyboardInterrupt:
+        console.print("Exited by user.")
     except MilatoolsUserError as exc:
         # These are user errors and should not be reported
         print("ERROR:", exc, file=sys.stderr)
@@ -132,9 +132,18 @@ def main():
 def mila():
     parser = ArgumentParser(prog="mila", description=__doc__, add_help=True)
     add_arguments(parser)
+
     verbose, function, args_dict = parse_args(parser)
     setup_logging(verbose)
-    return function(**args_dict)
+
+    if inspect.iscoroutinefunction(function):
+        try:
+            return asyncio.run(function(**args_dict))
+        except KeyboardInterrupt:
+            console.log("Terminated by user.")
+        return
+    else:
+        return function(**args_dict)
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -249,9 +258,13 @@ def add_arguments(parser: argparse.ArgumentParser):
         help="Node to connect to",
         metavar="NODE",
     )
+
     _add_allocation_options(code_parser)
 
-    code_parser.set_defaults(function=code)
+    if sys.platform == "win32":
+        code_parser.set_defaults(function=code_v1)
+    else:
+        code_parser.set_defaults(function=code)
 
     # ----- mila sync vscode-extensions ------
 
@@ -290,7 +303,7 @@ def add_arguments(parser: argparse.ArgumentParser):
             "extensions locally. Defaults to all the available SLURM clusters."
         ),
     )
-    sync_vscode_parser.set_defaults(function=sync_vscode_extensions_with_hostnames)
+    sync_vscode_parser.set_defaults(function=sync_vscode_extensions)
 
     # ----- mila serve ------
 
@@ -440,13 +453,6 @@ def parse_args(parser: argparse.ArgumentParser) -> tuple[int, Callable, dict[str
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
 
-    if inspect.iscoroutinefunction(function):
-        try:
-            return asyncio.run(function(**args_dict))
-        except KeyboardInterrupt:
-            console.log("Terminated by user.")
-        return
-
     assert callable(function)
     return verbose, function, args_dict
 
@@ -556,14 +562,20 @@ def forward(
         local_proc.kill()
 
 
-def code(
+@deprecated(
+    "Support for the `mila code` command is now deprecated on Windows machines, as it "
+    "does not support ssh keys with passphrases or clusters where 2FA is enabled. "
+    "Please consider switching to the Windows Subsystem for Linux (WSL) to run "
+    "`mila code`."
+)
+def code_v1(
     path: str,
     command: str,
     persist: bool,
     job: int | None,
     node: str | None,
     alloc: list[str],
-    cluster: Cluster = "mila",
+    cluster: str = "mila",
 ):
     """Open a remote VSCode session on a compute node.
 
@@ -576,7 +588,13 @@ def code(
         node: Node to connect to
         alloc: Extra options to pass to slurm
     """
-    here = LocalV1()
+    if command is None:
+        command = get_code_command()
+    command_path = shutil.which(command)
+    if not command_path:
+        raise CommandNotFoundError(command)
+
+    here = LocalV2()
     remote = RemoteV1(cluster)
 
     if cluster != "mila" and job is None and node is None:
@@ -590,45 +608,12 @@ def code(
                 f"--account=your-account-here"
             )
 
-    if command is None:
-        command = get_code_command()
-
     try:
-        check_disk_quota(remote)
+        check_disk_quota_v1(remote)
     except MilatoolsUserError:
         raise
     except Exception as exc:
         logger.warning(f"Unable to check the disk-quota on the cluster: {exc}")
-
-    if sys.platform == "win32":
-        print(
-            "Syncing vscode extensions in the background isn't supported on "
-            "Windows. Skipping."
-        )
-    elif no_internet_on_compute_nodes(cluster):
-        # Sync the VsCode extensions from the local machine over to the target cluster.
-        # TODO: Make this happen in the background (without overwriting the output).
-        run_in_the_background = False
-        print(
-            console.log(
-                f"[cyan]Installing VSCode extensions that are on the local machine on "
-                f"{cluster}" + (" in the background." if run_in_the_background else ".")
-            )
-        )
-        if run_in_the_background:
-            copy_vscode_extensions_process = make_process(
-                sync_vscode_extensions_with_hostnames,
-                # todo: use the mila cluster as the source for vscode extensions? Or
-                # `localhost`?
-                source="localhost",
-                destinations=[cluster],
-            )
-            copy_vscode_extensions_process.start()
-        else:
-            sync_vscode_extensions(
-                LocalV1(),
-                [cluster],
-            )
 
     if node is None:
         cnode = _find_allocation(
@@ -648,51 +633,45 @@ def code(
     else:
         node_name = node
         proc = None
-        data = None
+        jobs_on_that_node = remote.get_output(
+            f"squeue --me --nodelist {node_name} -ho %A", display=True
+        ).splitlines()
+        if not jobs_on_that_node:
+            raise MilatoolsUserError(
+                f"No jobs are currently running on node {node_name}!"
+            )
+        job_str = jobs_on_that_node[0]
+        job = int(job_str)
+        data: NodeNameAndJobidDict = {"node_name": node, "jobid": job_str}
 
     if not path.startswith("/"):
         # Get $HOME because we have to give the full path to code
         home = remote.home()
         path = home if path == "." else f"{home}/{path}"
 
-    command_path = shutil.which(command)
-    if not command_path:
-        raise CommandNotFoundError(command)
-
     # NOTE: Since we have the config entries for the DRAC compute nodes, there is no
     # need to use the fully qualified hostname here.
     if cluster == "mila":
         node_name = get_hostname_to_use_for_compute_node(node_name)
 
-    # Try to detect if this is being run from within the Windows Subsystem for Linux.
-    # If so, then we run `code` through a powershell.exe command to open VSCode without
-    # issues.
-    inside_WSL = running_inside_WSL()
+    # Note: We can't possibly be running inside the WSL (otherwise code(v2) would be used).
     try:
         while True:
-            if inside_WSL:
-                here.run(
-                    "powershell.exe",
-                    "code",
-                    "-nw",
-                    "--remote",
-                    f"ssh-remote+{node_name}",
-                    path,
-                )
-            else:
-                here.run(
+            here.run(
+                (
                     command_path,
                     "-nw",
                     "--remote",
                     f"ssh-remote+{node_name}",
                     path,
-                )
+                ),
+            )
             print(
                 "The editor was closed. Reopen it with <Enter>"
                 " or terminate the process with <Ctrl+C>"
             )
             if currently_in_a_test():
-                break
+                raise KeyboardInterrupt
             input()
 
     except KeyboardInterrupt:
@@ -704,17 +683,22 @@ def code(
     if persist:
         print("This allocation is persistent and is still active.")
         print("To reconnect to this node:")
-        print(
-            T.bold(
-                f"  mila code {path} "
-                + (f"--cluster={cluster} " if cluster != "mila" else "")
-                + f"--node {node_name}"
-            )
+        console.print(
+            f"  mila code {path} "
+            + (f"--cluster={cluster} " if cluster != "mila" else "")
+            + f"--node {node_name}",
+            style="bold",
         )
         print("To kill this allocation:")
         assert data is not None
-        assert "jobid" in data
-        print(T.bold(f"  ssh {cluster} scancel {data['jobid']}"))
+        if "jobid" in data:
+            console.print(f"  ssh {cluster} scancel {data['jobid']}", style="bold")
+        else:
+            assert "node_name" in data
+            console.print(
+                f"  ssh {cluster} scancel --me --nodelist {data['node_name']}",
+                style="bold",
+            )
 
 
 def connect(identifier: str, port: int | None):
@@ -1188,141 +1172,12 @@ def _standard_server(
         proc.kill()
 
 
-def _parse_lfs_quota_output(
-    lfs_quota_output: str,
-) -> tuple[tuple[float, float], tuple[int, int]]:
-    """Parses space and # of files (usage, limit) from the  output of `lfs quota`."""
-    lines = lfs_quota_output.splitlines()
-
-    header_line: str | None = None
-    header_line_index: int | None = None
-    for index, line in enumerate(lines):
-        if (
-            len(line_parts := line.strip().split()) == 9
-            and line_parts[0].lower() == "filesystem"
-        ):
-            header_line = line
-            header_line_index = index
-            break
-    assert header_line
-    assert header_line_index is not None
-
-    values_line_parts: list[str] = []
-    # The next line may overflow to two (or maybe even more?) lines if the name of the
-    # $HOME dir is too long.
-    for content_line in lines[header_line_index + 1 :]:
-        additional_values = content_line.strip().split()
-        assert len(values_line_parts) < 9
-        values_line_parts.extend(additional_values)
-        if len(values_line_parts) == 9:
-            break
-
-    assert len(values_line_parts) == 9, values_line_parts
-    (
-        _filesystem,
-        used_kbytes,
-        _quota_kbytes,
-        limit_kbytes,
-        _grace_kbytes,
-        files,
-        _quota_files,
-        limit_files,
-        _grace_files,
-    ) = values_line_parts
-
-    used_gb = int(used_kbytes.strip()) / (1024**2)
-    max_gb = int(limit_kbytes.strip()) / (1024**2)
-    used_files = int(files.strip())
-    max_files = int(limit_files.strip())
-    return (used_gb, max_gb), (used_files, max_files)
-
-
-def check_disk_quota(remote: RemoteV1 | RemoteV2) -> None:
-    cluster = remote.hostname
-
-    # NOTE: This is what the output of the command looks like on the Mila cluster:
-    #
-    # Disk quotas for usr normandf (uid 1471600598):
-    #      Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace
-    # /home/mila/n/normandf
-    #                 95747836       0 104857600       -  908722       0 1048576       -
-    # uid 1471600598 is using default block quota setting
-    # uid 1471600598 is using default file quota setting
-
-    # Need to assert this, otherwise .get_output calls .run which would spawn a job!
-    assert not isinstance(remote, SlurmRemote)
-    if not remote.get_output("which lfs", hide=True):
-        logger.debug("Cluster doesn't have the lfs command. Skipping check.")
-        return
-
-    console.log("Checking disk quota on $HOME...")
-
-    home_disk_quota_output = remote.get_output("lfs quota -u $USER $HOME", hide=True)
-    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
-        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
-        return
-
-    (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
-        home_disk_quota_output
-    )
-
-    def get_colour(used: float, max: float) -> str:
-        return "red" if used >= max else "orange" if used / max > 0.7 else "green"
-
-    disk_usage_style = get_colour(used_gb, max_gb)
-    num_files_style = get_colour(used_files, max_files)
-    from rich.text import Text
-
-    console.log(
-        "Disk usage:",
-        Text(f"{used_gb:.2f} / {max_gb:.2f} GiB", style=disk_usage_style),
-        "and",
-        Text(f"{used_files} / {max_files} files", style=num_files_style),
-        markup=False,
-    )
-    size_ratio = used_gb / max_gb
-    files_ratio = used_files / max_files
-    reason = (
-        f"{used_gb:.1f} / {max_gb} GiB"
-        if size_ratio > files_ratio
-        else f"{used_files} / {max_files} files"
-    )
-
-    freeing_up_space_instructions = (
-        "For example, temporary files (logs, checkpoints, etc.) can be moved to "
-        "$SCRATCH, while files that need to be stored for longer periods can be moved "
-        "to $ARCHIVE or to a shared project folder under /network/projects.\n"
-        "Visit https://docs.mila.quebec/Information.html#storage to learn more about "
-        "how to best make use of the different filesystems available on the cluster."
-    )
-
-    if used_gb >= max_gb or used_files >= max_files:
-        raise MilatoolsUserError(
-            T.red(
-                f"ERROR: Your disk quota on the $HOME filesystem is exceeded! "
-                f"({reason}).\n"
-                f"To fix this, login to the cluster with `ssh {cluster}` and free up "
-                f"some space, either by deleting files, or by moving them to a "
-                f"suitable filesystem.\n" + freeing_up_space_instructions
-            )
-        )
-    if max(size_ratio, files_ratio) > 0.9:
-        warning_message = (
-            f"You are getting pretty close to your disk quota on the $HOME "
-            f"filesystem: ({reason})\n"
-            "Please consider freeing up some space in your $HOME folder, either by "
-            "deleting files, or by moving them to a more suitable filesystem.\n"
-            + freeing_up_space_instructions
-        )
-        logger.warning(UserWarning(warning_message))
-
-
 def _find_allocation(
     remote: RemoteV1,
     node: str | None,
     job: int | str | None,
     alloc: list[str],
-    cluster: Cluster = "mila",
+    cluster: str = "mila",
     job_name: str = "mila-tools",
 ):
     if (node is not None) + (job is not None) + bool(alloc) > 1:
@@ -1336,8 +1191,9 @@ def _find_allocation(
 
     elif job is not None:
         node_name = remote.get_output(f"squeue --jobs {job} -ho %N")
+        node_hostname = get_hostname_to_use_for_compute_node(node_name, cluster=cluster)
         return RemoteV1(
-            node_name, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
+            node_hostname, connect_kwargs=cluster_to_connect_kwargs.get(cluster)
         )
 
     else:

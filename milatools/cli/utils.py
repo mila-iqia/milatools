@@ -86,17 +86,15 @@ def currently_in_a_test() -> bool:
     return "pytest" in sys.modules
 
 
-def no_internet_on_compute_nodes(
-    cluster: Cluster,
-) -> TypeGuard[ClusterWithoutInternetOnCNodes]:
+def internet_on_compute_nodes(cluster: str) -> TypeGuard[ClusterWithInternetOnCNodes]:
     if cluster not in CLUSTERS:
         warnings.warn(
             UserWarning(
-                f"Unknown cluster {cluster}. Assuming that compute nodes do not have "
-                f"internet access on this cluster for now."
+                f"Unknown cluster {cluster}. Assuming that compute nodes of this "
+                f"cluster do NOT have access to the internet."
             )
         )
-    return cluster not in get_args(ClusterWithInternetOnCNodes)
+    return cluster in get_args(ClusterWithInternetOnCNodes)
 
 
 def randname():

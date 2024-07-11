@@ -193,9 +193,17 @@ async def run_async(
         stdin=asyncio.subprocess.PIPE,
         shell=False,
     )
+
     if input:
         logger.debug(f"Sending {input=!r} to the subprocess' stdin.")
-    stdout, stderr = await proc.communicate(input.encode() if input else None)
+    try:
+        stdout, stderr = await proc.communicate(input.encode() if input else None)
+    except asyncio.CancelledError:
+        logger.debug(f"Got interrupted while calling {proc}.communicate({input=}).")
+        # This is a fix for ugly error trace on interrupt: https://bugs.python.org/issue43884
+        if transport := getattr(proc, "_transport", None):
+            transport.close()  # type: ignore
+        raise
 
     assert proc.returncode is not None
     if proc.returncode != 0:
@@ -208,7 +216,7 @@ async def run_async(
         logger.debug(message)
         if not warn:
             if stderr:
-                logger.error(stderr)
+                logger.error(stderr.decode())
             raise subprocess.CalledProcessError(
                 returncode=proc.returncode,
                 cmd=program_and_args,

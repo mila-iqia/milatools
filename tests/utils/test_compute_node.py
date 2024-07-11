@@ -139,6 +139,8 @@ async def test_interrupt_allocation(
             await asyncio.sleep(0.1)
         return new_job_ids
 
+    allocation_flags = allocation_flags + ["--job-name", job_name]
+
     # Check that a job allocation was indeed created.
     # NOTE: Assuming that it takes more time for the job to be allocated than it takes for
     # the job to show up in `squeue`.
