@@ -14,7 +14,7 @@ import milatools.cli.utils
 from milatools.cli.utils import running_inside_WSL
 from milatools.utils.compute_node import ComputeNode
 from milatools.utils.local_v2 import LocalV2
-from milatools.utils.remote_v2 import RemoteV2, UnsupportedPlatformError
+from milatools.utils.remote_v2 import UnsupportedPlatformError
 
 
 @pytest.fixture
@@ -50,9 +50,6 @@ def pretend_to_be_in_WSL(
 async def test_code_from_WSL(
     monkeypatch: pytest.MonkeyPatch, pretend_to_be_in_WSL: bool
 ):
-    # Don't actually connect to the cluster.
-    monkeypatch.setattr(milatools.cli.code, RemoteV2.__name__, Mock(spec=RemoteV2))
-
     # Mock the LocalV2 class so that we can inspect the call to `LocalV2.run_async`.
     mock_localv2 = Mock(spec=LocalV2)
     monkeypatch.setattr(milatools.cli.code, LocalV2.__name__, mock_localv2)
