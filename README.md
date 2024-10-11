@@ -16,6 +16,14 @@ The `mila` command is meant to be used on your local machine. Trying to run it o
 
 Requires Python >= 3.8
 
+We recommend using [`pipx`](https://github.com/pypa/pipx) in order to use `milatools` in its own isolated environment instead of alterring your default Python environment or creating and activating a new one manually.
+
+```bash
+pipx install milatools
+```
+
+_Alternatively_:
+
 ```bash
 pip install milatools
 ```
@@ -23,6 +31,8 @@ pip install milatools
 Or, for bleeding edge version:
 
 ```bash
+pipx install git+https://github.com/mila-iqia/milatools.git
+# OR
 pip install git+https://github.com/mila-iqia/milatools.git
 ```
 
