@@ -4,7 +4,6 @@ TODO: There are quite a few tests in `tests/integration/test_code.py` that could
 moved here, since some of them aren't exactly "integration" tests.
 """
 
-import sys
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -14,7 +13,6 @@ import milatools.cli.utils
 from milatools.cli.utils import running_inside_WSL
 from milatools.utils.compute_node import ComputeNode
 from milatools.utils.local_v2 import LocalV2
-from milatools.utils.remote_v2 import UnsupportedPlatformError
 
 
 @pytest.fixture
@@ -39,12 +37,6 @@ def pretend_to_be_in_WSL(
     return in_wsl
 
 
-@pytest.mark.xfail(
-    sys.platform == "win32",
-    raises=UnsupportedPlatformError,
-    reason="Uses RemoteV2, so isn't supported on Windows.",
-    strict=True,
-)
 @pytest.mark.parametrize("pretend_to_be_in_WSL", [True, False], indirect=True)
 @pytest.mark.asyncio
 async def test_code_from_WSL(
