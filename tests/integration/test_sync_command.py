@@ -19,6 +19,7 @@ from milatools.utils.vscode_utils import (
     _install_vscode_extensions_task_function,
     sync_vscode_extensions,
 )
+from tests.integration.conftest import SLURM_CLUSTER
 
 from ..cli.common import (
     requires_ssh_to_localhost,
@@ -28,6 +29,10 @@ P = ParamSpec("P")
 logger = get_logger(__name__)
 
 
+@pytest.mark.xfail(
+    SLURM_CLUSTER == "mila",
+    reason="`code-server` procs are killed on the login nodes of the Mila cluster.",
+)
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "source",
