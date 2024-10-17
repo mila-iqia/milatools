@@ -5,7 +5,7 @@ Disk usage: X / LIMIT GiB and X / LIMIT files
 JOB_ID
 
 sbatch: [00;36m--------------------------------------------------------------------------------------------------
-sbatch: # Using default long partition
+sbatch: # Using default long-cpu partition (CPU-only)
 sbatch: --------------------------------------------------------------------------------------------------[00m
 
 (localhost) $ echo --new-window --wait --remote ssh-remote+COMPUTE_NODE $HOME/bob

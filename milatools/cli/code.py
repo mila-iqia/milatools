@@ -13,6 +13,7 @@ from milatools.cli.utils import (
     MilatoolsUserError,
     currently_in_a_test,
     internet_on_compute_nodes,
+    running_inside_WSL,
 )
 from milatools.utils.compute_node import ComputeNode, salloc, sbatch
 from milatools.utils.disk_quota import check_disk_quota
@@ -193,6 +194,9 @@ async def launch_vscode_loop(code_command: str, compute_node: ComputeNode, path:
             f"ssh-remote+{compute_node.hostname}",
             path,
         )
+        if running_inside_WSL():
+            code_command_to_run = ("powershell.exe", *code_command_to_run)
+
         await LocalV2.run_async(code_command_to_run, display=True)
         # TODO: BUG: This now requires two Ctrl+C's instead of one!
         console.print(
