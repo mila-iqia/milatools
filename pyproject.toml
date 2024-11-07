@@ -9,7 +9,7 @@ repository = "https://github.com/mila-iqia/milatools"
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 blessed = "^1.18.1"
 sshconf = "^0.2.2"
 questionary = "^1.10.0"
@@ -23,9 +23,9 @@ mila = "milatools.cli.__main__:main"
 
 [tool.poetry.group.dev.dependencies]
 black = ">= 21.8b0"
-coverage = {extras = ["toml"], version = "^5.0.3"}
-fabric = {extras = ["testing"], version = "^3.2.2"}
-flake8 = {version = ">= 6.0.0", python = "^3.8.1"}
+coverage = { extras = ["toml"], version = "^5.0.3" }
+fabric = { extras = ["testing"], version = "^3.2.2" }
+flake8 = { version = ">= 6.0.0", python = "^3.8.1" }
 pytest = "^7.2.1"
 pytest-cov = "^4.1.0"
 pytest-mock = "^3.11.1"
@@ -54,7 +54,6 @@ line-length = 88
 indent-width = 4
 # Add the pyupgrade and isort options in addition to the defaults.
 select = ["E4", "E7", "E9", "F", "I", "UP"]
-
 
 
 [build-system]
