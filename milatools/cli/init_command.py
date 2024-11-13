@@ -438,13 +438,11 @@ def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
         )
         shutil.copy2(src=linux_key_file, dst=windows_key_file)
 
-
 @functools.lru_cache()
 def get_windows_home_path_in_wsl() -> Path:
     assert running_inside_WSL()
-    windows_username = subprocess.getoutput("powershell.exe '$env:HomePath'").strip()
-    windows_username = windows_username.replace('\\', '/')
-    return Path(f"/mnt/c/{windows_username}")
+    windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
+    return Path(f"/mnt/c/Users/{windows_username}")
 
 
 def create_ssh_keypair(
