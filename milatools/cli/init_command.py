@@ -427,6 +427,8 @@ def print_welcome_message():
 
 
 def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
+    print(f"Checking if {linux_key_file} exists: {linux_key_file.exists()}")
+    print(f"Checking if {windows_key_file} exists: {windows_key_file.exists()}")
     if linux_key_file.exists() and not windows_key_file.exists():
         print(
             f"Copying {linux_key_file} over to the Windows ssh folder at "
