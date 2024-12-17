@@ -449,15 +449,21 @@ def pretend_to_be_in_WSL(
     in_wsl = getattr(request, "param", True)
     _mock_running_inside_WSL = Mock(spec=running_inside_WSL, return_value=in_wsl)
     monkeypatch.setattr(
-        milatools.cli.utils,
+        milatools.cli.utils,  # defined here
         running_inside_WSL.__name__,  # type: ignore
         _mock_running_inside_WSL,
     )
-    monkeypatch.setattr(
+    # Unfortunately we have to also patch this everywhere we import it in other modules.
+    for place_that_imports_it in [
         milatools.cli.code,
-        running_inside_WSL.__name__,  # type: ignore
-        _mock_running_inside_WSL,
-    )
+        milatools.cli.init_command,
+        milatools.cli.commands,
+    ]:
+        monkeypatch.setattr(
+            place_that_imports_it,
+            running_inside_WSL.__name__,  # type: ignore
+            _mock_running_inside_WSL,
+        )
 
     return in_wsl
 

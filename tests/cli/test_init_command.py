@@ -11,7 +11,7 @@ import sys
 import textwrap
 from functools import partial
 from logging import getLogger as get_logger
-from pathlib import Path, PurePath, PurePosixPath
+from pathlib import Path, PurePosixPath
 from unittest.mock import Mock
 
 import invoke
@@ -28,7 +28,6 @@ from milatools.cli.init_command import (
     _get_drac_username,
     _get_mila_username,
     _setup_ssh_config_file,
-    copy_wsl_ssh_keys_to_windows_ssh_folder,
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
     has_passphrase,
@@ -898,8 +897,7 @@ def windows_ssh_config(
     input_pipe: PipeInput,
     monkeypatch: pytest.MonkeyPatch,
 ) -> SSHConfig:
-    """Fixture that returns the Windows ssh config after
-    `setup_windows_ssh_config_from_wsl` is run."""
+    """Returns the Windows ssh config as it would be when we create it from WSL."""
     windows_ssh_config_path = windows_home / ".ssh" / "config"
     monkeypatch.setattr(
         init_command,
@@ -927,31 +925,6 @@ def windows_ssh_config(
     assert windows_ssh_config_path.parent.stat().st_mode & 0o777 == 0o700
 
     return SSHConfig(windows_ssh_config_path)
-
-
-def test_copy_wsl_ssh_keys_to_windows_ssh_folder(
-    linux_ssh_config: SSHConfig,
-    windows_home: Path,
-    windows_ssh_config: SSHConfig,
-):
-    windows_ssh_config_path = windows_ssh_config.path
-
-    linux_ssh_key_for_mila_cluster = PurePosixPath(
-        linux_ssh_config.cfg.host("mila").get("identityfile", "~/.ssh/id_rsa")
-    )
-    # Assuming that we're using the same key path on WSL and windows.
-    windows_ssh_key_path = windows_home / PurePath(
-        linux_ssh_key_for_mila_cluster
-    ).relative_to(Path.home())
-
-    copy_wsl_ssh_keys_to_windows_ssh_folder()
-
-    assert windows_ssh_config_path.exists()
-    # TODO: Check that the copied key has the correct permissions (and content) on **WINDOWS**.
-    # todo: Might have to manually add the weird CRLF line endings to the public/private
-    # key file?
-    assert windows_ssh_key_path.exists()
-    assert windows_ssh_key_path.stat().st_mode & 0o777 == 0o600
 
 
 @xfails_on_windows(
@@ -1060,12 +1033,12 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
 
     monkeypatch.setattr(
         init_command,
-        running_inside_WSL.__name__,
+        running_inside_WSL.__name__,  # type: ignore
         Mock(spec=running_inside_WSL, return_value=True),
     )
     monkeypatch.setattr(
         init_command,
-        get_windows_home_path_in_wsl.__name__,
+        get_windows_home_path_in_wsl.__name__,  # type: ignore
         Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
     )
 
@@ -1085,12 +1058,19 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
 
     setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
 
-    windows_private_key_path = windows_home / ".ssh" / "id_rsa"
+    windows_private_key_path = windows_home / linux_private_key_path.relative_to(
+        linux_home
+    )
     windows_public_key_path = windows_private_key_path.with_suffix(".pub")
 
+    # TODO: Check that the copied key has the correct permissions (and content) on **WINDOWS**.
     assert windows_private_key_path.exists()
-    assert windows_private_key_path.read_text() == private_key_text
+    assert windows_private_key_path.stat().st_mode & 0o777 == 0o600
     assert windows_public_key_path.exists()
+    assert windows_public_key_path.stat().st_mode & 0o777 == 0o600
+    # todo: Might have to manually add the weird CRLF line endings to the public/private
+    # key file?
+    assert windows_private_key_path.read_text() == private_key_text
     assert windows_public_key_path.read_text() == public_key_text
 
 

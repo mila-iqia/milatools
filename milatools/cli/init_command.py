@@ -174,25 +174,6 @@ def setup_ssh_config(
     return ssh_config
 
 
-def copy_wsl_ssh_keys_to_windows_ssh_folder():
-    """Copy the SSH key to the windows folder so that passwordless SSH also works on
-    Windows."""
-    assert running_inside_WSL()
-    # TODO: Get the key to copy from the SSH config instead of assuming ~/.ssh/id_rsa.
-    windows_home = get_windows_home_path_in_wsl()
-    linux_private_key_file = Path.home() / ".ssh/id_rsa"
-    windows_private_key_file = windows_home / ".ssh/id_rsa"
-
-    for linux_key_file, windows_key_file in [
-        (linux_private_key_file, windows_private_key_file),
-        (
-            linux_private_key_file.with_suffix(".pub"),
-            windows_private_key_file.with_suffix(".pub"),
-        ),
-    ]:
-        _copy_if_needed(linux_key_file, windows_key_file)
-
-
 def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     """Setup the Windows SSH configuration and public key from within WSL.
 
@@ -228,6 +209,24 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
         windows_ssh_config.save()
     else:
         print(f"Did not change ssh config at path {windows_ssh_config.path}")
+
+    # if running inside WSL, copy the keys to the Windows folder.
+    # Copy the SSH key to the windows folder so that passwordless SSH also works on
+    # Windows.
+    assert running_inside_WSL()
+    # TODO: Get the key to copy from the SSH config instead of assuming ~/.ssh/id_rsa.
+    windows_home = get_windows_home_path_in_wsl()
+    linux_private_key_file = Path.home() / ".ssh/id_rsa"
+    windows_private_key_file = windows_home / ".ssh/id_rsa"
+
+    for linux_key_file, windows_key_file in [
+        (linux_private_key_file, windows_private_key_file),
+        (
+            linux_private_key_file.with_suffix(".pub"),
+            windows_private_key_file.with_suffix(".pub"),
+        ),
+    ]:
+        _copy_if_needed(linux_key_file, windows_key_file)
 
 
 def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
