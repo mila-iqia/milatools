@@ -173,6 +173,7 @@ def setup_ssh_config(
         print(f"Wrote {ssh_config_path}")
     return ssh_config
 
+
 def _maybe_copy_keys():
     if not running_inside_WSL():
         return None
@@ -192,6 +193,7 @@ def _maybe_copy_keys():
         ),
     ]:
         _copy_if_needed(linux_key_file, windows_key_file)
+
 
 def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     """Setup the Windows SSH configuration and public key from within WSL.
@@ -257,7 +259,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
     # TODO: This uses the public key set in the SSH config file, which may (or may not)
     # be the random id*.pub file that was just checked for above.
     success = setup_passwordless_ssh_access_to_cluster("mila")
-    _maybe_copy_keys() # if running inside WSL, copy the keys to the Windows folder.
+    _maybe_copy_keys()  # if running inside WSL, copy the keys to the Windows folder.
     if not success:
         return False
     setup_keys_on_login_node("mila")
@@ -438,7 +440,8 @@ def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
         )
         shutil.copy2(src=linux_key_file, dst=windows_key_file)
 
-@functools.lru_cache()
+
+@functools.lru_cache
 def get_windows_home_path_in_wsl() -> Path:
     assert running_inside_WSL()
     windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
