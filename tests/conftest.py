@@ -19,14 +19,16 @@ from fabric.connection import Connection
 
 import milatools.cli.code
 import milatools.cli.commands
+import milatools.cli.init_command
+import milatools.cli.utils
 import milatools.utils.compute_node
 import milatools.utils.disk_quota
 import milatools.utils.local_v2
 import milatools.utils.parallel_progress
 import milatools.utils.remote_v2
 from milatools.cli import console
-from milatools.cli.init_command import setup_ssh_config
-from milatools.cli.utils import SSH_CONFIG_FILE
+from milatools.cli.init_command import get_windows_home_path_in_wsl, setup_ssh_config
+from milatools.cli.utils import SSH_CONFIG_FILE, running_inside_WSL
 from milatools.utils.compute_node import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
@@ -436,3 +438,37 @@ def ssh_config_file(
     setup_ssh_config(ssh_config_path)
     assert ssh_config_path.exists()
     return ssh_config_path
+
+
+@pytest.fixture
+def pretend_to_be_in_WSL(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+):
+    # By default, pretend to be in WSL. Indirect parametrization can be used to
+    # overwrite this value for a given test (as is done below).
+    in_wsl = getattr(request, "param", True)
+    _mock_running_inside_WSL = Mock(spec=running_inside_WSL, return_value=in_wsl)
+    monkeypatch.setattr(
+        milatools.cli.utils,
+        running_inside_WSL.__name__,  # type: ignore
+        _mock_running_inside_WSL,
+    )
+    monkeypatch.setattr(
+        milatools.cli.code,
+        running_inside_WSL.__name__,  # type: ignore
+        _mock_running_inside_WSL,
+    )
+
+    return in_wsl
+
+
+@pytest.fixture
+def windows_home(pretend_to_be_in_WSL, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    windows_home = tmp_path / "fake_windows_home"
+    windows_home.mkdir(exist_ok=False)
+    monkeypatch.setattr(
+        milatools.cli.init_command,
+        get_windows_home_path_in_wsl.__name__,  # type: ignore
+        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
+    )
+    return windows_home

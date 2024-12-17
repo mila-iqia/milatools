@@ -34,6 +34,7 @@ from typing_extensions import TypedDict, deprecated
 from milatools.cli import console
 from milatools.cli.code import code
 from milatools.cli.init_command import (
+    copy_wsl_ssh_keys_to_windows_ssh_folder,
     print_welcome_message,
     setup_keys_on_login_node,
     setup_passwordless_ssh_access,
@@ -519,16 +520,19 @@ def init():
 
     ssh_config = setup_ssh_config()
 
+    success = setup_passwordless_ssh_access(ssh_config=ssh_config)
+    if not success:
+        exit()
+
     # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
     # ~/.ssh/config to the Windows ssh directory (taking care to remove the
     # ControlMaster-related entries) so that the user doesn't need to install Python on
     # the Windows side.
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
+        # if running inside WSL, copy the keys to the Windows folder.
+        copy_wsl_ssh_keys_to_windows_ssh_folder()
 
-    success = setup_passwordless_ssh_access(ssh_config=ssh_config)
-    if not success:
-        exit()
     setup_keys_on_login_node()
     setup_vscode_settings()
     print_welcome_message()
