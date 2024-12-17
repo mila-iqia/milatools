@@ -34,7 +34,6 @@ from typing_extensions import TypedDict, deprecated
 from milatools.cli import console
 from milatools.cli.code import code
 from milatools.cli.init_command import (
-    copy_wsl_ssh_keys_to_windows_ssh_folder,
     print_welcome_message,
     setup_keys_on_login_node,
     setup_passwordless_ssh_access,
@@ -530,8 +529,6 @@ def init():
     # the Windows side.
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
-        # if running inside WSL, copy the keys to the Windows folder.
-        copy_wsl_ssh_keys_to_windows_ssh_folder()
 
     setup_keys_on_login_node()
     setup_vscode_settings()
