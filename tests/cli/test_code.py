@@ -10,31 +10,8 @@ import pytest
 
 import milatools.cli.code
 import milatools.cli.utils
-from milatools.cli.utils import running_inside_WSL
 from milatools.utils.compute_node import ComputeNode
 from milatools.utils.local_v2 import LocalV2
-
-
-@pytest.fixture
-def pretend_to_be_in_WSL(
-    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
-):
-    # By default, pretend to be in WSL. Indirect parametrization can be used to
-    # overwrite this value for a given test (as is done below).
-    in_wsl = getattr(request, "param", True)
-
-    _mock_running_inside_WSL = Mock(spec=running_inside_WSL, return_value=in_wsl)
-    monkeypatch.setattr(
-        milatools.cli.utils,
-        running_inside_WSL.__name__,  # type: ignore
-        _mock_running_inside_WSL,
-    )
-    monkeypatch.setattr(
-        milatools.cli.code,
-        running_inside_WSL.__name__,  # type: ignore
-        _mock_running_inside_WSL,
-    )
-    return in_wsl
 
 
 @pytest.mark.parametrize("pretend_to_be_in_WSL", [True, False], indirect=True)

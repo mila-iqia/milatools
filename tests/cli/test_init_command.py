@@ -11,7 +11,7 @@ import sys
 import textwrap
 from functools import partial
 from logging import getLogger as get_logger
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 from unittest.mock import Mock
 
 import invoke
@@ -28,6 +28,7 @@ from milatools.cli.init_command import (
     _get_drac_username,
     _get_mila_username,
     _setup_ssh_config_file,
+    copy_wsl_ssh_keys_to_windows_ssh_folder,
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
     has_passphrase,
@@ -833,6 +834,8 @@ def linux_ssh_config(
 @pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
 def test_setup_windows_ssh_config_from_wsl(
     tmp_path: Path,
+    pretend_to_be_in_WSL,
+    windows_home: Path,
     linux_ssh_config: SSHConfig,
     input_pipe: PipeInput,
     file_regression: FileRegressionFixture,
@@ -840,20 +843,8 @@ def test_setup_windows_ssh_config_from_wsl(
     accept_changes: bool,
 ):
     initial_contents = linux_ssh_config.cfg.config()
-    windows_home = tmp_path / "fake_windows_home"
-    windows_home.mkdir(exist_ok=False)
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
-    monkeypatch.setattr(
-        init_command,
-        running_inside_WSL.__name__,
-        Mock(spec=running_inside_WSL, return_value=True),
-    )
-    monkeypatch.setattr(
-        init_command,
-        get_windows_home_path_in_wsl.__name__,
-        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
-    )
     user_inputs: list[str] = []
     if not windows_ssh_config_path.exists():
         # We accept creating the Windows SSH config file for now.
@@ -898,6 +889,69 @@ def test_setup_windows_ssh_config_from_wsl(
     )
 
     file_regression.check(expected_text, extension=".md")
+
+
+@pytest.fixture
+def windows_ssh_config(
+    linux_ssh_config: SSHConfig,
+    windows_home: Path,
+    input_pipe: PipeInput,
+    monkeypatch: pytest.MonkeyPatch,
+) -> SSHConfig:
+    """Fixture that returns the Windows ssh config after
+    `setup_windows_ssh_config_from_wsl` is run."""
+    windows_ssh_config_path = windows_home / ".ssh" / "config"
+    monkeypatch.setattr(
+        init_command,
+        running_inside_WSL.__name__,  # type: ignore
+        Mock(spec=running_inside_WSL, return_value=True),
+    )
+    monkeypatch.setattr(
+        init_command,
+        get_windows_home_path_in_wsl.__name__,  # type: ignore
+        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
+    )
+    user_inputs: list[str] = []
+    if not windows_ssh_config_path.exists():
+        # We accept creating the Windows SSH config file for now.
+        user_inputs.append("y")
+    user_inputs.append("y")  # accept changes.
+
+    for prompt in user_inputs:
+        input_pipe.send_text(prompt)
+
+    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+
+    assert windows_ssh_config_path.exists()
+    assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
+    assert windows_ssh_config_path.parent.stat().st_mode & 0o777 == 0o700
+
+    return SSHConfig(windows_ssh_config_path)
+
+
+def test_copy_wsl_ssh_keys_to_windows_ssh_folder(
+    linux_ssh_config: SSHConfig,
+    windows_home: Path,
+    windows_ssh_config: SSHConfig,
+):
+    windows_ssh_config_path = windows_ssh_config.path
+
+    linux_ssh_key_for_mila_cluster = PurePosixPath(
+        linux_ssh_config.cfg.host("mila").get("identityfile", "~/.ssh/id_rsa")
+    )
+    # Assuming that we're using the same key path on WSL and windows.
+    windows_ssh_key_path = windows_home / PurePath(
+        linux_ssh_key_for_mila_cluster
+    ).relative_to(Path.home())
+
+    copy_wsl_ssh_keys_to_windows_ssh_folder()
+
+    assert windows_ssh_config_path.exists()
+    # TODO: Check that the copied key has the correct permissions (and content) on **WINDOWS**.
+    # todo: Might have to manually add the weird CRLF line endings to the public/private
+    # key file?
+    assert windows_ssh_key_path.exists()
+    assert windows_ssh_key_path.stat().st_mode & 0o777 == 0o600
 
 
 @xfails_on_windows(

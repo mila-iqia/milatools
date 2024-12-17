@@ -174,13 +174,11 @@ def setup_ssh_config(
     return ssh_config
 
 
-def _maybe_copy_keys():
-    if not running_inside_WSL():
-        return None
-    # Copy the SSH key to the windows folder so that passwordless SSH also works on
-    # Windows.
-    # TODO: This will need to change if we support using a non-default location at some
-    # point.
+def copy_wsl_ssh_keys_to_windows_ssh_folder():
+    """Copy the SSH key to the windows folder so that passwordless SSH also works on
+    Windows."""
+    assert running_inside_WSL()
+    # TODO: Get the key to copy from the SSH config instead of assuming ~/.ssh/id_rsa.
     windows_home = get_windows_home_path_in_wsl()
     linux_private_key_file = Path.home() / ".ssh/id_rsa"
     windows_private_key_file = windows_home / ".ssh/id_rsa"
@@ -230,7 +228,6 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
         windows_ssh_config.save()
     else:
         print(f"Did not change ssh config at path {windows_ssh_config.path}")
-        return  # also skip copying the SSH keys.
 
 
 def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
@@ -259,7 +256,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
     # TODO: This uses the public key set in the SSH config file, which may (or may not)
     # be the random id*.pub file that was just checked for above.
     success = setup_passwordless_ssh_access_to_cluster("mila")
-    _maybe_copy_keys()  # if running inside WSL, copy the keys to the Windows folder.
+
     if not success:
         return False
     setup_keys_on_login_node("mila")
@@ -433,12 +430,18 @@ def print_welcome_message():
 
 
 def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
-    if linux_key_file.exists() and not windows_key_file.exists():
+    assert linux_key_file.exists()
+    if not windows_key_file.exists():
         print(
             f"Copying {linux_key_file} over to the Windows ssh folder at "
             f"{windows_key_file}."
         )
         shutil.copy2(src=linux_key_file, dst=windows_key_file)
+        return
+
+    print(
+        f"{windows_key_file} already exists. Not overwriting it with contents of {linux_key_file}."
+    )
 
 
 @functools.lru_cache
