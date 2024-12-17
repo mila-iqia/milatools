@@ -832,13 +832,12 @@ def linux_ssh_config(
 
 @pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
 def test_setup_windows_ssh_config_from_wsl(
-    tmp_path: Path,
-    pretend_to_be_in_WSL,
+    pretend_to_be_in_WSL,  # here even if `windows_home` already uses it (more explicit)
     windows_home: Path,
     linux_ssh_config: SSHConfig,
     input_pipe: PipeInput,
     file_regression: FileRegressionFixture,
-    monkeypatch: pytest.MonkeyPatch,
+    fake_linux_ssh_keypair: tuple[Path, Path],  # add this fixture so the keys exist.
     accept_changes: bool,
 ):
     initial_contents = linux_ssh_config.cfg.config()
