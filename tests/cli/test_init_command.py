@@ -1024,23 +1024,13 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     linux_ssh_config: SSHConfig,
     input_pipe: PipeInput,
     monkeypatch: pytest.MonkeyPatch,
+    pretend_to_be_in_WSL,
+    windows_home: Path,
 ):
     linux_home = tmp_path / "fake_linux_home"
     linux_home.mkdir(exist_ok=False)
-    windows_home = tmp_path / "fake_windows_home"
-    windows_home.mkdir(exist_ok=False)
-    monkeypatch.setattr(Path, "home", Mock(spec=Path.home, return_value=linux_home))
 
-    monkeypatch.setattr(
-        init_command,
-        running_inside_WSL.__name__,  # type: ignore
-        Mock(spec=running_inside_WSL, return_value=True),
-    )
-    monkeypatch.setattr(
-        init_command,
-        get_windows_home_path_in_wsl.__name__,  # type: ignore
-        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
-    )
+    monkeypatch.setattr(Path, "home", Mock(spec=Path.home, return_value=linux_home))
 
     fake_linux_ssh_dir = linux_home / ".ssh"
     fake_linux_ssh_dir.mkdir(mode=0o700)
@@ -1048,10 +1038,12 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     private_key_text = "THIS IS A PRIVATE KEY"
     linux_private_key_path = fake_linux_ssh_dir / "id_rsa"
     linux_private_key_path.write_text(private_key_text)
+    linux_private_key_path.chmod(mode=0o600)
 
     public_key_text = "THIS IS A PUBLIC KEY"
     linux_public_key_path = linux_private_key_path.with_suffix(".pub")
     linux_public_key_path.write_text(public_key_text)
+    linux_public_key_path.chmod(mode=0o600)
 
     input_pipe.send_text("y")  # accept creating the Windows config file
     input_pipe.send_text("y")  # accept the changes
