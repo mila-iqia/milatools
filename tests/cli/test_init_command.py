@@ -1019,18 +1019,23 @@ def test_setup_vscode_settings(
     file_regression.check(expected_text, extension=".md")
 
 
-def test_setup_windows_ssh_config_from_wsl_copies_keys(
-    tmp_path: Path,
-    linux_ssh_config: SSHConfig,
-    input_pipe: PipeInput,
-    monkeypatch: pytest.MonkeyPatch,
-    pretend_to_be_in_WSL,
-    windows_home: Path,
-):
+@pytest.fixture
+def linux_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Creates a fake home directory where we will make a fake SSH directory for
+    tests."""
     linux_home = tmp_path / "fake_linux_home"
     linux_home.mkdir(exist_ok=False)
 
     monkeypatch.setattr(Path, "home", Mock(spec=Path.home, return_value=linux_home))
+    return linux_home
+
+
+@pytest.fixture
+def fake_linux_ssh_keypair(linux_home: Path):
+    """Creates a fake ssh key pair in some mock ssh directory.
+
+    Used in tests related to mila init and WSL.
+    """
 
     fake_linux_ssh_dir = linux_home / ".ssh"
     fake_linux_ssh_dir.mkdir(mode=0o700)
@@ -1044,6 +1049,18 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     linux_public_key_path = linux_private_key_path.with_suffix(".pub")
     linux_public_key_path.write_text(public_key_text)
     linux_public_key_path.chmod(mode=0o600)
+
+    return linux_public_key_path, linux_private_key_path
+
+
+def test_setup_windows_ssh_config_from_wsl_copies_keys(
+    linux_ssh_config: SSHConfig,
+    input_pipe: PipeInput,
+    windows_home: Path,
+    linux_home: Path,
+    fake_linux_ssh_keypair: tuple[Path, Path],
+):
+    linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
 
     input_pipe.send_text("y")  # accept creating the Windows config file
     input_pipe.send_text("y")  # accept the changes
@@ -1062,8 +1079,8 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     assert windows_public_key_path.stat().st_mode & 0o777 == 0o600
     # todo: Might have to manually add the weird CRLF line endings to the public/private
     # key file?
-    assert windows_private_key_path.read_text() == private_key_text
-    assert windows_public_key_path.read_text() == public_key_text
+    assert windows_private_key_path.read_text() == linux_private_key_path.read_text()
+    assert windows_public_key_path.read_text() == linux_public_key_path.read_text()
 
 
 BACKUP_SSH_DIR = Path.home() / ".ssh_backup"
