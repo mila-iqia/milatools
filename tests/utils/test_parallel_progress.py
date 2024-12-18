@@ -10,7 +10,6 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import console
-from milatools.cli.utils import removesuffix
 from milatools.utils.parallel_progress import (
     AsyncTaskFn,
     ReportProgressFn,
@@ -71,7 +70,7 @@ async def test_async_progress_bar(file_regression: FileRegressionFixture):
     all_output = capture.get()
     # Remove the elapsed column since its values can vary a little bit between runs.
     all_output_without_elapsed = "\n".join(
-        removesuffix(line, last_part).rstrip()
+        line.removesuffix(last_part).rstrip()
         if (parts := line.split()) and (last_part := parts[-1]).count(":") == 2
         else line
         for line in all_output.splitlines()

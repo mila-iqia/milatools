@@ -20,7 +20,6 @@ from milatools.cli.utils import (
     CommandNotFoundError,
     MilatoolsUserError,
     get_hostname_to_use_for_compute_node,
-    removesuffix,
 )
 from milatools.utils import disk_quota
 from milatools.utils.compute_node import (
@@ -324,7 +323,7 @@ async def test_code_with_existing_job(
         hostname = existing_job.hostname
         # We actually need to pass `cn-a001` (node name) as --node, not the entire
         # hostname!
-        node = removesuffix(hostname, ".server.mila.quebec")
+        node = hostname.removesuffix(".server.mila.quebec")
 
     if not use_v1:
 
@@ -368,7 +367,7 @@ async def test_code_with_existing_job(
             hostname = existing_job.hostname
             # We actually need to pass `cn-a001` (node name) as --node, not the entire
             # hostname!
-            node = removesuffix(hostname, ".server.mila.quebec")
+            node = hostname.removesuffix(".server.mila.quebec")
 
         code_v1(
             path=path,

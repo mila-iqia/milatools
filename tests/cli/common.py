@@ -17,7 +17,7 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
-from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE, removesuffix
+from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE
 from milatools.utils.remote_v2 import RemoteV2, get_controlpath_for
 
 if typing.TYPE_CHECKING:
@@ -208,4 +208,4 @@ def _lambda_to_str(lambda_: Callable) -> str:
     #    lambda x: x + 1,
     # ]
     # a trailing comma is returned by `inspect.getsource`, which we want to remove.
-    return removesuffix(lambda_body, ",")
+    return lambda_body.removesuffix(",")
