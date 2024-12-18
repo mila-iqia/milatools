@@ -216,7 +216,11 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     assert running_inside_WSL()
     windows_home = get_windows_home_path_in_wsl()
     linux_private_key_file = (
-        Path(linux_ssh_config.host("mila").get("identityfile", "~/.ssh/id_rsa"))
+        Path(
+            linux_ssh_config.host("mila").get(
+                "identityfile", Path.home() / ".ssh/id_rsa"
+            )
+        )
         .expanduser()
         .resolve()
     )
