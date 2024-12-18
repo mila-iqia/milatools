@@ -352,7 +352,8 @@ def batched(
     [('A', 'B', 'C'), ('D', 'E', 'F')]
     """
     if sys.version_info >= (3, 12) and not droplast:
-        return itertools.batched(iterable, n)
+        yield from itertools.batched(iterable, n)
+        return
     if n < 1:
         raise ValueError("n must be at least one")
     it = iter(iterable)
