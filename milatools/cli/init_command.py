@@ -209,14 +209,25 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
         windows_ssh_config.save()
     else:
         print(f"Did not change ssh config at path {windows_ssh_config.path}")
-        return  # also skip copying the SSH keys.
 
+    # if running inside WSL, copy the keys to the Windows folder.
     # Copy the SSH key to the windows folder so that passwordless SSH also works on
     # Windows.
-    # TODO: This will need to change if we support using a non-default location at some
-    # point.
-    linux_private_key_file = Path.home() / ".ssh/id_rsa"
-    windows_private_key_file = windows_home / ".ssh/id_rsa"
+    assert running_inside_WSL()
+    windows_home = get_windows_home_path_in_wsl()
+    linux_private_key_file = (
+        Path(
+            linux_ssh_config.host("mila").get(
+                "identityfile", Path.home() / ".ssh/id_rsa"
+            )
+        )
+        .expanduser()
+        .resolve()
+    )
+    windows_private_key_file = windows_home / (
+        linux_private_key_file.relative_to(Path.home())
+    )
+    windows_private_key_file.parent.mkdir(exist_ok=True, mode=0o700, parents=True)
 
     for linux_key_file, windows_key_file in [
         (linux_private_key_file, windows_private_key_file),
@@ -254,6 +265,7 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
     # TODO: This uses the public key set in the SSH config file, which may (or may not)
     # be the random id*.pub file that was just checked for above.
     success = setup_passwordless_ssh_access_to_cluster("mila")
+
     if not success:
         return False
     setup_keys_on_login_node("mila")
@@ -427,14 +439,24 @@ def print_welcome_message():
 
 
 def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
-    if linux_key_file.exists() and not windows_key_file.exists():
+    if not linux_key_file.exists():
+        raise RuntimeError(
+            f"Assumed that {linux_key_file} would exists, but it doesn't!"
+        )
+    if not windows_key_file.exists():
         print(
             f"Copying {linux_key_file} over to the Windows ssh folder at "
             f"{windows_key_file}."
         )
         shutil.copy2(src=linux_key_file, dst=windows_key_file)
+        return
+
+    print(
+        f"{windows_key_file} already exists. Not overwriting it with contents of {linux_key_file}."
+    )
 
 
+@functools.lru_cache
 def get_windows_home_path_in_wsl() -> Path:
     assert running_inside_WSL()
     windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
