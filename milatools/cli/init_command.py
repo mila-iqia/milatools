@@ -214,10 +214,16 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     # Copy the SSH key to the windows folder so that passwordless SSH also works on
     # Windows.
     assert running_inside_WSL()
-    # TODO: Get the key to copy from the SSH config instead of assuming ~/.ssh/id_rsa.
     windows_home = get_windows_home_path_in_wsl()
-    linux_private_key_file = Path.home() / ".ssh/id_rsa"
-    windows_private_key_file = windows_home / ".ssh/id_rsa"
+    linux_private_key_file = (
+        Path(linux_ssh_config.host("mila").get("identityfile", "~/.ssh/id_rsa"))
+        .expanduser()
+        .resolve()
+    )
+    windows_private_key_file = windows_home / (
+        linux_private_key_file.relative_to(Path.home())
+    )
+    windows_private_key_file.parent.mkdir(exist_ok=True, mode=0o700, parents=True)
 
     for linux_key_file, windows_key_file in [
         (linux_private_key_file, windows_private_key_file),
@@ -429,7 +435,10 @@ def print_welcome_message():
 
 
 def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
-    assert linux_key_file.exists()
+    if not linux_key_file.exists():
+        raise RuntimeError(
+            f"Assumed that {linux_key_file} would exists, but it doesn't!"
+        )
     if not windows_key_file.exists():
         print(
             f"Copying {linux_key_file} over to the Windows ssh folder at "
