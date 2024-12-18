@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+from collections.abc import Awaitable
 from logging import getLogger as get_logger
 from pathlib import PurePosixPath
-from typing import Awaitable
 
 from milatools.cli import console
 from milatools.cli.init_command import DRAC_CLUSTERS
