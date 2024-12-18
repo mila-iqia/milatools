@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import pytest_asyncio
 
+import milatools.cli.utils
 from milatools.cli.utils import removesuffix
 from milatools.utils.compute_node import (
     ComputeNode,
@@ -236,6 +237,14 @@ class TestComputeNode(RunnerTests):
         # equality check succeeds
         assert compute_node_with_jobid == runner
 
+    @pytest.mark.xfail(
+        raises=milatools.cli.utils.MilatoolsUserError,
+        reason=(
+            "milatools.cli.utils.MilatoolsUserError: You have more than one job "
+            "running on node cn-f003: [5787258, 5787250]. please use the `--job` flag "
+            "to specify which job to connect to."
+        ),
+    )
     @pytest.mark.asyncio
     async def test_connect_with_node_name(self, runner: ComputeNode):
         """Test connecting to a compute node using the node name.
