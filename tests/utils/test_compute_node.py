@@ -13,7 +13,6 @@ import pytest
 import pytest_asyncio
 
 import milatools.cli.utils
-from milatools.cli.utils import removesuffix
 from milatools.utils.compute_node import (
     ComputeNode,
     JobNotRunningError,
@@ -260,10 +259,7 @@ class TestComputeNode(RunnerTests):
         # squeue expects the node name, so we have to truncate it manually for now.
         login_node = runner.login_node
         node_hostname = runner.hostname
-        if node_hostname.endswith(".server.mila.quebec"):
-            node_name = removesuffix(node_hostname, ".server.mila.quebec")
-        else:
-            node_name = node_hostname
+        node_name = node_hostname.removesuffix(".server.mila.quebec")
 
         # Connect with the node name:
         compute_node_with_node_name = await ComputeNode.connect(

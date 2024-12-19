@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import functools
+from collections.abc import Coroutine
 from logging import getLogger as get_logger
 from typing import (
-    Coroutine,
     Protocol,
     TypedDict,
     TypeVar,
