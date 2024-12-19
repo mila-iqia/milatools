@@ -60,18 +60,21 @@ def test_help(
 
 @requires_no_s_flag
 @pytest.mark.parametrize(
-    "command",
+    ("command", "expected_error"),
     [
-        "mila",  # Error: Missing a subcommand.
-        "mila search conda",
-        "mila code --boo",  # Error: Unknown argument.
-        "mila serve",  # Error: Missing the subcommand.
-        "mila forward",  # Error: Missing the REMOTE argument.
+        ("mila", "the following arguments are required: <command>"),
+        ("mila search conda", "invalid choice: 'search'"),
+        ("mila code --boo", "unrecognized arguments: --boo"),
+        (
+            "mila serve",
+            "error: the following arguments are required: <serve_subcommand>",
+        ),
+        ("mila forward", "error: the following arguments are required: REMOTE"),
     ],
 )
 def test_invalid_command_output(
     command: str,
-    file_regression: FileRegressionFixture,
+    expected_error: str,
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Test that we get a proper output when we use an invalid command (that exits
@@ -82,7 +85,9 @@ def test_invalid_command_output(
         SystemExit
     ), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
         main()
-    file_regression.check(_convert_argparse_output_to_pre_py311_format(buf.getvalue()))
+    assert expected_error in buf.getvalue()
+    # The output changes between python versions.
+    # file_regression.check(_convert_argparse_output_to_pre_py311_format(buf.getvalue()))
 
 
 @pytest.mark.parametrize(

@@ -1,3 +1,0 @@
-usage: mila [-h] [--version] [-v]
-            {docs,intranet,init,forward,code,sync,serve} ...
-mila: error: unrecognized arguments: --boo
