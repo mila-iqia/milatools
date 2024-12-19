@@ -39,9 +39,9 @@ jobs:
           enable-cache: true
           # https://github.com/astral-sh/setup-uv?tab=readme-ov-file#github-authentication-token
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache-suffix: ${{ matrix.python-version }}
-      - name: Pin Python version to ${{ matrix.python-version }}
-        run: uv python pin ${{ matrix.python-version }}
+          cache-suffix: ${{ inputs.python-version }}
+      - name: Pin Python version to ${{ inputs.python-version }}
+        run: uv python pin ${{ inputs.python-version }}
       - name: Install dependencies
         run: uv sync
 
