@@ -1,5 +1,0 @@
-usage: mila code [-h] [--cluster {mila,cedar,narval,beluga,graham}]
-                 [--alloc ...] [--command VALUE] [--job VALUE] [--node VALUE]
-                 [--persist]
-                 PATH
-mila code: error: the following arguments are required: PATH
