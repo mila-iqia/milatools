@@ -185,7 +185,7 @@ jobs:
           # Next step if this doesn't work would be to give the coverage files a unique name and use merge-multiple: true
           path: coverage_reports
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           # file: ./coverage.xml  # Search for all coverage files from each workflow.
