@@ -343,7 +343,7 @@ wheels = [
 
 [[package]]
 name = "milatools"
-version = "0.1.6.post3+b7775b2"
+version = "0.1.6.post9+d91f538"
 source = { editable = "." }
 dependencies = [
     { name = "blessed" },
@@ -362,6 +362,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "pytest-regressions" },
+    { name = "pytest-skip-slow" },
     { name = "pytest-socket" },
 ]
 
@@ -383,6 +384,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-mock", specifier = ">=3.14.0" },
     { name = "pytest-regressions", specifier = ">=2.6.0" },
+    { name = "pytest-skip-slow", specifier = ">=0.0.5" },
     { name = "pytest-socket", specifier = ">=0.7.0" },
 ]
 
@@ -546,6 +548,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ba/05/78acfdf571ce4000af9d735530094b7a3276652f9c98e93feecd186c1b80/pytest_regressions-2.6.0.tar.gz", hash = "sha256:e3dce521fac11199a2a91a1b8837974d708c7e8665b8c9668b3a721b556c8183", size = 116150 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/93/b4/48edc97a835f0f9c8de5db0e1a4bc7e1ce1bb9050e269924c28f10ff0280/pytest_regressions-2.6.0-py3-none-any.whl", hash = "sha256:5c4a4763415f765770449190097a99b3a8a6ebf20b24e6d90a32da6644e5d041", size = 24347 },
+]
+
+[[package]]
+name = "pytest-skip-slow"
+version = "0.0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7e/cf/507ddfc0f43492bf1cd3fd192fab672de62a381d85a7c8fcd55e5364dd7d/pytest-skip-slow-0.0.5.tar.gz", hash = "sha256:655ea5c748c72947e0d302334e7fa8ef99929257a2a2bc928f630ddb5a161d88", size = 1473 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/43/76edc0738298170fef6e2a9315ef96ed0d5c77de381b2ec1b54d43838a91/pytest_skip_slow-0.0.5-py3-none-any.whl", hash = "sha256:e2f6401d6ed0db3be1402622a7b24f7df14f61ebd26feda808a0d45433d4d474", size = 2959 },
 ]
 
 [[package]]

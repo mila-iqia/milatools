@@ -32,6 +32,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest-regressions>=2.6.0",
     "pytest-socket>=0.7.0",
+    "pytest-skip-slow>=0.0.5",
 ]
 
 [tool.pytest.ini_options]
