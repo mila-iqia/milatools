@@ -7,9 +7,9 @@ import shutil
 import subprocess
 import sys
 import textwrap
+from collections.abc import Sequence
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Sequence
 
 from milatools.cli.utils import (
     CommandNotFoundError,
