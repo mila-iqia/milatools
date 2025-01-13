@@ -45,8 +45,7 @@ repos:
     rev: v1.5.1
     hooks:
       - id: docformatter
-        # args: [--in-place, --wrap-summaries=99, --wrap-descriptions=99]
-        args: [--in-place, --wrap-summaries=88, --wrap-descriptions=88]
+        args: [--in-place]
         require_serial: true
 
   # md formatting
