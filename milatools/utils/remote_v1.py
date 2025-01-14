@@ -206,8 +206,7 @@ class RemoteV1:
         out_stream: TextIO | None = None,
         in_stream: TextIO | bool = False,
         **kwargs,
-    ) -> invoke.runners.Result:
-        ...
+    ) -> invoke.runners.Result: ...
 
     @overload
     def run(
@@ -221,8 +220,7 @@ class RemoteV1:
         out_stream: TextIO | None = None,
         in_stream: TextIO | bool = False,
         **kwargs,
-    ) -> invoke.runners.Promise:
-        ...
+    ) -> invoke.runners.Promise: ...
 
     @overload
     def run(
@@ -236,8 +234,7 @@ class RemoteV1:
         out_stream: TextIO | None = None,
         in_stream: TextIO | bool = False,
         **kwargs,
-    ) -> invoke.runners.Result | invoke.runners.Promise:
-        ...
+    ) -> invoke.runners.Result | invoke.runners.Promise: ...
 
     def run(
         self,

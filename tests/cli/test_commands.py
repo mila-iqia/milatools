@@ -49,9 +49,11 @@ def test_help(
     """Test that the --help text matches what's expected (and is stable over time)."""
     monkeypatch.setattr("sys.argv", shlex.split(command + " --help"))
     buf = io.StringIO()
-    with contextlib.suppress(SystemExit), contextlib.redirect_stdout(
-        buf
-    ), contextlib.redirect_stderr(buf):
+    with (
+        contextlib.suppress(SystemExit),
+        contextlib.redirect_stdout(buf),
+        contextlib.redirect_stderr(buf),
+    ):
         with pytest.raises(SystemExit):
             main()
     output: str = buf.getvalue()
@@ -81,9 +83,12 @@ def test_invalid_command_output(
     immediately)."""
     monkeypatch.setattr("sys.argv", shlex.split(command))
     buf = io.StringIO()
-    with contextlib.suppress(SystemExit), pytest.raises(
-        SystemExit
-    ), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+    with (
+        contextlib.suppress(SystemExit),
+        pytest.raises(SystemExit),
+        contextlib.redirect_stdout(buf),
+        contextlib.redirect_stderr(buf),
+    ):
         main()
     assert expected_error in buf.getvalue()
     # The output changes between python versions.

@@ -89,8 +89,7 @@ async def code(
     if not internet_on_compute_nodes(cluster):
         # Sync the VsCode extensions from the local machine over to the target cluster.
         console.log(
-            f"Installing VSCode extensions that are on the local machine on "
-            f"{cluster}.",
+            f"Installing VSCode extensions that are on the local machine on {cluster}.",
             style="cyan",
         )
         # todo: use the mila or the local machine as the reference for vscode

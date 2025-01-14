@@ -110,8 +110,7 @@ def main():
         )
         print(
             T.bold_yellow(
-                f"An error occurred during the execution of the command "
-                f"`{command}`. "
+                f"An error occurred during the execution of the command `{command}`. "
             )
             + T.yellow(
                 "Please try updating milatools by running\n"
