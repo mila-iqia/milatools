@@ -296,7 +296,7 @@ async def _get_vscode_extensions_dict(
     remote: RemoteV2 | LocalV2,
     code_server_executable: str,
 ) -> dict[str, str]:
-    """Returns the list of isntalled extensions and the path to the code-server
+    """Returns the list of installed extensions and the path to the code-server
     executable."""
     return _parse_vscode_extensions_versions(
         stripped_lines_of(

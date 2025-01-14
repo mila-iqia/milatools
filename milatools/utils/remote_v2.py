@@ -26,8 +26,7 @@ from milatools.utils.runner import Runner
 logger = get_logger(__name__)
 
 
-class UnsupportedPlatformError(MilatoolsUserError):
-    ...
+class UnsupportedPlatformError(MilatoolsUserError): ...
 
 
 @dataclasses.dataclass(init=False)

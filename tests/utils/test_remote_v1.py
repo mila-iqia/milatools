@@ -502,7 +502,7 @@ class TestSlurmRemote:
                     f"remote = {slurm_remote_constructor_call_str}",
                     "```",
                     "",
-                    "Calling this:" "",
+                    "Calling this:",
                     "```python",
                     f"remote.{method_call_string}",
                     "```",
