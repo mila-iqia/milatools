@@ -26,9 +26,6 @@ Write-Host "WSL setup complete. Restart your machine if required."
 Write-Host "Installing UV package manager from Astral.sh..."
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-$uvInstaller = "https://dist.astral.sh/install-uv.ps1"
-Invoke-Expression (Invoke-WebRequest -Uri $uvInstaller -UseBasicParsing).Content
-
 # Install Git if not already installed
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host "Git not found. Installing..."
