@@ -12,6 +12,18 @@ The `mila` command is meant to be used on your local machine. Trying to run it o
 ---
 
 
+## All-in-one setup for a Windows machine:
+
+1. Open PowerShell as an administrator (Right click --> Run as administrator).
+Enter the following command:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/mila-iqia/milatools/refs/heads/windows-setup-script/scripts/windows_setup.ps1 | iex"
+```
+
+2. Select what you want to install. We recommend using everything.
+
+
 ## Install
 
 Requires Python >= 3.8

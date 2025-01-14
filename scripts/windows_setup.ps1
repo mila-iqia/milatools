@@ -24,6 +24,8 @@ Write-Host "WSL setup complete. Restart your machine if required."
 
 # Install UV package manager from Astral.sh
 Write-Host "Installing UV package manager from Astral.sh..."
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
 $uvInstaller = "https://dist.astral.sh/install-uv.ps1"
 Invoke-Expression (Invoke-WebRequest -Uri $uvInstaller -UseBasicParsing).Content
 
@@ -32,7 +34,6 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host "Git not found. Installing..."
     $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.40.1-64-bit.exe"
     $gitInstallerPath = "$env:TEMP\GitSetup.exe"
-
     Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $gitInstallerPath -UseBasicParsing
     Start-Process -FilePath $gitInstallerPath -ArgumentList "/VERYSILENT" -Wait
     Remove-Item $gitInstallerPath
