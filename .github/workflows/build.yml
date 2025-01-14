@@ -28,7 +28,7 @@ jobs:
       - run: pip install "pre-commit<4.0.0"
       - run: pre-commit --version
       - run: pre-commit install
-      - run: pre-commit run --all-files
+      - run: pre-commit run --all-files --show-diff-on-failure
 
   unit-tests:
     needs: [linting]
