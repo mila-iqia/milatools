@@ -21,7 +21,18 @@ Enter the following command:
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/mila-iqia/milatools/refs/heads/windows-setup-script/scripts/windows_setup.ps1 | iex"
 ```
 
-2. Select what you want to install. We recommend using everything.
+2. Reboot your machine
+
+3. After the reboot is complete, open a WSL shell (enter Ubuntu in the search bar, then press enter)
+
+Run the following commands:
+
+```console
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool install milatools
+mila init
+```
+
 
 
 ## Install
