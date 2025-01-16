@@ -17,26 +17,30 @@ if (-not (Get-Command code -ErrorAction SilentlyContinue)) {
     Write-Host "Visual Studio Code is already installed."
 }
 
+# TODO: Check if it's already installed.
+# Good tutorial:
+# https://eecs280staff.github.io/tutorials/setup_wsl.html
+
 # Enable and install Windows Subsystem for Linux (WSL)
 Write-Host "Setting up Windows Subsystem for Linux (WSL)..."
 wsl --install
-Write-Host "WSL setup complete. Restart your machine if required."
+Write-Host "WSL setup complete."
 
+# TODO: We want to (only?) install `uv` within WSL, not Windows!
 # Install UV package manager from Astral.sh
-Write-Host "Installing UV package manager from Astral.sh..."
-# todo: Can probably just run `irm ... | iex` since we are already in a script?
-irm https://astral.sh/uv/install.ps1 | iex
+# Install Visual Studio Code if not already installed
+# if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+#     Write-Host "Installing UV package manager from Astral.sh..."
+#     irm https://astral.sh/uv/install.ps1 | iex
+# } else {
+#     Write-Host "UV package manager is already installed."
+# }
+
 
 # Install Git if not already installed
-# TODO: This errors out, probably because TEMP isn't set.
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host "Git not found. Installing..."
     winget install --id Git.Git -e --source winget
-    # $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.40.1-64-bit.exe"
-    # $gitInstallerPath = "$env:TEMP\GitSetup.exe"
-    # Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $gitInstallerPath -UseBasicParsing
-    # Start-Process -FilePath $gitInstallerPath -ArgumentList "/VERYSILENT" -Wait
-    # Remove-Item $gitInstallerPath
     Write-Host "Git installed successfully."
 } else {
     Write-Host "Git is already installed."
