@@ -832,28 +832,17 @@ def linux_ssh_config(
 
 @pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
 def test_setup_windows_ssh_config_from_wsl(
-    tmp_path: Path,
+    pretend_to_be_in_WSL,  # here even if `windows_home` already uses it (more explicit)
+    windows_home: Path,
     linux_ssh_config: SSHConfig,
     input_pipe: PipeInput,
     file_regression: FileRegressionFixture,
-    monkeypatch: pytest.MonkeyPatch,
+    fake_linux_ssh_keypair: tuple[Path, Path],  # add this fixture so the keys exist.
     accept_changes: bool,
 ):
     initial_contents = linux_ssh_config.cfg.config()
-    windows_home = tmp_path / "fake_windows_home"
-    windows_home.mkdir(exist_ok=False)
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
-    monkeypatch.setattr(
-        init_command,
-        running_inside_WSL.__name__,
-        Mock(spec=running_inside_WSL, return_value=True),
-    )
-    monkeypatch.setattr(
-        init_command,
-        get_windows_home_path_in_wsl.__name__,
-        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
-    )
     user_inputs: list[str] = []
     if not windows_ssh_config_path.exists():
         # We accept creating the Windows SSH config file for now.
@@ -898,6 +887,43 @@ def test_setup_windows_ssh_config_from_wsl(
     )
 
     file_regression.check(expected_text, extension=".md")
+
+
+@pytest.fixture
+def windows_ssh_config(
+    linux_ssh_config: SSHConfig,
+    windows_home: Path,
+    input_pipe: PipeInput,
+    monkeypatch: pytest.MonkeyPatch,
+) -> SSHConfig:
+    """Returns the Windows ssh config as it would be when we create it from WSL."""
+    windows_ssh_config_path = windows_home / ".ssh" / "config"
+    monkeypatch.setattr(
+        init_command,
+        running_inside_WSL.__name__,  # type: ignore
+        Mock(spec=running_inside_WSL, return_value=True),
+    )
+    monkeypatch.setattr(
+        init_command,
+        get_windows_home_path_in_wsl.__name__,  # type: ignore
+        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
+    )
+    user_inputs: list[str] = []
+    if not windows_ssh_config_path.exists():
+        # We accept creating the Windows SSH config file for now.
+        user_inputs.append("y")
+    user_inputs.append("y")  # accept changes.
+
+    for prompt in user_inputs:
+        input_pipe.send_text(prompt)
+
+    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+
+    assert windows_ssh_config_path.exists()
+    assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
+    assert windows_ssh_config_path.parent.stat().st_mode & 0o777 == 0o700
+
+    return SSHConfig(windows_ssh_config_path)
 
 
 @xfails_on_windows(
@@ -992,28 +1018,23 @@ def test_setup_vscode_settings(
     file_regression.check(expected_text, extension=".md")
 
 
-def test_setup_windows_ssh_config_from_wsl_copies_keys(
-    tmp_path: Path,
-    linux_ssh_config: SSHConfig,
-    input_pipe: PipeInput,
-    monkeypatch: pytest.MonkeyPatch,
-):
+@pytest.fixture
+def linux_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Creates a fake home directory where we will make a fake SSH directory for
+    tests."""
     linux_home = tmp_path / "fake_linux_home"
     linux_home.mkdir(exist_ok=False)
-    windows_home = tmp_path / "fake_windows_home"
-    windows_home.mkdir(exist_ok=False)
-    monkeypatch.setattr(Path, "home", Mock(spec=Path.home, return_value=linux_home))
 
-    monkeypatch.setattr(
-        init_command,
-        running_inside_WSL.__name__,
-        Mock(spec=running_inside_WSL, return_value=True),
-    )
-    monkeypatch.setattr(
-        init_command,
-        get_windows_home_path_in_wsl.__name__,
-        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
-    )
+    monkeypatch.setattr(Path, "home", Mock(spec=Path.home, return_value=linux_home))
+    return linux_home
+
+
+@pytest.fixture
+def fake_linux_ssh_keypair(linux_home: Path):
+    """Creates a fake ssh key pair in some mock ssh directory.
+
+    Used in tests related to mila init and WSL.
+    """
 
     fake_linux_ssh_dir = linux_home / ".ssh"
     fake_linux_ssh_dir.mkdir(mode=0o700)
@@ -1021,23 +1042,44 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     private_key_text = "THIS IS A PRIVATE KEY"
     linux_private_key_path = fake_linux_ssh_dir / "id_rsa"
     linux_private_key_path.write_text(private_key_text)
+    linux_private_key_path.chmod(mode=0o600)
 
     public_key_text = "THIS IS A PUBLIC KEY"
     linux_public_key_path = linux_private_key_path.with_suffix(".pub")
     linux_public_key_path.write_text(public_key_text)
+    linux_public_key_path.chmod(mode=0o600)
+
+    return linux_public_key_path, linux_private_key_path
+
+
+def test_setup_windows_ssh_config_from_wsl_copies_keys(
+    linux_ssh_config: SSHConfig,
+    input_pipe: PipeInput,
+    windows_home: Path,
+    linux_home: Path,
+    fake_linux_ssh_keypair: tuple[Path, Path],
+):
+    linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
 
     input_pipe.send_text("y")  # accept creating the Windows config file
     input_pipe.send_text("y")  # accept the changes
 
     setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
 
-    windows_private_key_path = windows_home / ".ssh" / "id_rsa"
+    windows_private_key_path = windows_home / linux_private_key_path.relative_to(
+        linux_home
+    )
     windows_public_key_path = windows_private_key_path.with_suffix(".pub")
 
+    # TODO: Check that the copied key has the correct permissions (and content) on **WINDOWS**.
     assert windows_private_key_path.exists()
-    assert windows_private_key_path.read_text() == private_key_text
+    assert windows_private_key_path.stat().st_mode & 0o777 == 0o600
     assert windows_public_key_path.exists()
-    assert windows_public_key_path.read_text() == public_key_text
+    assert windows_public_key_path.stat().st_mode & 0o777 == 0o600
+    # todo: Might have to manually add the weird CRLF line endings to the public/private
+    # key file?
+    assert windows_private_key_path.read_text() == linux_private_key_path.read_text()
+    assert windows_public_key_path.read_text() == linux_public_key_path.read_text()
 
 
 BACKUP_SSH_DIR = Path.home() / ".ssh_backup"
