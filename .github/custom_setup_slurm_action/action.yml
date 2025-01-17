@@ -12,7 +12,7 @@ runs:
       shell: bash -e {0}
       # ansible-galaxy role install https://github.com/galaxyproject/ansible-slurm/archive/1.0.1.tar.gz
       run: |
-        ansible-galaxy role install https://github.com/mila-iqia/ansible-slurm/archive/1.1.2.tar.gz
+        ansible-galaxy role install https://github.com/mila-iqia/ansible-slurm/archive/1.1.7.tar.gz
 
     - name: Apt prerequisites
       shell: bash -e {0}
