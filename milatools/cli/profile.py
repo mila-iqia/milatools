@@ -355,8 +355,7 @@ def _select_unsafe_ask(
     message: str,
     choices: Sequence[str | Choice[str]],
     style: Style | None = None,
-) -> str:
-    ...
+) -> str: ...
 
 
 @typing.overload
@@ -364,8 +363,7 @@ def _select_unsafe_ask(
     message: str,
     choices: Sequence[Choice[_T] | dict[str, _T]],
     style: Style | None = None,
-) -> _T:
-    ...
+) -> _T: ...
 
 
 def _select_unsafe_ask(

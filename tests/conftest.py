@@ -153,7 +153,7 @@ def MockConnection(
 def mock_connection(
     MockConnection: Mock,
 ) -> Mock:
-    """returns a Mock wrapping a real `Connection` instance.
+    """Returns a Mock wrapping a real `Connection` instance.
 
     This Mock is used to check how the connection is used by `Remote` and `SlurmRemote`.
     """

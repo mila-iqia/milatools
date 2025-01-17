@@ -33,7 +33,7 @@ async def _async_task_fn(
 
     for n in range(task_length):
         await asyncio.sleep(1.0)  # sleep for a bit to simulate work
-        logger.debug(f"Task {task_id} is {n+1}/{task_length} done.")
+        logger.debug(f"Task {task_id} is {n + 1}/{task_length} done.")
         report_progress(n + 1, task_length)
 
     report_progress(task_length, task_length, "Done.")

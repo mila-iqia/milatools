@@ -512,8 +512,9 @@ async def test_cancel_new_jobs_on_interrupt(
         get_output_async=AsyncMock(side_effect=_get_output_async),
     )
 
-    with pytest.raises(exception_type), caplog.at_level(
-        logging.WARNING, logger="milatools"
+    with (
+        pytest.raises(exception_type),
+        caplog.at_level(logging.WARNING, logger="milatools"),
     ):
         async with cancel_new_jobs_on_interrupt(mock_login_node, job_name=job_name):
             # Here we would do something like 'salloc' or 'sbatch' over SSH.
