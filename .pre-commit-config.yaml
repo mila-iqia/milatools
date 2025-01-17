@@ -45,6 +45,8 @@ repos:
     rev: v1.7.5
     hooks:
       - id: docformatter
+        # https://github.com/PyCQA/docformatter/issues/172#issuecomment-1496443857
+        additional_dependencies: [tomli]
         args: [--in-place]
         require_serial: true
 
