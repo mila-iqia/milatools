@@ -29,7 +29,7 @@ runs:
     - name: Setup slurm
       shell: bash -e {0}
       run: |
-        ansible-playbook ./.github/custom_setup_slurm_action/slurm-playbook.yml || (journalctl -xe && exit 1)
+        ansible-playbook --diff -vvv ./.github/custom_setup_slurm_action/slurm-playbook.yml || (journalctl -xe && exit 1)
 
     - name: Add Slurm Account
       shell: bash -e {0}
