@@ -1,7 +1,7 @@
 - name: Slurm all in One
   hosts: localhost
   roles:
-    - role: 1.1.2
+    - role: 1.1.7
       become: true
   vars:
     slurm_upgrade: true

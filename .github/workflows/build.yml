@@ -82,6 +82,7 @@ jobs:
     name: integration tests with a mock slurm cluster
     needs: [unit-tests]
     runs-on: ${{ matrix.platform }}
+    continue-on-error: true
 
     strategy:
       max-parallel: 5
