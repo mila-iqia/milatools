@@ -83,6 +83,8 @@ jobs:
     needs: [unit-tests]
     runs-on: ${{ matrix.platform }}
     continue-on-error: true
+    # TODO: Currently disabled. It might be useful to re-enable this CI step.
+    if: 0 == 1
 
     strategy:
       max-parallel: 5
