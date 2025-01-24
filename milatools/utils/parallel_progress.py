@@ -38,8 +38,9 @@ class ProgressDict(TypedDict):
 class ReportProgressFn(Protocol):
     """A function to be called inside a task to show information in the progress bar."""
 
-    def __call__(self, progress: int, total: int, info: str | None = None) -> None:
-        ...  # pragma: no cover
+    def __call__(
+        self, progress: int, total: int, info: str | None = None
+    ) -> None: ...  # pragma: no cover
 
 
 def report_progress(
@@ -65,8 +66,7 @@ class AsyncTaskFn(Protocol[OutT_co]):
 
     def __call__(
         self, report_progress: ReportProgressFn
-    ) -> Coroutine[None, None, OutT_co]:
-        ...  # pragma: no cover
+    ) -> Coroutine[None, None, OutT_co]: ...  # pragma: no cover
 
 
 async def run_async_tasks_with_progress_bar(

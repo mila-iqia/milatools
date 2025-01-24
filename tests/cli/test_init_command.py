@@ -1595,7 +1595,7 @@ def test_setup_passwordless_ssh_access(
     ssh_config_path.write_text(
         textwrap.dedent(
             f"""\
-            Host {' '.join(drac_clusters_in_ssh_config)}
+            Host {" ".join(drac_clusters_in_ssh_config)}
                 Hostname %h.computecanada.ca
                 User bob
             """
