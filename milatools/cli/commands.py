@@ -230,7 +230,8 @@ def add_arguments(parser: argparse.ArgumentParser):
     )
     code_parser.add_argument(
         "--cluster",
-        choices=CLUSTERS,
+        type=str,
+        # choices=CLUSTERS,
         default="mila",
         help="Which cluster to connect to.",
     )
