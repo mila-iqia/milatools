@@ -15,7 +15,6 @@ from pathlib import Path, PurePosixPath
 from unittest.mock import Mock
 
 import invoke
-import paramiko
 import pytest
 import pytest_mock
 import questionary
@@ -29,6 +28,7 @@ from milatools.cli.init_command import (
     _get_mila_username,
     _setup_ssh_config_file,
     create_ssh_keypair,
+    get_ssh_private_key_path,
     get_windows_home_path_in_wsl,
     has_passphrase,
     setup_keys_on_login_node,
@@ -1340,11 +1340,13 @@ def test_setup_passwordless_ssh_access_to_cluster(
         authorized_keys_file = PurePosixPath(".ssh/authorized_keys")
         backup_authorized_keys_file = backup_remote_ssh_dir / "authorized_keys"
 
-    ssh_config = paramiko.SSHConfig.from_path(str(SSH_CONFIG_FILE))
+    # ssh_config = paramiko.SSHConfig.from_path(str(SSH_CONFIG_FILE))
     # Get the public and private keys to use for connecting to the cluster.
-    ssh_private_key_path = Path(
-        ssh_config.lookup(cluster).get("identityfile") or (ssh_dir / "id_rsa")
+    ssh_config = SSHConfig(SSH_CONFIG_FILE)
+    ssh_private_key_path = get_ssh_private_key_path(ssh_config, cluster) or (
+        ssh_dir / "id_rsa"
     )
+
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_private_key_path.exists()
     assert ssh_public_key_path.exists()
@@ -1498,7 +1500,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
         return subprocess_run(command, *args, **kwargs)
 
     mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
-    success = setup_passwordless_ssh_access_to_cluster(cluster)
+    success = setup_passwordless_ssh_access_to_cluster(ssh_config, cluster)
     if passwordless_ssh_was_previously_setup:
         # We already had access to the cluster.
         assert success is True
@@ -1526,7 +1528,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
     ]
     regression_text = "\n".join(
         [
-            f"Calling {function_call_string(setup_passwordless_ssh_access_to_cluster, cluster)}",
+            f"Calling {function_call_string(setup_passwordless_ssh_access_to_cluster, ssh_config, cluster)}",
         ]
         + [
             f"with passwordless SSH access to {cluster} already setup"

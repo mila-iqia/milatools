@@ -4,18 +4,21 @@ import copy
 import difflib
 import functools
 import json
+import shlex
 import shutil
 import subprocess
 import sys
 import warnings
 from logging import getLogger as get_logger
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+import paramiko
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
+from rich import print
 
-from milatools.utils.remote_v2 import SSH_CONFIG_FILE
+from milatools.utils.remote_v2 import RemoteV2
 
 from ..utils.local_v1 import LocalV1, check_passwordless, display
 from ..utils.remote_v1 import RemoteV1
@@ -29,6 +32,8 @@ logger = get_logger(__name__)
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 
+MILA_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeole2_fB_o0RF-FwEfdqvxV-qGN4nbGDnMbbYSi5ygMVeezg/viewform?usp=sf_link"
+ON_WINDOWS = sys.platform == "win32"
 
 if sys.platform == "win32":
     ssh_multiplexing_config = {}
@@ -141,6 +146,7 @@ def setup_ssh_config(
 
     if mila_username:
         for hostname, entry in MILA_ENTRIES.copy().items():
+            # todo: Do we want to set the `IdentityFile` value to the ssh key path?
             entry.update(User=mila_username)
             _add_ssh_entry(ssh_config, hostname, entry)
             _make_controlpath_dir(entry)
@@ -248,34 +254,122 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
 
     Returns whether the operation completed successfully or not.
     """
-    print("Checking passwordless authentication")
+    import rich.box
+    from rich import print
+    from rich.panel import Panel
+    from rich.prompt import Confirm
 
-    here = LocalV1()
-    sshdir = Path.home() / ".ssh"
-
-    # Check if there is a public key file in ~/.ssh
-    if not list(sshdir.glob("id*.pub")):
-        if yn("You have no public keys. Generate one?"):
-            # Run ssh-keygen with the given location and no passphrase.
-            ssh_private_key_path = Path.home() / ".ssh" / "id_rsa"
-            create_ssh_keypair(ssh_private_key_path, here)
-        else:
-            print("No public keys.")
+    if ON_WINDOWS:
+        if not Confirm.ask(
+            "You are running `mila init` on a Windows terminal. This will eventually become unsupported. "
+            "We really encourage you to setup the Windows Subsystem for Linux (WSL) if you haven't already, and run `mila init` from there.\n"
+            "\n"
+            "Please setup WSL following the instructions here: https://docs.alliancecan.ca/wiki/WSL"
+            "\n"
+            "Would you like to continue on the Windows side (and suffer lots and lots of popups and 2FA confirmation prompts?)"
+        ):
             return False
 
-    # TODO: This uses the public key set in the SSH config file, which may (or may not)
-    # be the random id*.pub file that was just checked for above.
-    success = setup_passwordless_ssh_access_to_cluster("mila")
-
-    if not success:
-        return False
-    setup_keys_on_login_node("mila")
+    # print("Checking passwordless authentication")
+    default_private_key = Path.home() / ".ssh/id_rsa"
+    mila_private_key = (
+        get_ssh_private_key_path(ssh_config, "mila") or default_private_key
+    )
+    drac_private_key = (
+        get_ssh_private_key_path(ssh_config, "narval") or default_private_key
+    )
+    # todo: Should probably set `IdentityFile` in the ssh config if it wasn't
+    # already there.
+    mila_public_key = mila_private_key.with_suffix(".pub")
+    drac_public_key = drac_private_key.with_suffix(".pub")
 
     drac_clusters_in_ssh_config: list[str] = []
     hosts_in_config = ssh_config.hosts()
     for cluster in DRAC_CLUSTERS:
         if any(cluster in hostname for hostname in hosts_in_config):
             drac_clusters_in_ssh_config.append(cluster)
+
+    status: dict[str, dict[Literal["login", "compute"], bool | None]] = {
+        "mila": {"login": None, "compute": None},
+        **{cluster: {"login": None, "compute": None} for cluster in DRAC_CLUSTERS},
+    }
+
+    from rich.live import Live
+    from rich.table import Table
+
+    def _table(
+        status: dict[str, dict[Literal["login", "compute"], bool | None]],
+    ) -> Table:
+        table = Table(title="SSH access status")
+        table.add_column("Cluster")
+        table.add_column("Login node access")
+        table.add_column("Compute node access")
+
+        def _icon(_s: bool | None) -> str:
+            return "✅" if _s else "❔" if _s is None else "❌"
+
+        for cluster, _values in status.items():
+            table.add_row(cluster, _icon(_values["login"]), _icon(_values["compute"]))
+        return table
+
+    with Live(_table(status), refresh_per_second=4) as live:
+        # fake demo:
+        # status["mila"] = (True, None)
+        # time.sleep(2.0)
+        # live.update(_table(status))
+        # status["narval"] = (True, None)
+        # time.sleep(0.5)
+        # live.update(_table(status))
+        # status["beluga"] = (True, None)
+        # time.sleep(0.5)
+        # live.update(_table(status))
+
+        # status["mila"] = (True, True)
+        # time.sleep(0.5)
+        # live.update(_table(status))
+
+        if not mila_private_key.exists():
+            if not Confirm.ask(
+                f"There is no SSH key at {mila_private_key}. Generate one?"
+            ):
+                print("No private keys.")
+                return False
+            # Run ssh-keygen with the given location and no passphrase.
+            create_ssh_keypair(mila_private_key)
+            status["mila"]["login"] = False
+            mila_login_access_is_setup = False
+        else:
+            print("Checking connection to the mila login nodes...")
+            mila_login_access_is_setup = check_passwordless("mila")
+
+        status["mila"]["login"] = mila_login_access_is_setup
+        live.update(_table(status))
+
+        if not mila_login_access_is_setup:
+            # print(f"To get access to the `mila` cluster, please open up this google form")
+            print(
+                Panel(
+                    mila_public_key.read_text(),
+                    box=rich.box.HORIZONTALS,
+                    title="Your public key for the Mila cluster",
+                    subtitle=f"Paste this in the form at [blue][link={MILA_FORM_URL}]this link[/link][/blue]",
+                    safe_box=True,
+                )
+            )
+            if not Confirm.ask(
+                f"Did you enter your public key in [blue][link={MILA_FORM_URL}]this google form[/link][/blue]?"
+            ):
+                pass
+
+        else:
+            setup_keys_on_login_node("mila")
+            status["mila"]["compute"] = True
+            live.update(_table(status))
+
+    # success = setup_passwordless_ssh_access_to_cluster(ssh_config, "mila")
+    # if not success:
+    #     return False
+    # setup_keys_on_login_node("mila")
 
     if not drac_clusters_in_ssh_config:
         logger.debug(
@@ -291,15 +385,45 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         "copying in the content of your public key in the box.\n"
         "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
     )
+
+    if sys.platform == "win32":
+        print(
+            "Skipping the setup of passwordless SSH access to the DRAC clusters on "
+            "Windows, as it would otherwise generate a lot of 2FA prompts. Please run this in WSL."
+        )
+        return
+
+    drac_public_key = drac_private_key.with_suffix(".pub")
+    print(
+        Panel(
+            drac_public_key.read_text(),
+            title="DRAC public key",
+            subtitle="Paste this into the box at https://ccdb.alliancecan.ca/ssh_authorized_keys",
+        )
+    )
     for drac_cluster in drac_clusters_in_ssh_config:
-        success = setup_passwordless_ssh_access_to_cluster(drac_cluster)
+        success = setup_passwordless_ssh_access_to_cluster(ssh_config, drac_cluster)
         if not success:
             return False
         setup_keys_on_login_node(drac_cluster)
     return True
 
 
-def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
+def get_ssh_private_key_path(ssh_config: SSHConfig, hostname: str) -> Path | None:
+    config = paramiko.SSHConfig.from_path(ssh_config.path)
+    identity_file = config.lookup(hostname).get("identityfile", None)
+    # Seems to be a list for some reason?
+    if isinstance(identity_file, list):
+        assert identity_file
+        identity_file = identity_file[0]
+    if identity_file:
+        return Path(identity_file).expanduser()
+    return None
+
+
+def setup_passwordless_ssh_access_to_cluster(
+    ssh_config: SSHConfig, cluster: str
+) -> bool:
     """Sets up passwordless SSH access to the given hostname.
 
     On Mac/Linux, uses `ssh-copy-id`. Performs the steps of ssh-copy-id manually on
@@ -313,15 +437,9 @@ def setup_passwordless_ssh_access_to_cluster(cluster: str) -> bool:
     # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
     # the default.
 
-    from paramiko.config import SSHConfig
-
-    config = SSHConfig.from_path(str(SSH_CONFIG_FILE))
-    identity_file = config.lookup(cluster).get("identityfile", "~/.ssh/id_rsa")
-    # Seems to be a list for some reason?
-    if isinstance(identity_file, list):
-        assert identity_file
-        identity_file = identity_file[0]
-    ssh_private_key_path = Path(identity_file).expanduser()
+    ssh_private_key_path = get_ssh_private_key_path(ssh_config, cluster) or (
+        Path.home() / ".ssh/id_rsa"
+    )
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
 
@@ -384,9 +502,9 @@ def setup_keys_on_login_node(cluster: str = "mila"):
         "This is required for `mila code` to work properly."
     )
     # todo: avoid re-creating the `Remote` here, since it goes through 2FA each time!
-    remote = RemoteV1(cluster)
+    remote = RemoteV1(cluster) if sys.platform == "win32" else RemoteV2(cluster)
     try:
-        pubkeys = remote.get_lines("ls -t ~/.ssh/id*.pub")
+        pubkeys = remote.get_output("ls -t ~/.ssh/id*.pub").splitlines()
         print("# OK")
     except UnexpectedExit:
         print("# MISSING")
@@ -397,8 +515,14 @@ def setup_keys_on_login_node(cluster: str = "mila"):
         else:
             exit("Cannot proceed because there is no public key")
 
-    common = remote.with_bash().get_output(
-        "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)"
+    common = remote.get_output(
+        shlex.join(
+            [
+                "bash",
+                "-c",
+                "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)",
+            ]
+        )
     )
     if common:
         print("# OK")
