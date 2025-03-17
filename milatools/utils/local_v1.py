@@ -13,6 +13,7 @@ import paramiko.ssh_exception
 from typing_extensions import deprecated
 
 from milatools.cli.utils import CommandNotFoundError, T, cluster_to_connect_kwargs
+from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v2 import SSH_CONFIG_FILE, is_already_logged_in
 
 logger = get_logger(__name__)
@@ -88,6 +89,12 @@ def check_passwordless(host: str) -> bool:
         and is_already_logged_in(host, ssh_config_path=SSH_CONFIG_FILE)
     ):
         return True
+
+    if sys.platform != "win32":
+        try:
+            return LocalV2.get_output(("ssh", host, "--", "echo OK")) == "OK"
+        except subprocess.CalledProcessError:
+            return False
 
     try:
         connect_kwargs_for_host = {"allow_agent": False}
