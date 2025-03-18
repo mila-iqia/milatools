@@ -20,6 +20,7 @@ from typing import Any, Literal, TypeVar, Union, get_args
 
 import blessed
 import paramiko
+import paramiko.config
 import questionary as qn
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
@@ -206,6 +207,9 @@ class SSHConfig:
         self.host = self.cfg.host
         self.hosts = self.cfg.hosts
         self.set = self.cfg.set
+
+    def lookup(self, host: str) -> paramiko.config.SSHConfigDict:
+        return paramiko.SSHConfig.from_path(self.path).lookup(host)
 
     def add(
         self,

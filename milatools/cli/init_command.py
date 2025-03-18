@@ -15,8 +15,12 @@ from typing import Any, Literal
 
 import paramiko
 import questionary as qn
+import rich.box
 from invoke.exceptions import UnexpectedExit
 from rich import print
+from rich.panel import Panel
+from rich.prompt import Confirm
+from rich.table import Table
 
 from milatools.utils.remote_v2 import RemoteV2
 
@@ -31,7 +35,7 @@ from .utils import SSHConfig, T, running_inside_WSL, yn
 logger = get_logger(__name__)
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
-
+DRAC_FORM_URL = "https://ccdb.alliancecan.ca/ssh_authorized_keys"
 MILA_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeole2_fB_o0RF-FwEfdqvxV-qGN4nbGDnMbbYSi5ygMVeezg/viewform?usp=sf_link"
 ON_WINDOWS = sys.platform == "win32"
 
@@ -52,7 +56,8 @@ else:
 
 MILA_ENTRIES: dict[str, dict[str, int | str]] = {
     "mila": {
-        "HostName": "login.server.mila.quebec",
+        # todo: testing. Change back to login node balancer after.
+        "HostName": "login-5.login.server.mila.quebec",
         # "User": mila_username,
         "PreferredAuthentications": "publickey,keyboard-interactive",
         "Port": 2222,
@@ -254,34 +259,11 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
 
     Returns whether the operation completed successfully or not.
     """
-    import rich.box
-    from rich import print
-    from rich.panel import Panel
-    from rich.prompt import Confirm
-
-    if ON_WINDOWS:
-        if not Confirm.ask(
-            "You are running `mila init` on a Windows terminal. This will eventually become unsupported. "
-            "We really encourage you to setup the Windows Subsystem for Linux (WSL) if you haven't already, and run `mila init` from there.\n"
-            "\n"
-            "Please setup WSL following the instructions here: https://docs.alliancecan.ca/wiki/WSL"
-            "\n"
-            "Would you like to continue on the Windows side (and suffer lots and lots of popups and 2FA confirmation prompts?)"
-        ):
-            return False
 
     # print("Checking passwordless authentication")
-    default_private_key = Path.home() / ".ssh/id_rsa"
-    mila_private_key = (
-        get_ssh_private_key_path(ssh_config, "mila") or default_private_key
-    )
-    drac_private_key = (
-        get_ssh_private_key_path(ssh_config, "narval") or default_private_key
-    )
+    # default_private_key = Path.home() / ".ssh/id_rsa"
     # todo: Should probably set `IdentityFile` in the ssh config if it wasn't
     # already there.
-    mila_public_key = mila_private_key.with_suffix(".pub")
-    drac_public_key = drac_private_key.with_suffix(".pub")
 
     drac_clusters_in_ssh_config: list[str] = []
     hosts_in_config = ssh_config.hosts()
@@ -291,11 +273,11 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
 
     status: dict[str, dict[Literal["login", "compute"], bool | None]] = {
         "mila": {"login": None, "compute": None},
-        **{cluster: {"login": None, "compute": None} for cluster in DRAC_CLUSTERS},
+        **{
+            cluster: {"login": None, "compute": None}
+            for cluster in drac_clusters_in_ssh_config
+        },
     }
-
-    from rich.live import Live
-    from rich.table import Table
 
     def _table(
         status: dict[str, dict[Literal["login", "compute"], bool | None]],
@@ -312,101 +294,120 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
             table.add_row(cluster, _icon(_values["login"]), _icon(_values["compute"]))
         return table
 
-    with Live(_table(status), refresh_per_second=4) as live:
-        # fake demo:
-        # status["mila"] = (True, None)
-        # time.sleep(2.0)
-        # live.update(_table(status))
-        # status["narval"] = (True, None)
-        # time.sleep(0.5)
-        # live.update(_table(status))
-        # status["beluga"] = (True, None)
-        # time.sleep(0.5)
-        # live.update(_table(status))
+    # Having a live table looks cool with a mock, but doesn't work well in practice:
+    # - output from SSH commands messes this up
+    # - Input prompts are hidden.
+    status["mila"] = setup_passwordless_ssh_access_to_cluster_with_form(
+        ssh_config, "mila", MILA_FORM_URL
+    )
 
-        # status["mila"] = (True, True)
-        # time.sleep(0.5)
-        # live.update(_table(status))
-
-        if not mila_private_key.exists():
-            if not Confirm.ask(
-                f"There is no SSH key at {mila_private_key}. Generate one?"
-            ):
-                print("No private keys.")
-                return False
-            # Run ssh-keygen with the given location and no passphrase.
-            create_ssh_keypair(mila_private_key)
-            status["mila"]["login"] = False
-            mila_login_access_is_setup = False
-        else:
-            print("Checking connection to the mila login nodes...")
-            mila_login_access_is_setup = check_passwordless("mila")
-
-        status["mila"]["login"] = mila_login_access_is_setup
-        live.update(_table(status))
-
-        if not mila_login_access_is_setup:
-            # print(f"To get access to the `mila` cluster, please open up this google form")
-            print(
-                Panel(
-                    mila_public_key.read_text(),
-                    box=rich.box.HORIZONTALS,
-                    title="Your public key for the Mila cluster",
-                    subtitle=f"Paste this in the form at [blue][link={MILA_FORM_URL}]this link[/link][/blue]",
-                    safe_box=True,
-                )
-            )
-            if not Confirm.ask(
-                f"Did you enter your public key in [blue][link={MILA_FORM_URL}]this google form[/link][/blue]?"
-            ):
-                pass
-
-        else:
-            setup_keys_on_login_node("mila")
-            status["mila"]["compute"] = True
-            live.update(_table(status))
-
-    # success = setup_passwordless_ssh_access_to_cluster(ssh_config, "mila")
-    # if not success:
-    #     return False
-    # setup_keys_on_login_node("mila")
+    if ON_WINDOWS and not Confirm.ask(
+        "You are running `mila init` on a Windows terminal. "
+        "We really encourage you to setup the Windows Subsystem for Linux (WSL) if you haven't already, and run `mila init` from there.\n"
+        "See this link for instructions on setting up WSL: https://docs.alliancecan.ca/wiki/WSL"
+        "\n"
+        "Would you like to continue on the Windows side? ([bold red]You will have to click through lots and lots of 2FA popups on your phone[/]!)"
+        "\n"
+    ):
+        print(_table(status))
+        return False
 
     if not drac_clusters_in_ssh_config:
         logger.debug(
             f"There are no DRAC clusters in the SSH config at {ssh_config.path}."
         )
+        print(_table(status))
         return True
 
-    print(
-        "Setting up passwordless ssh access to the DRAC clusters with ssh-copy-id.\n"
-        "\n"
-        "Please note that you can also setup passwordless SSH access to all the DRAC "
-        "clusters by visiting https://ccdb.alliancecan.ca/ssh_authorized_keys and "
-        "copying in the content of your public key in the box.\n"
-        "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
-    )
-
-    if sys.platform == "win32":
-        print(
-            "Skipping the setup of passwordless SSH access to the DRAC clusters on "
-            "Windows, as it would otherwise generate a lot of 2FA prompts. Please run this in WSL."
+    # print(
+    #     "Setting up passwordless ssh access to the DRAC clusters with ssh-copy-id.\n"
+    #     "\n"
+    #     "Please note that you can also setup passwordless SSH access to all the DRAC "
+    #     "clusters by visiting https://ccdb.alliancecan.ca/ssh_authorized_keys and "
+    #     "copying in the content of your public key in the box.\n"
+    #     "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
+    #
+    #
+    # )
+    if drac_clusters_in_ssh_config:
+        setup_passwordless_ssh_access_to_cluster_with_form(
+            ssh_config, "narval", DRAC_FORM_URL
         )
-        return
 
-    drac_public_key = drac_private_key.with_suffix(".pub")
-    print(
-        Panel(
-            drac_public_key.read_text(),
-            title="DRAC public key",
-            subtitle="Paste this into the box at https://ccdb.alliancecan.ca/ssh_authorized_keys",
-        )
-    )
-    for drac_cluster in drac_clusters_in_ssh_config:
-        success = setup_passwordless_ssh_access_to_cluster(ssh_config, drac_cluster)
-        if not success:
-            return False
-        setup_keys_on_login_node(drac_cluster)
+    # for drac_cluster in drac_clusters_in_ssh_config:
+    #     success = setup_passwordless_ssh_access_to_cluster(ssh_config, drac_cluster)
+    #     if not success:
+    #         return False
+    #     setup_keys_on_login_node(drac_cluster)
     return True
+
+
+def setup_passwordless_ssh_access_to_cluster_with_form(
+    ssh_config: SSHConfig,
+    cluster: str,
+    form_url: str,
+) -> dict[Literal["login", "compute"], bool | None]:
+    default_private_key = Path.home() / ".ssh/id_rsa"
+    private_key = get_ssh_private_key_path(ssh_config, cluster) or default_private_key
+    public_key = private_key.with_suffix(".pub")
+
+    access_to_login_node: bool | None = None
+    access_to_compute_node: bool | None = None
+
+    other_keys = [
+        pubkey.with_suffix("")
+        for pubkey in default_private_key.parent.glob("id_*.pub")
+        if pubkey != public_key
+    ]
+    if not private_key.exists():
+        if not other_keys:
+            access_to_login_node = False
+            print(f"Generating a new ssh key at {private_key}")
+            create_ssh_keypair(private_key)
+        else:
+            choices = [
+                qn.Choice(
+                    title=Path(p).stem,
+                    value=p,
+                )
+                for p in other_keys
+            ]
+            private_key = qn.select(
+                f"Select the SSH key to use to connect to the {cluster} cluster",
+                choices=choices,
+            ).ask()
+            orig_config = ssh_config.cfg.config()
+            ssh_config.add(cluster, IdentityFile=private_key)
+            show_modifications(orig_config, ssh_config.cfg.config(), ssh_config.path)
+            ssh_config.save()
+
+        # TODO: If there are other ssh keys to choose from, let the user select one.
+        # Otherwise, generate one without asking.
+        # Run ssh-keygen with the given location and no passphrase.
+    else:
+        print(f"Checking connection to the {cluster} login nodes... ", end="")
+        access_to_login_node = check_passwordless(cluster)
+        print("Success! ✅" if access_to_login_node else "Failed! ❌")
+
+    if not access_to_login_node:
+        print(
+            Panel(
+                public_key.read_text(),
+                box=rich.box.HORIZONTALS,
+                title=f"Your public key for the {cluster} cluster",
+                subtitle=f"Paste this in the form at [blue][link={form_url}]this link[/link][/blue]",
+                safe_box=True,
+            )
+        )
+        if not Confirm.ask(
+            f"Did you enter your public key in [blue][link={form_url}]this google form[/link][/blue]?"
+        ):
+            pass
+    else:
+        setup_keys_on_login_node(cluster)
+        access_to_compute_node = True
+
+    return (access_to_login_node, access_to_compute_node)
 
 
 def get_ssh_private_key_path(ssh_config: SSHConfig, hostname: str) -> Path | None:
@@ -742,8 +743,8 @@ def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     return config_file
 
 
-def ask_to_confirm_changes(before: str, after: str, path: str | Path) -> bool:
-    print(T.bold(f"The following modifications will be made to {path}:\n"))
+def show_modifications(before: str, after: str, path: str | Path):
+    print(f"[bold]The following modifications will be made to {path}:\n[/bold]")
     diff_lines = list(
         difflib.unified_diff(
             before.splitlines(True),
@@ -752,11 +753,15 @@ def ask_to_confirm_changes(before: str, after: str, path: str | Path) -> bool:
     )
     for line in diff_lines[2:]:
         if line.startswith("-"):
-            print(T.red(line), end="")
+            print(f"[red]{line}[/red]", end="")
         elif line.startswith("+"):
-            print(T.green(line), end="")
+            print(f"[green]{line}[/green]", end="")
         else:
             print(line, end="")
+
+
+def ask_to_confirm_changes(before: str, after: str, path: str | Path) -> bool:
+    show_modifications(before, after, path)
     return yn("\nIs this OK?")
 
 
