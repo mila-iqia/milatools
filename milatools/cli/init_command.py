@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import warnings
 from logging import getLogger as get_logger
 from pathlib import Path
@@ -22,6 +23,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 
+from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v2 import RemoteV2
 
 from ..utils.local_v1 import LocalV1, check_passwordless, display
@@ -279,27 +281,19 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         },
     }
 
-    def _table(
-        status: dict[str, dict[Literal["login", "compute"], bool | None]],
-    ) -> Table:
-        table = Table(title="SSH access status")
-        table.add_column("Cluster")
-        table.add_column("Login node access")
-        table.add_column("Compute node access")
-
-        def _icon(_s: bool | None) -> str:
-            return "✅" if _s else "❔" if _s is None else "❌"
-
-        for cluster, _values in status.items():
-            table.add_row(cluster, _icon(_values["login"]), _icon(_values["compute"]))
-        return table
-
     # Having a live table looks cool with a mock, but doesn't work well in practice:
     # - output from SSH commands messes this up
     # - Input prompts are hidden.
     status["mila"] = setup_passwordless_ssh_access_to_cluster_with_form(
         ssh_config, "mila", MILA_FORM_URL
     )
+
+    if not drac_clusters_in_ssh_config:
+        logger.debug(
+            f"There are no DRAC clusters in the SSH config at {ssh_config.path}."
+        )
+        print(_table(status))
+        return True
 
     if ON_WINDOWS and not Confirm.ask(
         "You are running `mila init` on a Windows terminal. "
@@ -310,36 +304,41 @@ def setup_passwordless_ssh_access(ssh_config: SSHConfig) -> bool:
         "\n"
     ):
         print(_table(status))
-        return False
+        exit()
 
-    if not drac_clusters_in_ssh_config:
-        logger.debug(
-            f"There are no DRAC clusters in the SSH config at {ssh_config.path}."
-        )
-        print(_table(status))
-        return True
-
-    # print(
-    #     "Setting up passwordless ssh access to the DRAC clusters with ssh-copy-id.\n"
-    #     "\n"
-    #     "Please note that you can also setup passwordless SSH access to all the DRAC "
-    #     "clusters by visiting https://ccdb.alliancecan.ca/ssh_authorized_keys and "
-    #     "copying in the content of your public key in the box.\n"
-    #     "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
-    #
-    #
-    # )
-    if drac_clusters_in_ssh_config:
-        setup_passwordless_ssh_access_to_cluster_with_form(
-            ssh_config, "narval", DRAC_FORM_URL
-        )
-
-    # for drac_cluster in drac_clusters_in_ssh_config:
-    #     success = setup_passwordless_ssh_access_to_cluster(ssh_config, drac_cluster)
-    #     if not success:
-    #         return False
-    #     setup_keys_on_login_node(drac_cluster)
+    setup_passwordless_ssh_access_to_cluster_with_form(
+        ssh_config, "narval", DRAC_FORM_URL
+    )
+    print(
+        "Setting up passwordless ssh access to the DRAC clusters with ssh-copy-id.\n"
+        "\n"
+        "Please note that you can setup passwordless SSH access to all the DRAC "
+        "clusters by visiting https://ccdb.alliancecan.ca/ssh_authorized_keys and "
+        "copying in the content of your public key in the box.\n"
+        "See https://docs.alliancecan.ca/wiki/SSH_Keys#Using_CCDB for more info."
+    )
+    for drac_cluster in drac_clusters_in_ssh_config:
+        success = run_ssh_copy_id(ssh_config, drac_cluster)
+        if not success:
+            return False
+        setup_keys_on_login_node(drac_cluster)
     return True
+
+
+def _table(
+    status: dict[str, dict[Literal["login", "compute"], bool | None]],
+) -> Table:
+    table = Table(title="SSH access status")
+    table.add_column("Cluster")
+    table.add_column("Login node access")
+    table.add_column("Compute node access")
+
+    def _icon(_s: bool | None) -> str:
+        return "✅" if _s else "❔" if _s is None else "❌"
+
+    for cluster, _values in status.items():
+        table.add_row(cluster, _icon(_values["login"]), _icon(_values["compute"]))
+    return table
 
 
 def setup_passwordless_ssh_access_to_cluster_with_form(
@@ -359,33 +358,17 @@ def setup_passwordless_ssh_access_to_cluster_with_form(
         for pubkey in default_private_key.parent.glob("id_*.pub")
         if pubkey != public_key
     ]
-    if not private_key.exists():
-        if not other_keys:
-            access_to_login_node = False
-            print(f"Generating a new ssh key at {private_key}")
-            create_ssh_keypair(private_key)
-        else:
-            choices = [
-                qn.Choice(
-                    title=Path(p).stem,
-                    value=p,
-                )
-                for p in other_keys
-            ]
-            private_key = qn.select(
-                f"Select the SSH key to use to connect to the {cluster} cluster",
-                choices=choices,
-            ).ask()
-            orig_config = ssh_config.cfg.config()
-            ssh_config.add(cluster, IdentityFile=private_key)
-            show_modifications(orig_config, ssh_config.cfg.config(), ssh_config.path)
-            ssh_config.save()
-
+    if not private_key.exists() and not other_keys:
+        access_to_login_node = False
+        print(f"Generating a new ssh key at {private_key}")
+        create_ssh_keypair(private_key)
         # TODO: If there are other ssh keys to choose from, let the user select one.
         # Otherwise, generate one without asking.
         # Run ssh-keygen with the given location and no passphrase.
     else:
-        print(f"Checking connection to the {cluster} login nodes... ", end="")
+        print(
+            f"Checking connection to the {cluster} login nodes... ", end="", flush=True
+        )
         access_to_login_node = check_passwordless(cluster)
         print("Success! ✅" if access_to_login_node else "Failed! ❌")
 
@@ -395,14 +378,19 @@ def setup_passwordless_ssh_access_to_cluster_with_form(
                 public_key.read_text(),
                 box=rich.box.HORIZONTALS,
                 title=f"Your public key for the {cluster} cluster",
-                subtitle=f"Paste this in the form at [blue][link={form_url}]this link[/link][/blue]",
+                subtitle=f"Paste this in the form at [blue][link={form_url}]this link[/]",
                 safe_box=True,
             )
         )
-        if not Confirm.ask(
-            f"Did you enter your public key in [blue][link={form_url}]this google form[/link][/blue]?"
-        ):
-            pass
+        _used_form = Confirm.ask(
+            f"Did you enter your SSH key in the form at [blue][link={form_url}]this URL[/]?"
+        )
+        if check_passwordless(cluster):
+            print("Success! ✅")
+            access_to_login_node = True
+        else:
+            print("")
+
     else:
         setup_keys_on_login_node(cluster)
         access_to_compute_node = True
@@ -422,9 +410,7 @@ def get_ssh_private_key_path(ssh_config: SSHConfig, hostname: str) -> Path | Non
     return None
 
 
-def setup_passwordless_ssh_access_to_cluster(
-    ssh_config: SSHConfig, cluster: str
-) -> bool:
+def run_ssh_copy_id(ssh_config: SSHConfig, cluster: str) -> bool:
     """Sets up passwordless SSH access to the given hostname.
 
     On Mac/Linux, uses `ssh-copy-id`. Performs the steps of ssh-copy-id manually on
@@ -432,9 +418,12 @@ def setup_passwordless_ssh_access_to_cluster(
 
     Returns whether the operation completed successfully or not.
     """
-    here = LocalV1()
+    here = LocalV2()
     # Check that it is possible to connect without using a password.
-    print(f"Checking if passwordless SSH access is setup for the {cluster} cluster.")
+    print(
+        f"Checking if passwordless SSH access is setup for the {cluster} cluster.",
+        flush=True,
+    )
     # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
     # the default.
 
@@ -455,7 +444,7 @@ def setup_passwordless_ssh_access_to_cluster(
     #     print("No passwordless login.")
     #     return False
     print("Please enter your password if prompted.")
-    if sys.platform == "win32":
+    if ON_WINDOWS:
         # NOTE: This is to remove extra '^M' characters that would be added at the end
         # of the file on the remote!
         public_key_contents = ssh_public_key_path.read_text().replace("\r\n", "\n")
@@ -469,7 +458,6 @@ def setup_passwordless_ssh_access_to_cluster(
             "cat >> ~/.ssh/authorized_keys",
         )
         display(command)
-        import tempfile
 
         with tempfile.NamedTemporaryFile("w", newline="\n") as f:
             print(public_key_contents, end="", file=f)
@@ -477,19 +465,20 @@ def setup_passwordless_ssh_access_to_cluster(
             subprocess.run(command, check=True, text=False, stdin=f)
     else:
         here.run(
-            "ssh-copy-id",
-            "-i",
-            str(ssh_private_key_path),
-            "-o",
-            "StrictHostKeyChecking=no",
-            cluster,
-            check=True,
+            (
+                "ssh-copy-id",
+                "-i",
+                str(ssh_private_key_path),
+                "-o",
+                "StrictHostKeyChecking=no",
+                cluster,
+            )
         )
 
     # double-check that this worked.
-    if not check_passwordless(cluster):
-        print(f"'ssh-copy-id {cluster}' appears to have failed!")
-        return False
+    # if not check_passwordless(cluster):
+    #     print(f"'ssh-copy-id {cluster}' appears to have failed!")
+    #     return False
     return True
 
 
@@ -526,17 +515,19 @@ def setup_keys_on_login_node(cluster: str = "mila"):
         )
     )
     if common:
-        print("# OK")
+        # print("# OK")
+        return True
     else:
-        print("# MISSING")
-        if yn(
+        # print("# MISSING")
+        if not yn(
             "To connect to a compute node from a login node you need one id_*.pub to "
             "be in authorized_keys. Do it?"
         ):
-            pubkey = pubkeys[0]
-            remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
-        else:
-            exit("You will not be able to SSH to a compute node")
+            print("[red]You will not be able to SSH to a compute node[/]")
+            return False
+        pubkey = pubkeys[0]
+        remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys")
+        return True
 
 
 def print_welcome_message():
