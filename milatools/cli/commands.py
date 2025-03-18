@@ -35,7 +35,6 @@ from milatools.cli import console
 from milatools.cli.code import code
 from milatools.cli.init_command import (
     print_welcome_message,
-    setup_keys_on_login_node,
     setup_passwordless_ssh_access,
     setup_ssh_config,
     setup_vscode_settings,
@@ -518,6 +517,7 @@ def init():
     print("Checking ssh config")
 
     ssh_config = setup_ssh_config()
+    # ssh_config = SSHConfig(SSH_CONFIG_FILE)
 
     success = setup_passwordless_ssh_access(ssh_config=ssh_config)
     if not success:
@@ -530,7 +530,6 @@ def init():
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
-    setup_keys_on_login_node()
     setup_vscode_settings()
     print_welcome_message()
 
