@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import shlex
-import socket
 import subprocess
 import sys
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import IO, Any
 
-import fabric
-import paramiko.ssh_exception
 from typing_extensions import deprecated
 
-from milatools.cli.utils import CommandNotFoundError, T, cluster_to_connect_kwargs
+from milatools.cli.utils import CommandNotFoundError, T
 from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v2 import SSH_CONFIG_FILE, is_already_logged_in
 
@@ -90,40 +87,24 @@ def check_passwordless(host: str) -> bool:
     ):
         return True
 
-    if sys.platform != "win32":
-        try:
-            return LocalV2.get_output(("ssh", host, "--", "echo OK")) == "OK"
-        except subprocess.CalledProcessError:
-            return False
-
-    try:
-        connect_kwargs_for_host = {"allow_agent": False}
-        if host in cluster_to_connect_kwargs:
-            connect_kwargs_for_host.update(cluster_to_connect_kwargs[host])
-        with fabric.Connection(
+    return "OK" in LocalV2.get_output(
+        (
+            "ssh",
             host,
-            connect_kwargs=connect_kwargs_for_host,
-        ) as connection:
-            results: fabric.runners.Result = connection.run(
-                "echo OK",
-                in_stream=False,
-                echo=True,
-                echo_format=T.bold_cyan(f"({host})" + " $ {command}"),
-            )
-
-    except (
-        paramiko.ssh_exception.SSHException,
-        paramiko.ssh_exception.NoValidConnectionsError,
-        socket.gaierror,
-        # BUG: Also getting ValueError("q must be exactlu 160, 224, or 256 bits long")
-        # with older versions of paramiko.
-        # ValueError,
-    ) as err:
-        logger.debug(f"Unable to connect to {host} without a password: {err}")
-        return False
-
-    if "OK" in results.stdout:
-        return True
-    logger.error("Unexpected output from SSH command, output didn't contain 'OK'!")
-    logger.error(f"stdout: {results.stdout}, stderr: {results.stderr}")
-    return False
+            "-o",
+            "StrictHostKeyChecking=no",
+            # "-o",
+            # "PasswordAuthentication=no",
+            # "-o",
+            # "ForwardAgent=no",
+            # "-o",
+            # "IdentitiesOnly=yes",
+            "-o",
+            "KbdInteractiveAuthentication=no",
+            "--",
+            "echo OK",
+        ),
+        display=False,
+        warn=True,
+        hide=True,
+    )
