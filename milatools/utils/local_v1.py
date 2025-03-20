@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 import subprocess
 import sys
+import typing
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import IO, Any
@@ -79,14 +80,21 @@ def display(split_command: list[str] | tuple[str, ...] | str) -> None:
     print(T.bold_green("(local) $ ", command))
 
 
+if typing.TYPE_CHECKING:
+    pass
+
+
 def check_passwordless(host: str) -> bool:
+    # TODO: Should *NOT* return `True` when we're already logged in to the cluster and
+    # used a password to connect! In other words, we need to disable the ControlMaster
+    # behaviour entirely to check this. But this also might come at a cost for clusters
+    # with 2FA: We might provoque a 2FA prompt by bypassing ControlMaster!
     if (
         sys.platform != "win32"
         and SSH_CONFIG_FILE.exists()
         and is_already_logged_in(host, ssh_config_path=SSH_CONFIG_FILE)
     ):
         return True
-
     return "OK" in LocalV2.get_output(
         (
             "ssh",
