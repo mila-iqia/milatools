@@ -17,28 +17,30 @@ from typing import Any, Literal
 import paramiko
 import questionary as qn
 import rich.box
+import rich.prompt
 from invoke.exceptions import UnexpectedExit
 from rich import print
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 
+from milatools.cli.utils import SSH_CONFIG_FILE, SSHConfig, T, running_inside_WSL, yn
+from milatools.utils.local_v1 import LocalV1, check_passwordless, display
 from milatools.utils.local_v2 import LocalV2
+from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
-
-from ..utils.local_v1 import LocalV1, check_passwordless, display
-from ..utils.remote_v1 import RemoteV1
-from ..utils.vscode_utils import (
+from milatools.utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
 )
-from .utils import SSHConfig, T, running_inside_WSL, yn
 
 logger = get_logger(__name__)
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 DRAC_FORM_URL = "https://ccdb.alliancecan.ca/ssh_authorized_keys"
 MILA_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeole2_fB_o0RF-FwEfdqvxV-qGN4nbGDnMbbYSi5ygMVeezg/viewform?usp=sf_link"
+MILA_ONBOARDING_URL = "https://sites.google.com/mila.quebec/mila-intranet/it-infrastructure/it-onboarding-training"
+MILA_SSHKEYS_DOCS_URL = "https://docs.mila.quebec/Userguide.html#ssh-private-keys"
 ON_WINDOWS = sys.platform == "win32"
 
 if sys.platform == "win32":
@@ -124,9 +126,190 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
 }
 
 
+def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
+    """Set up your configuration and credentials.
+
+    1. Sets up your ~/.ssh/config file.
+        - Adds the entries for the Mila and optionally the DRAC clusters
+        - Updates the config if it already exists
+        - Asks for confirmation before making changes. if changes are rejected, exits.
+    2. Setup SSH access to the Mila cluster login nodes
+        - Runs `ssh-keygen` if there isn't already a key for the Mila cluster.
+        - Prints the content of the public key in a nice text block to copy-paste.
+        - Displays a link to the Google form to use to submit the public key.
+    3. Mila cluster compute nodes (only if we already have access to the Mila login nodes)
+        - Run `ssh-keygen` on the login node if there isn't already a key in ~/.ssh.
+        - Add the content of that public key to ~/.ssh/authorized_keys if it isn't already there
+    4. SSH access to DRAC clusters
+        Currently we do `ssh-copy-id` and it still works with DRAC clusters.
+        Should we also transition to just displaying the form instead?
+        If we also switch to the form, then do the same as for the Mila cluster in 2:
+        - Generates (another?) keypair to connect to DRAC if there isn't one already.
+        - Prints the content of the public key in a nice text block to copy-paste.
+        - Displays a link to the CCDB form to submit the public key.
+    5. DRAC cluster compute nodes (only if we have already access to the DRAC login nodes)
+        - If running on Windows, print a big red warning to tell the user that they can
+          either suffer through ~15 2FA prompts on their phone, or they can switch to WSL.
+        - Same as in 3 but done on each of the DRAC clusters.
+    6. Sets up VSCode settings if VsCode is installed locally
+        - Add "remote.SSH.connectTimeout": 60 in Vscode's `settings.json` file.
+    7. Displays a welcome message with further instructions and tips.
+
+    ## TODOs
+
+    Trouble is, this `mila init` would have to be run multiple times to completely
+    setup the SSH access!
+
+    ### New user
+
+    Someone who is using `mila init` for the first time.
+    - May or may not have an SSH config file.
+    - May or may not already have SSH keys
+    - May or may not have already completed the onboarding.
+        - If they completed the onboarding, they are supposed to have SSH keys.
+        - If they completed the onboarding less than 48 hours ago, cluster access might not work.
+
+    ### Existing user, never used the cluster
+
+    Same as above? Maybe best to re-do the onboarding quiz to submit the ssh key instead
+    of displaying a new form?
+
+
+    ### Existing user, New Machine
+
+    ### Existing user, same machine, (running mila init again after a while)
+    """
+
+    # ssh -G mila gives the final config for a given hostname.
+    # This could be used to check for errors.
+
+    #############################
+    # Step 1: SSH Configuration #
+    #############################
+
+    print("Checking ssh config")
+    ssh_config_path = ssh_dir / "config"
+    _sshconfig_was_modified, ssh_config = setup_ssh_config(ssh_config_path)
+    setup_mila_ssh_access(ssh_dir, ssh_config=ssh_config)
+
+    _hosts = ssh_config.hosts()
+    if any(drac_cluster in _hosts for drac_cluster in DRAC_CLUSTERS):
+        # setup DRAC access as well..
+        pass
+
+    # print("Checking connection to the mila login nodes... ", end="", flush=True)
+    # access_to_login_node = check_passwordless("mila")
+    # print("Success! ✅" if access_to_login_node else "Failed! ❌")
+
+    # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
+    # ~/.ssh/config to the Windows ssh directory (taking care to remove the
+    # ControlMaster-related entries) so that the user doesn't need to install Python on
+    # the Windows side.
+    if running_inside_WSL():
+        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
+
+    setup_vscode_settings()
+    print_welcome_message()
+
+
+def setup_mila_ssh_access(ssh_dir: Path, ssh_config: SSHConfig):
+    print("Checking ssh config")
+    private_keys = [k.with_suffix("") for k in ssh_dir.glob("id_*.pub")]
+
+    # todo: check if this would also work on Windows.
+    # mila_private_key = (
+    #     subprocess.get_output(shlex.split("ssh -G mila | grep identityfile"))
+    #     .splitlines()[0]
+    #     .split()[1]
+    # )
+
+    mila_private_key = get_ssh_private_key_path(ssh_config, "mila") or next(
+        iter(private_keys),
+        Path.home() / ".ssh" / "id_rsa_mila",
+    )
+    mila_public_key = mila_private_key.with_suffix(".pub")
+
+    login_node: RemoteV2 | RemoteV1 | None = None
+
+    if mila_private_key.exists():
+        # No point in trying to login if the config and key didn't exist to begin with.
+        print("Checking connection to the mila login nodes... ", end="", flush=True)
+        login_node = try_to_login("mila")
+        print("Success! ✅" if login_node is not None else "Failed! ❌")
+
+    can_ssh_to_login_node = login_node is not None
+
+    compute_node_access = False
+    if login_node is not None:
+        print("Checking connection to the mila compute nodes... ", end="", flush=True)
+        compute_node_access = can_access_compute_nodes(login_node)
+        print("Success! ✅" if compute_node_access is not None else "Failed! ❌")
+
+    if not mila_private_key.exists():
+        print(
+            f"Creating a new SSH key to be used to connect to the Mila cluster at {mila_private_key}.\n"
+            f"To learn more, visit [link={MILA_SSHKEYS_DOCS_URL}]this page of the Mila docs[/]."
+            f"[bold blue]Enter a passphrase to set for the SSH key {mila_private_key}:[/]"
+        )
+        # passphrase=None lets the user set a passphrase (or not) interactively.
+        create_ssh_keypair(mila_private_key, passphrase=None)
+
+    print(
+        Panel(
+            mila_public_key.read_text(),
+            box=rich.box.HORIZONTALS,
+            title="Your public key for the Mila cluster",
+            subtitle="(This is what you should Copy & paste if asked)",
+        )
+    )
+
+    if not can_ssh_to_login_node:
+        # Only ask the question if the user doesn't already have access to the login nodes.
+        logger.info("Unable to connect to the login nodes.")
+        if not (
+            _completed_onboarding := Confirm.ask(
+                f"Did you already complete the [link={MILA_ONBOARDING_URL}]Mila onboarding training[/]?"
+            )
+        ):
+            print(f"Please complete the onboarding training at {MILA_ONBOARDING_URL}")
+            exit()
+
+        if not (
+            _waited_48_hours := Confirm.ask(
+                "Did you successfully complete all onboarding steps and submit your answers to the quiz "
+                "more than [bold]48 hours[/] ago?",
+            )
+        ):
+            print(
+                "Please wait for 48 hours after completing the onboarding before trying to connect to the cluster."
+            )
+            exit()
+
+
+def try_to_login(cluster: str) -> RemoteV2 | RemoteV1 | None:
+    try:
+        return RemoteV2(cluster) if not ON_WINDOWS else RemoteV1(cluster)
+    except Exception:
+        return None
+
+
+def can_access_compute_nodes(login_node: RemoteV2 | RemoteV1) -> bool:
+    return bool(
+        login_node.get_output(
+            shlex.join(
+                [
+                    "bash",
+                    "-c",
+                    "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)",
+                ]
+            )
+        )
+    )
+
+
 def setup_ssh_config(
     ssh_config_path: str | Path = "~/.ssh/config",
-) -> SSHConfig:
+) -> tuple[bool, SSHConfig]:
     """Interactively sets up some useful entries in the ~/.ssh/config file on the local
     machine.
 
@@ -142,14 +325,15 @@ def setup_ssh_config(
       connecting directly to compute nodes.
 
     Returns:
-        The resulting SSHConfig if the changes are approved.
+        - A boolean indicating whether the config was changed.
+        - an SSHConfig object used to read / write config options.
     """
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
     ssh_config = SSHConfig(ssh_config_path)
     mila_username: str | None = _get_mila_username(ssh_config)
     drac_username: str | None = _get_drac_username(ssh_config)
-    orig_config = ssh_config.cfg.config()
+    orig_config_text = ssh_config.cfg.config()
 
     if mila_username:
         for hostname, entry in MILA_ENTRIES.copy().items():
@@ -177,15 +361,17 @@ def setup_ssh_config(
         )
         ssh_config.remove(old_cnode_pattern)
 
-    new_config = ssh_config.cfg.config()
-    if orig_config == new_config:
+    new_config_text = ssh_config.cfg.config()
+    if orig_config_text == new_config_text:
         print("Did not change ssh config")
-    elif not _confirm_changes(ssh_config, previous=orig_config):
-        exit("Did not change ssh config")
+        return False, ssh_config
+    elif not _confirm_changes(ssh_config, previous=orig_config_text):
+        exit("Refused changes to ssh config.")
+        # return False, original_config
     else:
         ssh_config.save()
         print(f"Wrote {ssh_config_path}")
-    return ssh_config
+        return True, ssh_config
 
 
 def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
@@ -424,9 +610,6 @@ def run_ssh_copy_id(ssh_config: SSHConfig, cluster: str) -> bool:
         f"Checking if passwordless SSH access is setup for the {cluster} cluster.",
         flush=True,
     )
-    # TODO: Potentially use a custom key like `~/.ssh/id_milatools.pub` instead of
-    # the default.
-
     ssh_private_key_path = get_ssh_private_key_path(ssh_config, cluster) or (
         Path.home() / ".ssh/id_rsa"
     )
@@ -584,7 +767,7 @@ def create_ssh_keypair(
     ssh_private_key_path: Path,
     local: LocalV1 | None = None,
     passphrase: str | None = "",
-) -> None:
+) -> Path:
     """Creates a public/private key pair at the given path using ssh-keygen.
 
     If passphrase is `None`, ssh-keygen will prompt the user for a passphrase.
@@ -603,6 +786,7 @@ def create_ssh_keypair(
         command.extend(["-N", passphrase])
     display(command)
     subprocess.run(command, check=True)
+    return ssh_private_key_path
 
 
 def has_passphrase(ssh_private_key_path: Path) -> bool:
@@ -705,13 +889,9 @@ def _update_vscode_settings_json(
 def _setup_ssh_config_file(config_file_path: str | Path) -> Path:
     # Save the original value for the prompt. (~/.ssh/config looks better on the
     # command-line).
-    filename_for_prompt = config_file_path
-
     config_file = Path(config_file_path).expanduser()
-    if not config_file.exists() and not yn(
-        f"There is no {filename_for_prompt} file. Create one?"
-    ):
-        exit("No ssh configuration file was found.")
+    if not config_file.exists():
+        logger.info(f"Creating a new SSH config file at {config_file_path}")
 
     ssh_dir = config_file.parent
     if not ssh_dir.exists():
