@@ -453,7 +453,6 @@ def pretend_to_be_in_WSL(
     for place_that_imports_it in [
         milatools.cli.code,
         milatools.cli.init_command,
-        milatools.cli.commands,
     ]:
         monkeypatch.setattr(
             place_that_imports_it,
