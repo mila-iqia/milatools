@@ -93,6 +93,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         "HostName": "%h",
         # "User": mila_username,
         "ProxyJump": "mila",
+        "StrictHostKeyChecking": "no",  # Prevents VsCode erroring out when using mila code.
         **ssh_multiplexing_config,
     },
     # todo: add this entry (and test that `mila code` also works with it.)
