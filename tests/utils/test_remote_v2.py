@@ -31,7 +31,7 @@ uses_remote_v2 = xfails_on_windows(
 pytestmark = [uses_remote_v2]
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def control_path_for_localhost(tmp_path: Path):
     """The `control_path` parameter of `RemoteV2` for connecting to localhost."""
     control_path = tmp_path / "socketfile"
