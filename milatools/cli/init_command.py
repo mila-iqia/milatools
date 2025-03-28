@@ -17,9 +17,7 @@ from typing import Any, Literal
 
 import paramiko
 import questionary as qn
-import rich.bar
 import rich.box
-import rich.prompt
 import rich.text
 from invoke.exceptions import UnexpectedExit
 from rich import print as rprint
@@ -64,7 +62,7 @@ else:
 MILA_ENTRIES: dict[str, dict[str, int | str]] = {
     "mila": {
         # todo: testing. Change back to login node balancer after.
-        "HostName": "login-5.login.server.mila.quebec",
+        "HostName": "login.server.mila.quebec",
         # "User": mila_username,
         "PreferredAuthentications": "publickey,keyboard-interactive",
         "Port": 2222,

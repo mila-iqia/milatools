@@ -178,9 +178,6 @@ def add_arguments(parser: argparse.ArgumentParser):
         help="Set up your configuration and credentials.",
         formatter_class=SortingHelpFormatter,
     )
-    init_parser.add_argument(
-        "--ssh-dir", type=Path, default=Path.home() / ".ssh", help="SSH directory."
-    )
 
     init_parser.set_defaults(function=init)
 
