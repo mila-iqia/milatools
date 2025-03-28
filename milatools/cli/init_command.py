@@ -61,7 +61,6 @@ else:
 
 MILA_ENTRIES: dict[str, dict[str, int | str]] = {
     "mila": {
-        # todo: testing. Change back to login node balancer after.
         "HostName": "login.server.mila.quebec",
         # "User": mila_username,
         "PreferredAuthentications": "publickey,keyboard-interactive",
