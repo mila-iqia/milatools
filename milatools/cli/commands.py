@@ -102,6 +102,7 @@ def main():
         github_issue_url = (
             f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
         )
+
         print(
             T.bold_yellow(
                 f"An error occurred during the execution of the command `{command}`. "
