@@ -697,6 +697,7 @@ def test_get_drac_username(
 
 
 class TestSetupSshFile:
+    @permission_bits_check_doesnt_work_on_windows()
     def test_create_file(self, tmp_path: Path, input_pipe: PipeInput):
         config_path = tmp_path / "config"
         input_pipe.send_text("y")
