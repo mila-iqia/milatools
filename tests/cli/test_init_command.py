@@ -728,6 +728,7 @@ class TestSetupSshFile:
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
 
+    @permission_bits_check_doesnt_work_on_windows()
     def test_creates_dir(self, tmp_path: Path, input_pipe: PipeInput):
         config_path = tmp_path / "fake_ssh" / "config"
         input_pipe.send_text("y")
