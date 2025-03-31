@@ -704,6 +704,10 @@ class TestSetupSshFile:
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Does not ask whether or not to create the SSH config anymore, just does it.",
+    )
     def test_refuse_creating_file(self, tmp_path: Path, input_pipe: PipeInput):
         config_path = tmp_path / "config"
         input_pipe.send_text("n")
@@ -858,9 +862,6 @@ def test_setup_windows_ssh_config_from_wsl(
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
     user_inputs: list[str] = []
-    if not windows_ssh_config_path.exists():
-        # We accept creating the Windows SSH config file for now.
-        user_inputs.append("y")
     user_inputs.append("y" if accept_changes else "n")
 
     for prompt in user_inputs:
