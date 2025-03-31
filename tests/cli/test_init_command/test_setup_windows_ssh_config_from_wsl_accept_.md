@@ -28,6 +28,7 @@ Host mila-cpu
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   ProxyJump mila
+  StrictHostKeyChecking no
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
@@ -62,7 +63,7 @@ Host !niagara nia????
 ```
 
 
-and these user inputs: ('y', 'y')
+and these user inputs: ('y',)
 leads the following ssh config file on the Windows side:
 
 ```
@@ -91,6 +92,7 @@ Host mila-cpu
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   ProxyJump mila
+  StrictHostKeyChecking no
   User bob
 
 Host beluga cedar graham narval niagara
