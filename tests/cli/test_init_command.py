@@ -736,13 +736,11 @@ class TestSetupSshFile:
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
 
+    @permission_bits_check_doesnt_work_on_windows()
     @pytest.mark.parametrize(
         "file_exists",
         [
-            pytest.param(
-                True,
-                marks=permission_bits_check_doesnt_work_on_windows(),
-            ),
+            True,
             False,
         ],
     )
@@ -750,11 +748,10 @@ class TestSetupSshFile:
         self, file_exists: bool, tmp_path: Path, input_pipe: PipeInput
     ):
         config_path = tmp_path / "fake_ssh" / "config"
-        config_path.parent.mkdir(mode=0o755)
+        config_path.parent.mkdir(mode=0o777)  # some bad permission for the SSH dir.
         if file_exists:
-            config_path.touch(mode=0o600)
-        else:
-            input_pipe.send_text("y")
+            config_path.touch(mode=0o777)  # some bad permission for the SSH file.
+        # Config file doesn't exist yet.
         file = _setup_ssh_config_file(config_path)
         assert file.parent.exists()
         assert file.parent.stat().st_mode & 0o777 == 0o700
