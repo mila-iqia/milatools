@@ -342,7 +342,7 @@ class RunnerTests(abc.ABC):
 
     @pytest.mark.asyncio
     async def test_run_async_runs_in_parallel(self, runner: RemoteV2):
-        commands = [f"sleep {i}" for i in range(1, 3)]
+        commands = [f"sleep {i * 5}" for i in range(1, 3)]
         start_time = time.time()
         # Sequential time:
         sequential_results = [runner.get_output(command) for command in commands]
