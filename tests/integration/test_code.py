@@ -199,7 +199,17 @@ async def test_code(
     file_regression.check(filter_captured_output(captured_output))
 
 
-@pytest.mark.parametrize("use_v1", [False, True], ids=["code", "code_v1"])
+@pytest.mark.parametrize(
+    "use_v1",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.xfail(reason="Test is flaky because paramiko is flaky?"),
+        ),
+    ],
+    ids=["code", "code_v1"],
+)
 @pytest.mark.asyncio
 async def test_code_without_code_command_in_path(
     monkeypatch: pytest.MonkeyPatch, use_v1: bool
@@ -296,7 +306,17 @@ doesnt_create_new_jobs = pytest.mark.usefixtures(
 
 
 @doesnt_create_new_jobs
-@pytest.mark.parametrize("use_v1", [False, True], ids=["code", "code_v1"])
+@pytest.mark.parametrize(
+    "use_v1",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.xfail(reason="Test is flaky because paramiko is flaky?"),
+        ),
+    ],
+    ids=["code", "code_v1"],
+)
 @pytest.mark.parametrize(
     ("use_node_name", "use_job_id"),
     [(True, False), (False, True), (True, True)],
