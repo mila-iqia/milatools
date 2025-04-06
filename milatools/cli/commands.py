@@ -530,7 +530,7 @@ def init():
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
-    setup_keys_on_login_node()
+    setup_keys_on_login_node(cluster="mila")
     setup_vscode_settings()
     print_welcome_message()
 
