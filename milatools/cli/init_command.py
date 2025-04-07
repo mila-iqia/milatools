@@ -39,7 +39,6 @@ logger = get_logger(__name__)
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 DRAC_FORM_URL = "https://ccdb.alliancecan.ca/ssh_authorized_keys"
-MILA_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeole2_fB_o0RF-FwEfdqvxV-qGN4nbGDnMbbYSi5ygMVeezg/viewform?usp=sf_link"
 MILA_ONBOARDING_URL = "https://sites.google.com/mila.quebec/mila-intranet/it-infrastructure/it-onboarding-training"
 MILA_SSHKEYS_DOCS_URL = "https://docs.mila.quebec/Userguide.html#ssh-private-keys"
 ON_WINDOWS = sys.platform == "win32"
@@ -252,17 +251,34 @@ def setup_mila_ssh_access(
                 public_key, cluster="mila", subtitle="Paste this into the form!"
             )
             return False
+
+        if Confirm.ask(
+            "Do you already have access to the Mila cluster from another machine?"
+        ):
+            rprint(
+                "[bold orange4]You can only use up to two SSH keys in total to connect to the Mila cluster.[/]\n"
+                "We recommend that you copy the public and private SSH keys from that "
+                f"other machine to this machine at paths {public_key} and {private_key} respectively."
+            )
+            if Confirm.ask(
+                "Would you like to reuse your existing key from another machine?"
+            ):
+                rprint(
+                    "Please copy the public and private keys from the other machine to this machine, "
+                    f"overwriting the contents of {public_key} and {private_key} and run `mila init` again."
+                )
+                return False
         rprint(
-            f"Please paste the public key below into the form at this URL:\n"
-            f" :arrow_right: [bold blue]{MILA_FORM_URL}[/] :arrow_left:\n"
+            "Here is your SSH public key on this machine. Send it to it-support@mila.quebec:\n"
         )
         display_public_key(
-            public_key, cluster="mila", subtitle="Paste this into the form!"
+            public_key,
+            cluster="mila",
+            subtitle="Include this in your email to it-support@mila.quebec",
         )
         rprint(
-            "Note: you may need to [bold orange4]wait up to 1 hour[/] before you are "
-            "able to `ssh mila` successfully. Once you are, run `mila init` again to "
-            "ensure that you are able to use `mila code` to connect to compute nodes."
+            "After contacting it-support@mila.quebec, run `mila init` again to "
+            "make sure that you are able to use `mila code` to connect to compute nodes."
         )
         return False
 
@@ -298,9 +314,9 @@ def setup_mila_ssh_access(
         f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
     )
     rprint(
-        f"- If this isn't your first time connecting to the {cluster} cluster, paste "
-        f":arrow_up: [bold]your public key above[/bold]:arrow_up: into the form at this URL:\n"
-        f" :arrow_right: [bold blue]{MILA_FORM_URL}[/] :arrow_left:"
+        f"- If this isn't your first time connecting to the {cluster} cluster, send an email to "
+        f"[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link].\n"
+        "   Make sure to include :arrow_up: [bold]your public key above[/bold]:arrow_up: in the email."
     )
     rprint(
         "- If you still have issues connecting, take a look at previous messages in "
