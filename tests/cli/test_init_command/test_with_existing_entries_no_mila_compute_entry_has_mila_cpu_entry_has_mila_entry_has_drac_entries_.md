@@ -93,7 +93,6 @@ Host !niagara nia????
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
   ProxyJump mila
-  StrictHostKeyChecking no
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
