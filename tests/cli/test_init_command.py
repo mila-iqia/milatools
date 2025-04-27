@@ -31,9 +31,9 @@ from milatools.cli.init_command import (
     create_ssh_keypair,
     get_windows_home_path_in_wsl,
     has_passphrase,
+    run_ssh_copy_id,
     setup_keys_on_login_node,
     setup_passwordless_ssh_access,
-    setup_passwordless_ssh_access_to_cluster,
     setup_ssh_config,
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
@@ -42,7 +42,7 @@ from milatools.cli.utils import (
     SSHConfig,
     running_inside_WSL,
 )
-from milatools.utils.local_v1 import LocalV1, check_passwordless
+from milatools.utils.local_v1 import check_passwordless
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
     SSH_CACHE_DIR,
@@ -1473,7 +1473,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
         return subprocess_run(command, *args, **kwargs)
 
     mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
-    success = setup_passwordless_ssh_access_to_cluster(cluster)
+    success = run_ssh_copy_id(cluster)
     if passwordless_ssh_was_previously_setup:
         # We already had access to the cluster.
         assert success is True
@@ -1501,7 +1501,7 @@ def test_setup_passwordless_ssh_access_to_cluster(
     ]
     regression_text = "\n".join(
         [
-            f"Calling {function_call_string(setup_passwordless_ssh_access_to_cluster, cluster)}",
+            f"Calling {function_call_string(run_ssh_copy_id, cluster)}",
         ]
         + [
             f"with passwordless SSH access to {cluster} already setup"
@@ -1582,9 +1582,7 @@ def test_setup_passwordless_ssh_access(
     else:
         # There should be an ssh key in the .ssh dir.
         # Won't ask to generate a key.
-        create_ssh_keypair(
-            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=LocalV1()
-        )
+        create_ssh_keypair(ssh_private_key_path=ssh_dir / "id_rsa_milatools")
         if drac_clusters_in_ssh_config:
             # We should get a prompt asking if we want to register the public key
             # on the DRAC clusters or not.
@@ -1609,14 +1607,14 @@ def test_setup_passwordless_ssh_access(
     # It's okay because we have a good test for it above. Therefore we just test how it
     # gets called here.
     mock_setup_passwordless_ssh_access_to_cluster = Mock(
-        spec=setup_passwordless_ssh_access_to_cluster,
+        spec=run_ssh_copy_id,
         side_effect=[accept_mila, *(accept_drac for _ in drac_clusters_in_ssh_config)],
     )
     import milatools.cli.init_command
 
     monkeypatch.setattr(
         milatools.cli.init_command,
-        setup_passwordless_ssh_access_to_cluster.__name__,
+        run_ssh_copy_id.__name__,
         mock_setup_passwordless_ssh_access_to_cluster,
     )
 
@@ -1666,3 +1664,7 @@ def test_setup_passwordless_ssh_access(
     for drac_cluster in drac_clusters_in_ssh_config:
         mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(drac_cluster)
     assert result is True
+
+
+def test_inaccessible_cluster_is_skipped_in_mila_init():
+    ...
