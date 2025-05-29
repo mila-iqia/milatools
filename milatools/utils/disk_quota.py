@@ -91,9 +91,9 @@ def _parse_lfs_quota_output(
         limit_files,
         _grace_files,
     ) = values_line_parts
-
-    used_gb = int(used_kbytes.strip()) / (1024**2)
-    max_gb = int(limit_kbytes.strip()) / (1024**2)
+    
+    used_gb = int(used_kbytes.rstrip('*Gk')) / (1024**2)
+    max_gb = int(limit_kbytes.rstrip('*Gk')) / (1024**2)
     used_files = int(files.strip())
     max_files = int(limit_files.strip())
     return (used_gb, max_gb), (used_files, max_files)
