@@ -62,7 +62,7 @@ Host !niagara nia????
 ```
 
 
-and these user inputs: ('y', 'n')
+and these user inputs: ('n',)
 leads the following ssh config file on the Windows side:
 
 ```
