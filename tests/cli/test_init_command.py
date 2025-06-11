@@ -34,11 +34,7 @@ from milatools.cli.init_command import (
 )
 from milatools.cli.utils import SSHConfig, running_inside_WSL
 from milatools.utils.remote_v1 import RemoteV1
-from milatools.utils.remote_v2 import (
-    SSH_CACHE_DIR,
-    SSH_CONFIG_FILE,
-    RemoteV2,
-)
+from milatools.utils.remote_v2 import SSH_CACHE_DIR, SSH_CONFIG_FILE, RemoteV2
 
 from .common import (
     in_github_CI,
@@ -73,7 +69,7 @@ def permission_bits_check_doesnt_work_on_windows():
     )
 
 
-# Set a module-level mark: Each test cannot take longer than 1 second to run.
+# Set a module-level mark: Each test cannot take longer than X second to run.
 pytestmark = pytest.mark.timeout(10)
 
 

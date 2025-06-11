@@ -22,6 +22,8 @@ import blessed
 import paramiko
 import paramiko.config
 import questionary as qn
+import rich
+import rich.prompt
 from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
 from typing_extensions import ParamSpec, TypeGuard
@@ -180,12 +182,12 @@ class SSHConnectionError(paramiko.SSHException):
 
 
 def yn(prompt: str, default: bool = True) -> bool:
-    return qn.confirm(prompt, default=default).unsafe_ask()
+    return rich.prompt.Confirm.ask(prompt, default=default)
 
 
 def askpath(prompt: str, remote: RemoteV1) -> str:
     while True:
-        pth = qn.text(prompt).unsafe_ask()
+        pth = rich.prompt.Prompt.ask(prompt)
         try:
             remote.simple_run(f"[ -d {pth} ]")
         except UnexpectedExit:
@@ -205,7 +207,7 @@ class SSHConfig:
         self.rename = self.cfg.rename
         # self.save = self.cfg.save
         self.host = self.cfg.host
-        self.hosts = self.cfg.hosts
+        self.hosts: Callable[[], tuple[str, ...]] = self.cfg.hosts
         self.set = self.cfg.set
 
     def lookup(self, host: str) -> paramiko.config.SSHConfigDict:

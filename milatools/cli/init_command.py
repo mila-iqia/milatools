@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import paramiko
-import questionary as qn
+import paramiko.config
 import rich.box
+import rich.prompt
 import rich.text
 from invoke.exceptions import UnexpectedExit
 from rich import print as rprint
@@ -43,10 +44,8 @@ MILA_ONBOARDING_URL = "https://sites.google.com/mila.quebec/mila-intranet/it-inf
 MILA_SSHKEYS_DOCS_URL = "https://docs.mila.quebec/Userguide.html#ssh-private-keys"
 ON_WINDOWS = sys.platform == "win32"
 
-if sys.platform == "win32":
-    ssh_multiplexing_config = {}
-else:
-    ssh_multiplexing_config = {
+ssh_multiplexing_config = (
+    {
         # Tries to reuse an existing connection, but if it fails, it will create a
         # new one.
         "ControlMaster": "auto",
@@ -56,6 +55,9 @@ else:
         # persist forever (at least while the local machine is turned on).
         "ControlPersist": "yes",
     }
+    if sys.platform != "win32"
+    else {}
+)
 
 
 MILA_ENTRIES: dict[str, dict[str, int | str]] = {
@@ -66,7 +68,6 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         "Port": 2222,
         "ServerAliveInterval": 120,
         "ServerAliveCountMax": 5,
-        **ssh_multiplexing_config,
     },
     "mila-cpu": {
         # "User": mila_username,
@@ -80,26 +81,32 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         "ServerAliveInterval": 120,
         # NOTE: will not work with --gres prior to Slurm 22.05, because srun --overlap
         # cannot share gpus
+        # TODO: If we include both scripts as part of milatools, we could copy them to
+        # the login nodes of other clusters as well to enable things like `ssh narval-gpu`
         "ProxyCommand": (
             'ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh '
-            'mila-cpu --mem=8G"'
+            "mila-cpu "  # job name
+            "--mem=8G"  # resources.
+            '"'
         ),
         "RemoteCommand": (
-            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu"
+            "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh "
+            "mila-cpu"  # job name (matches above).
         ),
     },
+    # Compute nodes:
     "*.server.mila.quebec !*login.server.mila.quebec": {
         "HostName": "%h",
         # "User": mila_username,
         "ProxyJump": "mila",
-        # "StrictHostKeyChecking": "no",  # Prevents VsCode erroring out when using mila code.
-        **ssh_multiplexing_config,
+        # Note: this would prevent VsCode from erroring out if the host key of compute
+        # nodes change, but is discouraged by Infra for security reasons(?).
+        # "StrictHostKeyChecking": "no",
     },
     # todo: add this entry (and test that `mila code` also works with it.)
     # "cn-????": {
     #     "HostName": "%h.server.mila.quebec",
     #     "ProxyJump": "mila",
-    #     **ssh_multiplexing_config,
     # },
 }
 DRAC_CLUSTERS = ["beluga", "cedar", "graham", "narval"]
@@ -107,6 +114,7 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     "beluga cedar graham narval niagara": {
         "Hostname": "%h.alliancecan.ca",
         # User=drac_username,
+        # SSH multiplexing is useful here to go through 2FA only once.
         **ssh_multiplexing_config,
     },
     "!beluga  bc????? bg????? bl?????": {
@@ -208,6 +216,14 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
         rprint(
             "[bold orange4]DRAC cluster access is not fully configured! See the instructions above.[/]"
         )
+
+
+def setup_login_node_access(cluster: str):
+    raise NotImplementedError("TODO")
+
+
+def setup_compute_node_access(cluster: str):
+    raise NotImplementedError("TODO")
 
 
 def setup_mila_ssh_access(
@@ -542,15 +558,18 @@ def setup_ssh_config(
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
     ssh_config = SSHConfig(ssh_config_path)
+    _original_config = SSHConfig(ssh_config_path)
+    initial_config_text = ssh_config.cfg.config()
+
     mila_username: str | None = _get_mila_username(ssh_config)
     drac_username: str | None = _get_drac_username(ssh_config)
-    orig_config_text = ssh_config.cfg.config()
 
     if mila_username:
         for hostname, entry in MILA_ENTRIES.copy().items():
             # todo: Do we want to set the `IdentityFile` value to the ssh key path?
             entry.update(User=mila_username)
             _add_ssh_entry(ssh_config, hostname, entry)
+            # if "ControlPath" in entry:
             _make_controlpath_dir(entry)
 
     if drac_username:
@@ -573,10 +592,10 @@ def setup_ssh_config(
         ssh_config.remove(old_cnode_pattern)
 
     new_config_text = ssh_config.cfg.config()
-    if orig_config_text == new_config_text:
+    if initial_config_text == new_config_text:
         rprint("Did not change ssh config")
         return ssh_config
-    if not _confirm_changes(ssh_config, previous=orig_config_text):
+    if not _confirm_changes(ssh_config, previous=initial_config_text):
         exit("Refused changes to ssh config.")
         # return False, original_config
 
@@ -1014,71 +1033,47 @@ def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
 
 
 def _get_mila_username(ssh_config: SSHConfig) -> str | None:
-    # Check for a mila entry in ssh config
-    # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila'
-    # entry.
-    # NOTE: ssh_config.host(entry) returns an empty dictionary if there is no entry.
-    username: str | None = None
-    hosts_with_mila_in_name_and_a_user_entry = [
-        host
-        for host in ssh_config.hosts()
-        if "mila" in host.split() and "user" in ssh_config.host(host)
-    ]
-    # Note: If there are none, or more than one, then we'll ask the user for their
-    # username, just to be sure.
-    if len(hosts_with_mila_in_name_and_a_user_entry) == 1:
-        return ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get("user")
-
-    if not yn("Do you have an account on the Mila cluster?"):
-        return None
-
-    while not username:
-        username = qn.text(
-            "What's your username on the mila cluster?\n",
-            validate=functools.partial(_is_valid_username, cluster_name="mila cluster"),
-        ).unsafe_ask()
-    return username.strip()
+    """Retrieve or ask the user for their username on the ComputeCanada/DRAC
+    clusters."""
+    return get_username_on_cluster(
+        ssh_config,
+        cluster_hostname="mila",
+        cluster_full_name="Mila",
+    )
 
 
 def _get_drac_username(ssh_config: SSHConfig) -> str | None:
     """Retrieve or ask the user for their username on the ComputeCanada/DRAC
     clusters."""
-    # Check for one of the DRAC entries in ssh config
-    username: str | None = None
-    hosts_with_cluster_in_name_and_a_user_entry = [
-        host
-        for host in ssh_config.hosts()
-        if any(
-            cc_cluster in host.split() or f"!{cc_cluster}" in host.split()
-            for cc_cluster in DRAC_CLUSTERS
-        )
-        and "user" in ssh_config.host(host)
-    ]
-    users_from_drac_config_entries = set(
-        ssh_config.host(host)["user"]
-        for host in hosts_with_cluster_in_name_and_a_user_entry
+    return get_username_on_cluster(
+        ssh_config,
+        cluster_hostname=DRAC_CLUSTERS,
+        cluster_full_name="DRAC/ComputeCanada",
     )
-    # Note: If there are none, or more than one, then we'll ask the user for their
-    # username, just to be sure.
-    if len(users_from_drac_config_entries) == 1:
-        username = users_from_drac_config_entries.pop()
-    elif yn("Do you have an account on the ComputeCanada/DRAC clusters?"):
-        while not username:
-            username = qn.text(
-                "What's your username on the CC/DRAC clusters?\n",
-                validate=functools.partial(
-                    _is_valid_username, cluster_name="ComputeCanada/DRAC clusters"
-                ),
-            ).unsafe_ask()
-    return username.strip() if username else None
 
 
-def _is_valid_username(text: str, cluster_name: str = "mila cluster") -> bool | str:
-    return (
-        f"Please enter your username on the {cluster_name}."
-        if not text or text.isspace()
-        else True
+def get_username_on_cluster(
+    ssh_config: SSHConfig,
+    cluster_hostname: str | list[str],
+    cluster_full_name: str,
+) -> str | None:
+    cluster_hostnames: list[str]
+    if isinstance(cluster_hostname, str):
+        cluster_hostnames = [cluster_hostname]
+    else:
+        cluster_hostnames = cluster_hostname
+    s = "s" if len(cluster_hostnames) > 1 else ""
+
+    for cluster_hostname in cluster_hostnames:
+        if user := ssh_config.lookup(cluster_hostname).get("user"):
+            return user.strip()
+    if not yn(f"Do you have an account on the {cluster_full_name} cluster{s}?"):
+        return None
+
+    username = rich.prompt.Prompt.ask(
+        f"What's your username on the {cluster_full_name} cluster{s}?\n"
     )
+    return None if username.isspace() else username.strip()
 
 
 # NOTE: Later, if we think it can be useful, we could use some fancy TypedDict for the
@@ -1095,13 +1090,19 @@ def _add_ssh_entry(
     _space_before: bool = True,
     _space_after: bool = False,
 ) -> None:
-    """Adds or updates an entry in the ssh config object."""
+    """Adds or updates an entry in the ssh config object.
+
+    - If an entry already exists and matches the given host, it updates the entry.
+    """
     # NOTE: `Host` is also a parameter to make sure it isn't in `entry`.
     assert "Host" not in entry
 
     sorted_by_keys = False
 
-    if host in ssh_config.hosts():
+    # not quite true:
+    if (existing_entry := ssh_config.lookup(host)) and existing_entry != {
+        "hostname": host
+    }:
         existing_entry = ssh_config.host(host)
         existing_entry.update(entry)
         if sorted_by_keys:
