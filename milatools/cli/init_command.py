@@ -135,14 +135,15 @@ def setup_ssh_config(
 
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
     ssh_config = SSHConfig(ssh_config_path)
-    mila_username: str = _get_mila_username(ssh_config)
+    mila_username: str | None = _get_mila_username(ssh_config)
     drac_username: str | None = _get_drac_username(ssh_config)
     orig_config = ssh_config.cfg.config()
 
-    for hostname, entry in MILA_ENTRIES.copy().items():
-        entry.update(User=mila_username)
-        _add_ssh_entry(ssh_config, hostname, entry)
-        _make_controlpath_dir(entry)
+    if mila_username:
+        for hostname, entry in MILA_ENTRIES.copy().items():
+            entry.update(User=mila_username)
+            _add_ssh_entry(ssh_config, hostname, entry)
+            _make_controlpath_dir(entry)
 
     if drac_username:
         logger.debug(
@@ -641,7 +642,7 @@ def _confirm_changes(ssh_config: SSHConfig, previous: str) -> bool:
     return ask_to_confirm_changes(before, after, ssh_config.path)
 
 
-def _get_mila_username(ssh_config: SSHConfig) -> str:
+def _get_mila_username(ssh_config: SSHConfig) -> str | None:
     # Check for a mila entry in ssh config
     # NOTE: This also supports the case where there's a 'HOST mila some_alias_for_mila'
     # entry.
@@ -655,9 +656,10 @@ def _get_mila_username(ssh_config: SSHConfig) -> str:
     # Note: If there are none, or more than one, then we'll ask the user for their
     # username, just to be sure.
     if len(hosts_with_mila_in_name_and_a_user_entry) == 1:
-        username = ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get(
-            "user"
-        )
+        return ssh_config.host(hosts_with_mila_in_name_and_a_user_entry[0]).get("user")
+
+    if not yn("Do you have an account on the Mila cluster?"):
+        return None
 
     while not username:
         username = qn.text(
@@ -689,7 +691,7 @@ def _get_drac_username(ssh_config: SSHConfig) -> str | None:
     # username, just to be sure.
     if len(users_from_drac_config_entries) == 1:
         username = users_from_drac_config_entries.pop()
-    elif yn("Do you also have an account on the ComputeCanada/DRAC clusters?"):
+    elif yn("Do you have an account on the ComputeCanada/DRAC clusters?"):
         while not username:
             username = qn.text(
                 "What's your username on the CC/DRAC clusters?\n",

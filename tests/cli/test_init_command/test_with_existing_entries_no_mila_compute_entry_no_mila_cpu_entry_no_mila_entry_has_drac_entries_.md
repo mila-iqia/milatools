@@ -27,7 +27,7 @@ Host !niagara nia????
 
 ```
 
-and these user inputs: ['bob\r', 'y']
+and these user inputs: ['y', 'bob\r', 'y']
 leads to the following ssh config file:
 
 ```
