@@ -3,20 +3,16 @@ Running the `mila init` command with this initial content:
 ```
 # a comment
 Host foo
-  HostName foobar.com
-
-# another comment
+    HostName foobar.com
 
 ```
 
-and these user inputs: ('bob\r', 'n', 'n')
+and these user inputs: ('n', 'n', 'y')
 leads the following ssh config file:
 
 ```
 # a comment
 Host foo
-  HostName foobar.com
-
-# another comment
+    HostName foobar.com
 
 ```

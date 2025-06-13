@@ -38,10 +38,7 @@ from milatools.cli.init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.utils import (
-    SSHConfig,
-    running_inside_WSL,
-)
+from milatools.cli.utils import SSHConfig, running_inside_WSL
 from milatools.utils.local_v1 import LocalV1, check_passwordless
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import (
@@ -95,6 +92,9 @@ pytestmark = pytest.mark.timeout(10)
 def input_pipe(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
     """Fixture that creates an input pipe and makes questionary use it.
 
+    TODO: This is super uber ugly to use. We should switch to something like a
+    known_question to answer mapping instead.
+
     To use it, call `input_pipe.send_text("some text")`.
 
     NOTE: Important: Send the \\r (with one backslash) character if the prompt is on a
@@ -143,6 +143,7 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
 
     for prompt in [
         "y",
+        "y",  # mila?
         "bob\r",  # mila username
         "y",  # drac?
         "bob\r",  # drac username
@@ -158,8 +159,13 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
 
 
 @pytest.mark.parametrize(
+    "mila_username",
+    [None, "bob_mila"],
+    ids=["no_mila", "mila"],
+)
+@pytest.mark.parametrize(
     "drac_username",
-    [None, "bob"],
+    [None, "bob_drac"],
     ids=["no_drac", "drac"],
 )
 @pytest.mark.parametrize(
@@ -206,16 +212,17 @@ def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
         "has_comment_and_entry_with_extra_space",
     ],
 )
-def test_setup_ssh(
+def test_setup_ssh_config(
     initial_contents: str,
     confirm_changes: bool,
     drac_username: str | None,
+    mila_username: str | None,
     tmp_path: Path,
     file_regression: FileRegressionFixture,
     input_pipe: PipeInput,
 ):
-    """Checks what entries are added to the ssh config file when running the
-    corresponding portion of `mila init`."""
+    """Test what happens to the ~/.ssh/config file when it exists and is either empty or
+    contains existing entries unrelated to the Mila/DRAC clusters."""
     ssh_config_path = tmp_path / ".ssh" / "config"
     ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
 
@@ -227,7 +234,9 @@ def test_setup_ssh(
             f.write(initial_contents)
 
     user_inputs = [
-        "bob\r",  # username on Mila cluster
+        *(  # Mila account? + enter mila username
+            ["n"] if mila_username is None else ["y", mila_username + "\r"]
+        ),
         *(  # DRAC account? + enter username
             ["n"] if drac_username is None else ["y", drac_username + "\r"]
         ),
@@ -236,7 +245,12 @@ def test_setup_ssh(
     for prompt in user_inputs:
         input_pipe.send_text(prompt)
 
-    should_exit = not confirm_changes
+    # `mila init` should exit if the confirmation prompt is asked and refused.
+    # The confirmation prompt "is this ok?" only shows up if we are about to modify the
+    # content of the file.
+    should_exit = not confirm_changes and (
+        mila_username is not None or drac_username is not None
+    )
 
     with pytest.raises(SystemExit) if should_exit else contextlib.nullcontext():
         setup_ssh_config(ssh_config_path=ssh_config_path)
@@ -294,6 +308,7 @@ def test_fixes_overly_general_entry(
 
     # Enter username, accept fixing that entry, then confirm.
     for user_input in [
+        "y",  # Mila account?
         "bob\r",  # mila username
         "n",  # DRAC account?
         "y",
@@ -429,7 +444,7 @@ def test_with_existing_entries(
 
     # Accept all the prompts.
     username_input = (
-        ["bob\r"]
+        ["y", "bob\r"]
         if not already_has_mila or (already_has_mila and "User" not in existing_mila)
         else []
     )
@@ -504,7 +519,10 @@ def test_with_existing_entries(
     [
         pytest.param(
             "",  # empty file.
-            ["bob\r"],  # enter "bob" then enter.
+            [
+                "y",  # Yes I have a mila account,
+                "bob\r",  # my username is "bob" then enter.
+            ],
             "bob",  # get "bob" as username.
             id="empty_file",
         ),
@@ -527,7 +545,10 @@ def test_with_existing_entries(
                     HostName login.server.mila.quebec
                 """
             ),
-            ["bob\r"],
+            [
+                "y",  # yes I have an account on the Mila cluster
+                "bob\r",
+            ],  # My username is bob, then press enter.
             "bob",
             id="entry_without_user",
         ),
@@ -542,7 +563,10 @@ def test_with_existing_entries(
                     User Bob
                 """
             ),
-            ["bob\r"],
+            [
+                "y",  # yes I have an account on the Mila cluster
+                "bob\r",
+            ],
             "bob",
             id="two_matching_entries",
         ),
@@ -813,6 +837,7 @@ def linux_ssh_config(
 
     for prompt in [
         "y",  # Create an ssh config file?
+        "y",  # Do you also have a Mila account?
         "bob\r",  # What's your username on the Mila cluster?
         "y",  # Do you also have a DRAC account?
         "bob\r",  # username on DRAC

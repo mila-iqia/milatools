@@ -1,9 +1,15 @@
-Running the `mila init` command with no initial ssh config file
+Running the `mila init` command with this initial content:
 
-and these user inputs: ('bob\r', 'y', 'bob\r', 'y')
+```
+# A comment in the file.
+
+```
+
+and these user inputs: ('y', 'bob_mila\r', 'n', 'y')
 leads the following ssh config file:
 
 ```
+# A comment in the file.
 
 Host mila
   HostName login.server.mila.quebec
@@ -14,7 +20,7 @@ Host mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
-  User bob
+  User bob_mila
 
 Host mila-cpu
   Port 2222
@@ -27,7 +33,7 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
-  User bob
+  User bob_mila
 
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
@@ -35,32 +41,5 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
-  User bob
-
-Host beluga cedar graham narval niagara
-  HostName %h.alliancecan.ca
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist yes
-  User bob
-
-Host !beluga  bc????? bg????? bl?????
-  ProxyJump beluga
-  User bob
-
-Host !cedar   cdr? cdr?? cdr??? cdr????
-  ProxyJump cedar
-  User bob
-
-Host !graham  gra??? gra????
-  ProxyJump graham
-  User bob
-
-Host !narval  nc????? ng?????
-  ProxyJump narval
-  User bob
-
-Host !niagara nia????
-  ProxyJump niagara
-  User bob
+  User bob_mila
 ```

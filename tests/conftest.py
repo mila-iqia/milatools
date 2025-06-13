@@ -42,12 +42,7 @@ from .cli.common import (
     passwordless_ssh_connection_to_localhost_is_setup,
     xfails_on_windows,
 )
-from .integration.conftest import (
-    JOB_NAME,
-    MAX_JOB_DURATION,
-    SLURM_CLUSTER,
-    WCKEY,
-)
+from .integration.conftest import JOB_NAME, MAX_JOB_DURATION, SLURM_CLUSTER, WCKEY
 from .utils import test_parallel_progress
 
 
@@ -397,7 +392,8 @@ def ssh_config_file(
         question = question.strip()
         known_questions = {
             f"There is no {ssh_config_path} file. Create one?": True,
-            "Do you also have an account on the ComputeCanada/DRAC clusters?": True,
+            "Do you have an account on the Mila cluster?": True,
+            "Do you have an account on the ComputeCanada/DRAC clusters?": True,
             "Is this OK?": True,
         }
         if question in known_questions:
