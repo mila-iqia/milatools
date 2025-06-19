@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-import sys
 from subprocess import PIPE
 
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 
-from milatools.cli.utils import SSH_CONFIG_FILE
-from milatools.utils.local_v1 import CommandNotFoundError, LocalV1, check_passwordless
-from milatools.utils.remote_v2 import is_already_logged_in
+from milatools.utils.local_v1 import CommandNotFoundError, LocalV1
 
 from ..cli.common import (
     in_github_CI,
     in_self_hosted_github_CI,
     output_tester,
-    passwordless_ssh_connection_to_localhost_is_setup,
     requires_no_s_flag,
-    skip_if_on_github_cloud_CI,
     xfails_on_windows,
 )
 
@@ -129,70 +124,3 @@ paramiko_openssh_key_parsing_issue = pytest.mark.xfail(
         "and raises a ValueError."
     ),
 )
-
-
-# @PARAMIKO_SSH_BANNER_BUG
-# @paramiko_openssh_key_parsing_issue
-@pytest.mark.xfail(
-    reason="TODO: `check_passwordless` is incredibly flaky and needs to be reworked."
-)
-@pytest.mark.parametrize(
-    ("hostname", "expected"),
-    [
-        pytest.param(
-            "localhost",
-            passwordless_ssh_connection_to_localhost_is_setup,
-        ),
-        ("blablabob@localhost", False),
-        pytest.param(
-            "mila",
-            True if (in_self_hosted_github_CI or not in_github_CI) else False,
-        ),
-        pytest.param(
-            "bobobobobobo@mila",
-            False,
-            marks=[
-                paramiko_openssh_key_parsing_issue,
-                skip_if_on_github_cloud_CI,
-            ],
-        ),
-        # For the clusters with 2FA, we expect `check_passwordless` to return True if
-        # we've already setup the shared SSH connection.
-        pytest.param(
-            "blablabob@narval",
-            False,
-            marks=[
-                skip_if_on_github_cloud_CI,
-                paramiko_openssh_key_parsing_issue,
-            ],
-        ),
-        *(
-            # note: can't properly test for the False case because of the 2FA
-            # prompt!
-            pytest.param(
-                drac_cluster,
-                True,
-                marks=pytest.mark.skipif(
-                    sys.platform == "win32"
-                    or not is_already_logged_in(
-                        drac_cluster, ssh_config_path=SSH_CONFIG_FILE
-                    ),
-                    reason="Should give True when we're already logged in.",
-                ),
-            )
-            for drac_cluster in ["narval", "beluga", "cedar", "graham"]
-        ),
-        pytest.param(
-            "niagara",
-            False,
-            marks=[
-                skip_if_on_github_cloud_CI,
-                paramiko_openssh_key_parsing_issue,
-            ],
-        ),  # SSH access to niagara isn't enabled by default.
-    ],
-)
-def test_check_passwordless(hostname: str, expected: bool):
-    # TODO: Maybe also test how `check_passwordless` behaves when using a key with a
-    # passphrase.
-    assert check_passwordless(hostname) == expected

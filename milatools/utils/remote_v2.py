@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import getpass
-import shutil
 import subprocess
 import sys
 from logging import getLogger as get_logger
@@ -229,6 +228,8 @@ def ssh_command(
     """
     control_path = control_path.expanduser()
     ssh_config_path = ssh_config_path.expanduser()
+    # todo: use `ssh -G {host}` to get the config that would be used for that host,
+    # then overwrite values only as necessary (instead of looking a the SSH config).
     if not ssh_config_path.exists():
         return (
             "ssh",
@@ -488,26 +489,26 @@ def _get_setup_ssh_control_socket_command(
             sep="\n",
             style="yellow",
         )
-        if shutil.which("sshpass"):
-            # console.log(
-            #     f"If 2FA is enabled on {cluster}, you should now receive a push "
-            #     "notification in the Duo app. Confirm it to continue."
-            #     style="yellow",
-            # )
-            # Enter 1 with `sshpass` to go straight to the prompt on the phone.
-            ssh_command_args = (
-                "sshpass",
-                "-P",
-                "Duo two-factor login",
-                "-p",
-                "1",
-                *ssh_command_args,
-            )
-        else:
-            logger.warning(
-                f"`sshpass` is not installed. If 2FA is setup on {cluster}, you might "
-                "be asked to press 1 or enter a 2fa passcode."
-            )
+        # if shutil.which("sshpass"):
+        #     # console.log(
+        #     #     f"If 2FA is enabled on {cluster}, you should now receive a push "
+        #     #     "notification in the Duo app. Confirm it to continue."
+        #     #     style="yellow",
+        #     # )
+        #     # Enter 1 with `sshpass` to go straight to the prompt on the phone.
+        #     ssh_command_args = (
+        #         "sshpass",
+        #         "-P",
+        #         "Duo two-factor login",
+        #         "-p",
+        #         "1",
+        #         *ssh_command_args,
+        #     )
+        # else:
+        #     logger.warning(
+        #         f"`sshpass` is not installed. If 2FA is setup on {cluster}, you might "
+        #         "be asked to press 1 or enter a 2fa passcode."
+        #     )
     else:
         # NOTE: Assuming that passwordless ssh is setup to the cluster, we could also
         # use the sshpass command above even if 2fa isn't setup. This doesn't seem to
