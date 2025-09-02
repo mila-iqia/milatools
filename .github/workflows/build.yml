@@ -21,7 +21,7 @@ jobs:
     name: Run linting/pre-commit checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -41,7 +41,7 @@ jobs:
     env:
       PLATFORM: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install the latest version of uv
       uses: astral-sh/setup-uv@v3
       with:
@@ -103,7 +103,7 @@ jobs:
     name: Upload coverage reports to Codecov
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
