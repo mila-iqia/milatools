@@ -6,7 +6,7 @@ Host *.server.mila.quebec !*login.server.mila.quebec
 
 ```
 
-and these user inputs: ['bob\r', 'y', 'bob\r', 'y']
+and these user inputs: ['y', 'bob\r', 'y', 'bob\r', 'y']
 leads to the following ssh config file:
 
 ```

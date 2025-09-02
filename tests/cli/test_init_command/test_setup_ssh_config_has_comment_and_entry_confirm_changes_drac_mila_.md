@@ -2,30 +2,22 @@ Running the `mila init` command with this initial content:
 
 ```
 # a comment
-
 Host foo
   HostName foobar.com
 
-
-
-
-# another comment after lots of empty lines.
+# another comment
 
 ```
 
-and these user inputs: ('bob\r', 'y', 'bob\r', 'y')
+and these user inputs: ('y', 'bob_mila\r', 'y', 'bob_drac\r', 'y')
 leads the following ssh config file:
 
 ```
 # a comment
-
 Host foo
   HostName foobar.com
 
-
-
-
-# another comment after lots of empty lines.
+# another comment
 
 Host mila
   HostName login.server.mila.quebec
@@ -36,7 +28,7 @@ Host mila
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
-  User bob
+  User bob_mila
 
 Host mila-cpu
   Port 2222
@@ -49,7 +41,7 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
-  User bob
+  User bob_mila
 
 Host *.server.mila.quebec !*login.server.mila.quebec
   HostName %h
@@ -57,32 +49,32 @@ Host *.server.mila.quebec !*login.server.mila.quebec
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
-  User bob
+  User bob_mila
 
 Host beluga cedar graham narval niagara
   HostName %h.alliancecan.ca
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
-  User bob
+  User bob_drac
 
 Host !beluga  bc????? bg????? bl?????
   ProxyJump beluga
-  User bob
+  User bob_drac
 
 Host !cedar   cdr? cdr?? cdr??? cdr????
   ProxyJump cedar
-  User bob
+  User bob_drac
 
 Host !graham  gra??? gra????
   ProxyJump graham
-  User bob
+  User bob_drac
 
 Host !narval  nc????? ng?????
   ProxyJump narval
-  User bob
+  User bob_drac
 
 Host !niagara nia????
   ProxyJump niagara
-  User bob
+  User bob_drac
 ```

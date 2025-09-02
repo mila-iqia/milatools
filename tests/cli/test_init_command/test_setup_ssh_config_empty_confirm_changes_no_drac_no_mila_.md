@@ -1,6 +1,6 @@
 Running the `mila init` command with no initial ssh config file
 
-and these user inputs: ('bob\r', 'y', 'bob\r', 'n')
+and these user inputs: ('n', 'n', 'y')
 leads the following ssh config file:
 
 ```
