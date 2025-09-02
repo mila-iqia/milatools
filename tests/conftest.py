@@ -6,6 +6,7 @@ import os
 import re
 import socket
 import sys
+import textwrap
 from collections.abc import Generator
 from logging import getLogger as get_logger
 from pathlib import Path
@@ -13,9 +14,9 @@ from unittest.mock import Mock
 
 import pytest
 import pytest_asyncio
-import questionary
 import rich
 from fabric.connection import Connection
+from pytest_mock import MockerFixture
 
 import milatools.cli.code
 import milatools.cli.commands
@@ -375,64 +376,85 @@ def allocation_flags(
 
 
 @pytest.fixture()
+def mila_username(request: pytest.FixtureRequest) -> str | None:
+    return getattr(request, "param", "testuser_mila")
+
+
+@pytest.fixture()
+def drac_username(request: pytest.FixtureRequest) -> str | None:
+    return getattr(request, "param", "testuser_drac")
+
+
+@pytest.fixture()
+def initial_contents(request: pytest.FixtureRequest) -> str | None:
+    """Initial contents of the SSH config file.
+
+    This is to be parametrized indirectly by tests, so that the `ssh_config_file` fixture
+    is created using these initial contents.
+    """
+    return getattr(request, "param", None)
+
+
+# @pytest.mark.parametrize("drac_username", [None, "testuser_drac"], indirect=True)
+@pytest.fixture(scope="module")
+def ssh_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Fixture that creates a temporary .ssh directory for testing."""
+    ssh_dir = tmp_path_factory.mktemp(".ssh")
+    return ssh_dir
+
+
+@pytest.fixture(scope="function")
 def ssh_config_file(
     tmp_path_factory: pytest.TempPathFactory,
-    monkeypatch: pytest.MonkeyPatch,
+    initial_contents: str | None,
+    mila_username: str | None,
+    drac_username: str | None,
+    mocker: MockerFixture,
 ) -> Path:
-    """Fixture that creates the SSH config as setup by `mila init`."""
-    from milatools.cli.init_command import yn
+    """Fixture that returns the SSH config file created by `mila init`, using the given
+    parameters.
 
-    # NOTE: might want to put this in a fixture if we wanted the "real" mila / drac
-    # usernames in the config.
-    mila_username = drac_username = "bob"
+    Does not use an input pipe. Uses mocks instead.
 
-    ssh_config_path = tmp_path_factory.mktemp(".ssh") / "ssh_config"
+    To change initial conditions or parameters, tests can indirectly parametrize the
+    fixtures that are used to create this one. For example, to change the initial contents
+    of the SSH config file, parametrize the `initial_contents` fixture indirectly.
+    """
+    ssh_dir = tmp_path_factory.mktemp(".ssh")
+    ssh_config_path = ssh_dir / "config"
+    if initial_contents:
+        ssh_config_path.parent.mkdir(parents=True, exist_ok=True)
+        ssh_config_path.write_text(textwrap.dedent(initial_contents) + "\n")
 
-    def _yn(question: str) -> bool:
-        question = question.strip()
-        known_questions = {
-            f"There is no {ssh_config_path} file. Create one?": True,
-            "Do you have an account on the Mila cluster?": True,
-            "Do you have an account on the ComputeCanada/DRAC clusters?": True,
-            "Is this OK?": True,
-        }
-        if question in known_questions:
-            return known_questions[question]
-        raise NotImplementedError(f"Unexpected question: {question}")
+    known_questions_to_answers = {
+        "account on the Mila cluster": mila_username is not None,
+        "username on the Mila cluster": mila_username,
+        "account on the DRAC/ComputeCanada clusters": drac_username is not None,
+        "username on the DRAC/ComputeCanada clusters": drac_username,
+        "Is this OK?": True,
+    }
 
-    mock_yn = Mock(spec=yn, side_effect=_yn)
+    # This is a placeholder; in a real implementation, this would return the actual account name.
+    def mocked_confirm(question: str, *args, **kwargs) -> bool:
+        """Mocked prompt to return predefined answers for known questions."""
+        for known_question, answer in known_questions_to_answers.items():
+            if known_question in question:
+                return answer
+        raise ValueError(f"Unexpected question: {question}")
 
-    import milatools.cli.init_command
+    # This is a placeholder; in a real implementation, this would return the actual account name.
+    def mocked_ask(question: str, *args, **kwargs) -> bool:
+        """Mocked prompt to return predefined answers for known questions."""
+        for known_question, answer in known_questions_to_answers.items():
+            if known_question in question:
+                return answer
+        raise ValueError(f"Unexpected question: {question}")
 
-    monkeypatch.setattr(milatools.cli.init_command, yn.__name__, mock_yn)
-
-    def _mock_unsafe_ask(question: str, *args, **kwargs) -> str:
-        question = question.strip()
-        known_questions = {
-            "What's your username on the mila cluster?": mila_username,
-            "What's your username on the CC/DRAC clusters?": drac_username,
-        }
-        if question in known_questions:
-            return known_questions[question]
-        raise NotImplementedError(f"Unexpected question: {question}")
-
-    def _mock_text(message: str, *args, **kwargs):
-        return Mock(
-            spec=questionary.Question,
-            unsafe_ask=Mock(
-                spec=questionary.Question.unsafe_ask,
-                side_effect=functools.partial(_mock_unsafe_ask, message),
-            ),
-        )
-
-    mock_text = Mock(
-        spec=questionary.text,
-        side_effect=_mock_text,
-    )
-    monkeypatch.setattr(questionary, questionary.text.__name__, mock_text)
+    _mock_confirm = mocker.patch("rich.prompt.Confirm.ask", side_effect=mocked_confirm)
+    _mock_ask = mocker.patch("rich.prompt.Prompt.ask", side_effect=mocked_ask)
 
     setup_ssh_config(ssh_config_path)
-    assert ssh_config_path.exists()
+
     return ssh_config_path
 
 

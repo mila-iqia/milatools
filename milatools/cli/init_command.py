@@ -96,12 +96,8 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
     },
     # Compute nodes:
     "*.server.mila.quebec !*login.server.mila.quebec": {
-        "HostName": "%h",
-        # "User": mila_username,
         "ProxyJump": "mila",
-        # Note: this would prevent VsCode from erroring out if the host key of compute
-        # nodes change, but is discouraged by Infra for security reasons(?).
-        # "StrictHostKeyChecking": "no",
+        # "User": mila_username,
     },
     # todo: add this entry (and test that `mila code` also works with it.)
     # "cn-????": {
@@ -565,6 +561,17 @@ def setup_ssh_config(
     drac_username: str | None = _get_drac_username(ssh_config)
 
     if mila_username:
+        # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
+        old_cnode_pattern = "*.server.mila.quebec"
+        if old_cnode_pattern in ssh_config.hosts():
+            logger.info(
+                f"The '{old_cnode_pattern}' entry in ~/.ssh/config is too general and "
+                "should exclude login.server.mila.quebec. Fixing this."
+            )
+            ssh_config.rename(
+                old_cnode_pattern, "*.server.mila.quebec !*login.server.mila.quebec"
+            )
+
         for hostname, entry in MILA_ENTRIES.copy().items():
             # todo: Do we want to set the `IdentityFile` value to the ssh key path?
             entry.update(User=mila_username)
@@ -580,16 +587,6 @@ def setup_ssh_config(
             entry.update(User=drac_username)
             _add_ssh_entry(ssh_config, hostname, entry)
             _make_controlpath_dir(entry)
-
-    # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
-    old_cnode_pattern = "*.server.mila.quebec"
-
-    if old_cnode_pattern in ssh_config.hosts():
-        logger.info(
-            f"The '{old_cnode_pattern}' entry in ~/.ssh/config is too general and "
-            "should exclude login.server.mila.quebec. Fixing this."
-        )
-        ssh_config.remove(old_cnode_pattern)
 
     new_config_text = ssh_config.cfg.config()
     if initial_config_text == new_config_text:
@@ -1100,9 +1097,10 @@ def _add_ssh_entry(
     sorted_by_keys = False
 
     # not quite true:
-    if (existing_entry := ssh_config.lookup(host)) and existing_entry != {
-        "hostname": host
-    }:
+    if host in ssh_config.hosts() or (
+        (existing_entry := ssh_config.lookup(host))
+        and existing_entry != {"hostname": host}
+    ):
         existing_entry = ssh_config.host(host)
         existing_entry.update(entry)
         if sorted_by_keys:
