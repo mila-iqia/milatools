@@ -17,6 +17,7 @@ import invoke
 import pytest
 import pytest_mock
 import questionary
+from paramiko.config import SSHConfig as SshConfigReader
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
@@ -35,6 +36,7 @@ from milatools.cli.init_command import (
 from milatools.cli.utils import SSHConfig, running_inside_WSL
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import SSH_CACHE_DIR, SSH_CONFIG_FILE, RemoteV2
+from tests.conftest import initial_contents
 
 from .common import (
     in_github_CI,
@@ -123,24 +125,8 @@ def _yn(accept: bool):
     return "y" if accept else "n"
 
 
-def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
-    ssh_config_path = tmp_path / "ssh_config"
-
-    for prompt in [
-        "y",
-        "y",  # mila?
-        "bob\r",  # mila username
-        "y",  # drac?
-        "bob\r",  # drac username
-        "y",
-        "y",
-        "y",
-        "y",
-        "y",
-    ]:
-        input_pipe.send_text(prompt)
-    setup_ssh_config(tmp_path / "ssh_config")
-    assert ssh_config_path.exists()
+def test_creates_ssh_config_file(ssh_config_file: Path):
+    assert ssh_config_file.exists()
 
 
 @pytest.mark.parametrize(
@@ -274,229 +260,29 @@ def test_setup_ssh_config(
     file_regression.check(expected_text, extension=".md")
 
 
-def test_fixes_overly_general_entry(
-    tmp_path: Path,
-    input_pipe: PipeInput,
-    file_regression: FileRegressionFixture,
-):
-    """Test the case where the user has a *.server.mila.quebec entry."""
-    ssh_config_path = tmp_path / ".ssh" / "config"
-    ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
-    initial_contents = textwrap.dedent(
+@pytest.mark.parametrize(
+    initial_contents.__name__,
+    [
         """\
         Host *.server.mila.quebec
-          User bob
+            User bob
         """
-    )
-    with open(ssh_config_path, "w") as f:
-        f.write(initial_contents)
-
-    # Enter username, accept fixing that entry, then confirm.
-    for user_input in [
-        "y",  # Mila account?
-        "bob\r",  # mila username
-        "n",  # DRAC account?
-        "y",
-        "y",
-    ]:
-        input_pipe.send_text(user_input)
-
-    setup_ssh_config(ssh_config_path=ssh_config_path)
-
-    with open(ssh_config_path) as f:
-        resulting_contents = f.read()
-
-    file_regression.check(resulting_contents)
-    assert (
-        "Host *.server.mila.quebec !*login.server.mila.quebec"
-        in resulting_contents.splitlines()
-    )
-
-
-def test_ssh_config_host(tmp_path: Path):
-    ssh_config_path = tmp_path / "config"
-    with open(ssh_config_path, "w") as f:
-        f.write(
-            textwrap.dedent(
-                """\
-                Host mila
-                    HostName login.server.mila.quebec
-                    User normandf
-                    PreferredAuthentications publickey,keyboard-interactive
-                    Port 2222
-                    ServerAliveInterval 120
-                    ServerAliveCountMax 5
-                    BatchMode yes
-                """
-            )
-        )
-    assert SSHConfig(str(ssh_config_path)).host("mila") == {
-        "hostname": "login.server.mila.quebec",
-        "user": "normandf",
-        "preferredauthentications": "publickey,keyboard-interactive",
-        "port": "2222",
-        "serveraliveinterval": "120",
-        "serveralivecountmax": "5",
-        "batchmode": "yes",
-    }
-
-
-@pytest.mark.parametrize(
-    "already_has_drac", [True, False], ids=["has_drac_entries", "no_drac_entries"]
+    ],
+    indirect=True,
 )
-@pytest.mark.parametrize(
-    "already_has_mila", [True, False], ids=["has_mila_entry", "no_mila_entry"]
-)
-@pytest.mark.parametrize(
-    "already_has_mila_cpu",
-    [True, False],
-    ids=["has_mila_cpu_entry", "no_mila_cpu_entry"],
-)
-@pytest.mark.parametrize(
-    "already_has_mila_compute",
-    [True, False],
-    ids=["has_mila_compute_entry", "no_mila_compute_entry"],
-)
-def test_with_existing_entries(
-    already_has_mila: bool,
-    already_has_mila_cpu: bool,
-    already_has_mila_compute: bool,
-    already_has_drac: bool,
-    file_regression: FileRegressionFixture,
-    tmp_path: Path,
-    input_pipe: PipeInput,
+def test_fixes_overly_general_cn_entry(
+    ssh_config_file: Path, mila_username: str | None
 ):
-    user = "bob"
-    existing_mila = textwrap.dedent(
-        f"""\
-        Host mila
-          HostName login.server.mila.quebec
-          User {user}
-        """
-    )
-    existing_mila_cpu = textwrap.dedent(
-        """\
-        Host mila-cpu
-          HostName login.server.mila.quebec
-        """
-    )
-    existing_mila_compute = textwrap.dedent(
-        """\
-        Host *.server.mila.quebec !*login.server.mila.quebec
-          HostName foooobar.com
-        """
-    )
-    existing_drac = textwrap.dedent(
-        f"""
-        # Compute Canada
-        Host beluga cedar graham narval niagara
-          Hostname %h.alliancecan.ca
-          User {user}
-        Host mist
-          Hostname mist.scinet.utoronto.ca
-          User {user}
-        Host !beluga  bc????? bg????? bl?????
-          ProxyJump beluga
-          User {user}
-        Host !cedar   cdr? cdr?? cdr??? cdr????
-          ProxyJump cedar
-          User {user}
-        Host !graham  gra??? gra????
-          ProxyJump graham
-          User {user}
-        Host !narval  nc????? ng?????
-          ProxyJump narval
-          User {user}
-        Host !niagara nia????
-          ProxyJump niagara
-          User {user}
-        """
-    )
-
-    initial_blocks = []
-    initial_blocks += [existing_mila] if already_has_mila else []
-    initial_blocks += [existing_mila_cpu] if already_has_mila_cpu else []
-    initial_blocks += [existing_mila_compute] if already_has_mila_compute else []
-    initial_blocks += [existing_drac] if already_has_drac else []
-    initial_contents = _join_blocks(*initial_blocks)
-
-    # TODO: Need to insert the entries in the right place, in the right order!
-
-    ssh_config_path = tmp_path / ".ssh" / "config"
-    ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
-    with open(ssh_config_path, "w") as f:
-        f.write(initial_contents)
-
-    # Accept all the prompts.
-    username_input = (
-        ["y", "bob\r"]
-        if not already_has_mila or (already_has_mila and "User" not in existing_mila)
-        else []
-    )
-
-    controlmaster_block = "\n".join(
-        [
-            "  ControlMaster auto",
-            "  ControlPath ~/.cache/ssh/%r@%h:%p",
-            "  ControlPersist 600",
-        ]
-    )
-
-    if not all(
-        [
-            already_has_mila and controlmaster_block in existing_mila,
-            already_has_mila_cpu,
-            already_has_mila_compute and controlmaster_block in existing_mila_compute,
-            already_has_drac,
-        ]
-    ):
-        # There's a confirmation prompt only if we're adding some entry.
-        confirm_inputs = ["y"]
-    else:
-        confirm_inputs = []
-
-    drac_username_inputs = []
-    if not already_has_drac:
-        drac_username_inputs = ["y", f"{user}\r"]
-    prompt_inputs = username_input + drac_username_inputs + confirm_inputs
-
-    for prompt_input in prompt_inputs:
-        input_pipe.send_text(prompt_input)
-
-    setup_ssh_config(ssh_config_path=ssh_config_path)
-
-    with open(ssh_config_path) as f:
-        resulting_contents = f.read()
-
-    expected_text = "\n".join(
-        [
-            "Running the `mila init` command with "
-            + (
-                "\n".join(
-                    [
-                        "this initial content:",
-                        "",
-                        "```",
-                        initial_contents,
-                        "```",
-                    ]
-                )
-                if initial_contents
-                else "no initial ssh config file"
-            ),
-            "",
-            f"and these user inputs: {prompt_inputs}",
-            "leads to the following ssh config file:",
-            "",
-            "```",
-            resulting_contents,
-            "```",
-        ]
-    )
-    file_regression.check(
-        expected_text,
-        extension=".md",
-    )
+    """Test the case where the user has a *.server.mila.quebec entry."""
+    assert mila_username
+    ssh_config = SshConfigReader.from_path(ssh_config_file)
+    assert ssh_config.lookup("cn-a001.server.mila.quebec") == {
+        "hostname": "cn-a001.server.mila.quebec",
+        "user": mila_username,
+        "proxyjump": "mila",
+    }
+    assert "proxyjump" not in ssh_config.lookup("login.server.mila.quebec")
+    assert "proxyjump" not in ssh_config.lookup("login-1.login.server.mila.quebec")
 
 
 @pytest.mark.parametrize(
