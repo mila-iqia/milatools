@@ -7,9 +7,6 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist yes
   User bob
 
 Host mila-cpu
@@ -26,11 +23,7 @@ Host mila-cpu
   User bob
 
 Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName %h
   ProxyJump mila
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist yes
   User bob
 
 Host beluga cedar graham narval niagara
@@ -62,7 +55,7 @@ Host !niagara nia????
 ```
 
 
-and these user inputs: ('y',)
+and this user input: y
 leads the following ssh config file on the Windows side:
 
 ```
@@ -89,7 +82,6 @@ Host mila-cpu
   User bob
 
 Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName %h
   ProxyJump mila
   User bob
 

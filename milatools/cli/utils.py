@@ -211,7 +211,7 @@ class SSHConfig:
         self.set = self.cfg.set
 
     def lookup(self, host: str) -> paramiko.config.SSHConfigDict:
-        return paramiko.SSHConfig.from_path(self.path).lookup(host)
+        return paramiko.SSHConfig.from_text(self.cfg.config()).lookup(host)
 
     def add(
         self,
