@@ -1,3 +1,10 @@
+"""
+
+TODO: If we need to add a ssh-key on the login node and add it to authorized_keys to get
+ssh access to compute nodes, do it here instead of in mila init, since we're already
+going to go through 2FA once.
+"""
+
 from __future__ import annotations
 
 import asyncio

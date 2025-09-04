@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import io
 import json
 import os
 import shutil
@@ -11,6 +12,7 @@ import textwrap
 from functools import partial
 from logging import getLogger as get_logger
 from pathlib import Path, PurePosixPath
+from typing import Any
 from unittest.mock import Mock
 
 import invoke
@@ -19,6 +21,7 @@ import pytest_mock
 import questionary
 import questionary.prompts
 import questionary.prompts.confirm
+import rich.prompt
 from paramiko.config import SSHConfig as SshConfigReader
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
@@ -29,13 +32,12 @@ from milatools.cli.init_command import (
     _get_mila_username,
     _setup_ssh_config_file,
     create_ssh_keypair,
-    get_windows_home_path_in_wsl,
     has_passphrase,
     setup_ssh_config,
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.utils import SSHConfig, running_inside_WSL
+from milatools.cli.utils import SSHConfig
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import SSH_CACHE_DIR, SSH_CONFIG_FILE, RemoteV2
 from tests.conftest import initial_contents
@@ -131,139 +133,152 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
     assert ssh_config_file.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="TODO: Test is broken since switch from questionary to rich.",
-)
 @pytest.mark.parametrize(
-    "mila_username",
-    [None, "bob_mila"],
-    ids=["no_mila", "mila"],
-)
-@pytest.mark.parametrize(
-    "drac_username",
-    [None, "bob_drac"],
-    ids=["no_drac", "drac"],
-)
-@pytest.mark.parametrize(
-    "confirm_changes",
-    [False, True],
-    ids=["reject_changes", "confirm_changes"],
-)
-@pytest.mark.parametrize(
-    "initial_contents",
+    ("initial_contents", "entries", "expected_contents"),
     [
-        "",
-        """\
-        # A comment in the file.
-        """,
-        """\
-        # a comment
-        Host foo
-            HostName foobar.com
-        """,
-        """\
-        # a comment
-        Host foo
-          HostName foobar.com
+        pytest.param(
+            "",
+            {"mila": {"hostname": "login.server.mila.quebec", "user": "bob"}},
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            id="empty_file_add_mila",
+        ),
+        pytest.param(
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            {"mila": {"hostname": "login.server.mila.quebec", "user": "bob"}},
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            id="add_exactly_same_entry",
+        ),
+        pytest.param(
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            {
+                "mila": {
+                    "hostname": "login.server.mila.quebec",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+              ControlMaster auto
+            """,
+            id="add_key_to_entry",
+        ),
+        pytest.param(
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            {"mila": {"controlmaster": "auto"}},
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+              ControlMaster auto
+            """,
+            id="add_key_to_entry_2",
+        ),
+        pytest.param(
+            "",
+            {
+                "beluga narval cedar graham niagara": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            """\
+            Host beluga narval cedar graham niagara
+              HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            id="empty_add_drac",
+        ),
+        pytest.param(
+            "",
+            {
+                "mila": {
+                    "hostname": "login.server.mila.quebec",
+                    "user": "bob",
+                },
+                "beluga narval cedar graham niagara": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                },
+            },
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
 
-        # another comment
-        """,
-        """\
-        # a comment
-
-        Host foo
-          HostName foobar.com
-
-
-
-
-        # another comment after lots of empty lines.
-        """,
-    ],
-    ids=[
-        "empty",
-        "has_comment",
-        "has_different_indent",
-        "has_comment_and_entry",
-        "has_comment_and_entry_with_extra_space",
+            Host beluga narval cedar graham niagara
+              HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            id="empty_add_drac_and_mila",
+        ),
+        pytest.param(
+            """\
+            Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan
+              User bob
+            """,
+            {
+                "beluga narval cedar graham niagara": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            """\
+            Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan
+              ControlMaster auto
+              User bob
+              HostName %h.alliancecan.ca
+            """,
+            id="config_already_has_more_drac_clusters",
+        ),
     ],
 )
-def test_setup_ssh_config(
+def test_add_ssh_entry(
     initial_contents: str,
-    confirm_changes: bool,
-    drac_username: str | None,
-    mila_username: str | None,
+    entries: dict[str, dict[str, Any]],
+    expected_contents: str,
     tmp_path: Path,
-    file_regression: FileRegressionFixture,
-    input_pipe: PipeInput,
 ):
-    """Test what happens to the ~/.ssh/config file when it exists and is either empty or
-    contains existing entries unrelated to the Mila/DRAC clusters."""
-    ssh_config_path = tmp_path / ".ssh" / "config"
-    ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
+    """Tests that adding an entry to the ssh config file works as expected."""
+    config = tmp_path / "config"
+    config.write_text(textwrap.dedent(initial_contents))
+    ssh_config = SSHConfig(config)
 
-    if initial_contents:
-        initial_contents = textwrap.dedent(initial_contents)
+    from milatools.cli.init_command import _add_ssh_entry
 
-    if initial_contents is not None:
-        with open(ssh_config_path, "w") as f:
-            f.write(initial_contents)
-
-    user_inputs = [
-        *(  # Mila account? + enter mila username
-            ["n"] if mila_username is None else ["y", mila_username + "\r"]
-        ),
-        *(  # DRAC account? + enter username
-            ["n"] if drac_username is None else ["y", drac_username + "\r"]
-        ),
-        _yn(confirm_changes),
-    ]
-    for prompt in user_inputs:
-        input_pipe.send_text(prompt)
-
-    # `mila init` should exit if the confirmation prompt is asked and refused.
-    # The confirmation prompt "is this ok?" only shows up if we are about to modify the
-    # content of the file.
-    should_exit = not confirm_changes and (
-        mila_username is not None or drac_username is not None
-    )
-
-    with pytest.raises(SystemExit) if should_exit else contextlib.nullcontext():
-        setup_ssh_config(ssh_config_path=ssh_config_path)
-
-    assert ssh_config_path.exists()
-    with open(ssh_config_path) as f:
-        resulting_contents = f.read()
-
-    expected_text = "\n".join(
-        [
-            "Running the `mila init` command with "
-            + (
-                "\n".join(
-                    [
-                        "this initial content:",
-                        "",
-                        "```",
-                        initial_contents,
-                        "```",
-                    ]
-                )
-                if initial_contents
-                else "no initial ssh config file"
-            ),
-            "",
-            f"and these user inputs: {tuple(user_inputs)}",
-            "leads the following ssh config file:",
-            "",
-            "```",
-            resulting_contents,
-            "```",
-            "",
-        ]
-    )
-
-    file_regression.check(expected_text, extension=".md")
+    for k, entry in entries.items():
+        _add_ssh_entry(
+            ssh_config, host=k, entry=entry, _space_before=True, _space_after=True
+        )
+    resulting_contents = ssh_config.cfg.config()
+    assert resulting_contents.strip() == textwrap.dedent(expected_contents).strip()
 
 
 @pytest.mark.parametrize(
@@ -291,19 +306,12 @@ def test_fixes_overly_general_cn_entry(
     assert "proxyjump" not in ssh_config.lookup("login-1.login.server.mila.quebec")
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="TODO: Test is broken since switch from questionary to rich.",
-)
 @pytest.mark.parametrize(
     ("contents", "prompt_inputs", "expected"),
     [
         pytest.param(
             "",  # empty file.
-            [
-                "y",  # Yes I have a mila account,
-                "bob\r",  # my username is "bob" then enter.
-            ],
+            ["y", "bob"],  # Yes I have a mila account, then write "bob" then enter.
             "bob",  # get "bob" as username.
             id="empty_file",
         ),
@@ -327,9 +335,9 @@ def test_fixes_overly_general_cn_entry(
                 """
             ),
             [
-                "y",  # yes I have an account on the Mila cluster
-                "bob\r",
-            ],  # My username is bob, then press enter.
+                "y",
+                "bob",
+            ],  # Yes I have a mila account (still asks), and username is bob.
             "bob",
             id="entry_without_user",
         ),
@@ -344,11 +352,8 @@ def test_fixes_overly_general_cn_entry(
                     User Bob
                 """
             ),
-            [
-                "y",  # yes I have an account on the Mila cluster
-                "bob\r",
-            ],
-            "bob",
+            [],
+            "george",  # first entry wins based on the rules of SSH config.
             id="two_matching_entries",
         ),
         pytest.param(
@@ -365,8 +370,8 @@ def test_fixes_overly_general_cn_entry(
         ),
         pytest.param(
             "",
-            [" \r", "bob\r"],
-            "bob",
+            ["N"],  # Don't have a Mila account, dont ask me for the username.
+            None,
             id="empty_username",
         ),
     ],
@@ -375,8 +380,8 @@ def test_get_username(
     contents: str,
     prompt_inputs: list[str],
     expected: str,
-    input_pipe: PipeInput,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # TODO: We should probably also have a test that checks that keyboard interrupts
     # work.
@@ -385,17 +390,32 @@ def test_get_username(
     with open(ssh_config_path, "w") as f:
         f.write(contents)
     ssh_config = SSHConfig(ssh_config_path)
-    if not prompt_inputs:
-        input_pipe.close()
-    for prompt_input in prompt_inputs:
-        input_pipe.send_text(prompt_input)
-    assert _get_mila_username(ssh_config) == expected
+
+    import rich.prompt
+
+    with io.StringIO() as s:
+        s.write("\n".join(prompt_inputs) + "\n")
+        s.seek(0)
+        monkeypatch.setattr(
+            rich.prompt.Confirm,
+            rich.prompt.Confirm.ask.__name__,
+            Mock(
+                spec=rich.prompt.Confirm.ask,
+                side_effect=partial(rich.prompt.Confirm.ask, stream=s),
+            ),
+        )
+        monkeypatch.setattr(
+            rich.prompt.Prompt,
+            rich.prompt.Prompt.ask.__name__,
+            Mock(
+                spec=rich.prompt.Prompt.ask,
+                side_effect=partial(rich.prompt.Prompt.ask, stream=s),
+            ),
+        )
+
+        assert _get_mila_username(ssh_config) == expected
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="TODO: Test is broken since switch from questionary to rich.",
-)
 @pytest.mark.parametrize(
     ("contents", "prompt_inputs", "expected"),
     [
@@ -449,7 +469,7 @@ def test_get_username(
                 """
             ),
             ["y", "bob\r"],
-            "bob",
+            "george",  # first entry wins, based on the rules of SSH config.
             id="two_matching_entries",
         ),
         pytest.param(
@@ -466,9 +486,9 @@ def test_get_username(
         ),
         pytest.param(
             "",
-            # Yes (by pressing just enter), then an invalid username (space), then a
+            # Yes, then an invalid username (space), then a
             # real username.
-            ["\r", " \r", "bob\r"],
+            ["y\r", " \r", "bob\r"],
             "bob",
             id="empty_username",
         ),
@@ -479,23 +499,41 @@ def test_get_drac_username(
     prompt_inputs: list[str],
     expected: str | None,
     tmp_path: Path,
-    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     ssh_config_path = tmp_path / "config"
     with open(ssh_config_path, "w") as f:
         f.write(contents)
     ssh_config = SSHConfig(ssh_config_path)
-    mocker.patch("rich.prompt.Confirm.ask", spec_set=True, side_effects=prompt_inputs)
-    mocker.patch("rich.prompt.Prompt.ask", spec_set=True, side_effects=prompt_inputs)
 
-    assert _get_drac_username(ssh_config) == expected
+    with io.StringIO() as s:
+        s.write("\n".join(prompt_inputs) + "\n")
+        s.seek(0)
+        monkeypatch.setattr(
+            rich.prompt.Confirm,
+            rich.prompt.Confirm.ask.__name__,
+            Mock(
+                spec=rich.prompt.Confirm.ask,
+                side_effect=partial(rich.prompt.Confirm.ask, stream=s),
+            ),
+        )
+        monkeypatch.setattr(
+            rich.prompt.Prompt,
+            rich.prompt.Prompt.ask.__name__,
+            Mock(
+                spec=rich.prompt.Prompt.ask,
+                side_effect=partial(rich.prompt.Prompt.ask, stream=s),
+            ),
+        )
+        # mocker.patch("rich.prompt.Prompt.ask", spec_set=True, side_effects=prompt_inputs)
+
+        assert _get_drac_username(ssh_config) == expected
 
 
 class TestSetupSshFile:
     @permission_bits_check_doesnt_work_on_windows()
-    def test_create_file(self, tmp_path: Path, input_pipe: PipeInput):
+    def test_create_file(self, tmp_path: Path):
         config_path = tmp_path / "config"
-        input_pipe.send_text("y")
         file = _setup_ssh_config_file(config_path)
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
@@ -524,9 +562,8 @@ class TestSetupSshFile:
         assert file.stat().st_mode & 0o777 == 0o600
 
     @permission_bits_check_doesnt_work_on_windows()
-    def test_creates_dir(self, tmp_path: Path, input_pipe: PipeInput):
+    def test_creates_dir(self, tmp_path: Path):
         config_path = tmp_path / "fake_ssh" / "config"
-        input_pipe.send_text("y")
         file = _setup_ssh_config_file(config_path)
         assert file.parent.exists()
         assert file.parent.stat().st_mode & 0o777 == 0o700
@@ -541,9 +578,7 @@ class TestSetupSshFile:
             False,
         ],
     )
-    def test_fixes_dir_permission_issues(
-        self, file_exists: bool, tmp_path: Path, input_pipe: PipeInput
-    ):
+    def test_fixes_dir_permission_issues(self, file_exists: bool, tmp_path: Path):
         config_path = tmp_path / "fake_ssh" / "config"
         config_path.parent.mkdir(mode=0o777)  # some bad permission for the SSH dir.
         if file_exists:
@@ -702,43 +737,6 @@ def test_setup_windows_ssh_config_from_wsl(
     )
 
     file_regression.check(expected_text, extension=".md")
-
-
-@pytest.fixture
-def windows_ssh_config(
-    linux_ssh_config: SSHConfig,
-    windows_home: Path,
-    input_pipe: PipeInput,
-    monkeypatch: pytest.MonkeyPatch,
-) -> SSHConfig:
-    """Returns the Windows ssh config as it would be when we create it from WSL."""
-    windows_ssh_config_path = windows_home / ".ssh" / "config"
-    monkeypatch.setattr(
-        init_command,
-        running_inside_WSL.__name__,  # type: ignore
-        Mock(spec=running_inside_WSL, return_value=True),
-    )
-    monkeypatch.setattr(
-        init_command,
-        get_windows_home_path_in_wsl.__name__,  # type: ignore
-        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
-    )
-    user_inputs: list[str] = []
-    if not windows_ssh_config_path.exists():
-        # We accept creating the Windows SSH config file for now.
-        user_inputs.append("y")
-    user_inputs.append("y")  # accept changes.
-
-    for prompt in user_inputs:
-        input_pipe.send_text(prompt)
-
-    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
-
-    assert windows_ssh_config_path.exists()
-    assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
-    assert windows_ssh_config_path.parent.stat().st_mode & 0o777 == 0o700
-
-    return SSHConfig(windows_ssh_config_path)
 
 
 @xfails_on_windows(
