@@ -140,30 +140,36 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
     """Set up your SSH configuration and keys to access the Mila / DRAC clusters.
 
     1. Sets up your ~/.ssh/config file.
-        - Adds the entries for the Mila and optionally the DRAC clusters
+        - If you have a Mila account, adds the entries for Mila
+        - If you have a DRAC account, adds the entries for DRAC.
         - Updates the config if it already exists
-        - Asks for confirmation before making changes. if changes are rejected, exits.
-    2. Setup SSH access to the Mila cluster login nodes
-        - Runs `ssh-keygen` if there isn't already a key for the Mila cluster.
-        - Prints the content of the public key in a nice text block to copy-paste.
-        - Displays a link to the Google form(s) to use to submit the public key.
-    3. Mila cluster compute nodes (only if we already have access to the Mila login nodes)
-        - Run `ssh-keygen` on the login node if there isn't already a key in ~/.ssh.
-        - Add the content of that public key to ~/.ssh/authorized_keys if it isn't already there
-    4. SSH access to DRAC clusters
-        Currently we do `ssh-copy-id` and it still works with DRAC clusters.
-        Should we also transition to just displaying the form instead?
-        If we also switch to the form, then do the same as for the Mila cluster in 2:
-        - Generates (another?) keypair to connect to DRAC if there isn't one already.
-        - Prints the content of the public key in a nice text block to copy-paste.
-        - Displays a link to the CCDB form to submit the public key.
-    5. DRAC cluster compute nodes (only if we have already access to the DRAC login nodes)
-        - If running on Windows, print a big red warning to tell the user that they can
-          either suffer through LOTS of 2FA prompts on their phone, or switch to WSL.
-        - Same as in 3 but done on each of the DRAC clusters.
-    6. Sets up VSCode settings if VsCode is installed locally
+        - Asks for confirmation before making changes - if changes are rejected, exits.
+    2. If the user has a Mila account, setup the SSH access to the Mila cluster.
+        - Checks access to Mila login nodes. If not setup:
+            - If there isn't already an SSH keypair in ~/.ssh, runs `ssh-keygen`.
+            - Prints the content of the public key in a nice text block that is easy to copy-paste.
+            - Instructs the user to send it to it-support@mila.quebec.
+        - Checks that everything is setup for compute node node access:
+            - Checks that the public key is in ~/.ssh/authorized_keys on the login node.
+              If not, copies it explicitly (no ssh-copy-id).
+            - Checks that there is an ssh keypair on the login node (with no passphrase)
+              and that it is also in ~/.ssh/authorized_keys on the cluster. If not, does it.
+            - Checks that the permissions are set correctly on the ~/.ssh directory, keys,
+              and ~/.ssh/authorized_keys. If not, corrects them.
+    3. If the user has a DRAC account, setup the SSH access to the DRAC cluster(s).
+        - Login node access:
+            - Generates (another?) keypair to connect to DRAC if there isn't one already.
+            - Prints the content of the public key in a nice text block to copy-paste.
+            - Displays a link to the CCDB form to submit the public key.
+        - DRAC compute nodes access
+            - If running on Windows, print a big red warning to tell the user that they can
+              either suffer through LOTS of 2FA prompts on their phone, or switch to WSL.
+            - Same as in 3 but done on each of the DRAC clusters. (TODO: Is this
+              actually needed on DRAC clusters?)
+    5. Sets up VSCode settings if VsCode is installed locally
         - Add "remote.SSH.connectTimeout": 60 in Vscode's `settings.json` file.
-    7. Displays a welcome message with further instructions and tips.
+    6. Displays a welcome message *only if all previous steps succeeded* with further
+       instructions and tips.
     """
 
     #############################
@@ -1067,9 +1073,13 @@ def get_username_on_cluster(
     if not yn(f"Do you have an account on the {cluster_full_name} cluster{s}?"):
         return None
 
-    username = rich.prompt.Prompt.ask(
-        f"What's your username on the {cluster_full_name} cluster{s}?\n"
-    )
+    while not (
+        username := rich.prompt.Prompt.ask(
+            f"What's your username on the {cluster_full_name} cluster{s}?\n"
+        )
+    ).strip():
+        rich.print("[red]Please enter a valid username.[/red]")
+        pass
     return None if username.isspace() else username.strip()
 
 
