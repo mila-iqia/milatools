@@ -134,7 +134,7 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
 
 
 @pytest.mark.parametrize(
-    ("initial_contents", "entries", "expected_contents"),
+    ("initial_ssh_config", "entries", "expected_ssh_config"),
     [
         pytest.param(
             "",
@@ -261,14 +261,14 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
     ],
 )
 def test_add_ssh_entry(
-    initial_contents: str,
+    initial_ssh_config: str,
     entries: dict[str, dict[str, Any]],
-    expected_contents: str,
+    expected_ssh_config: str,
     tmp_path: Path,
 ):
     """Tests that adding an entry to the ssh config file works as expected."""
     config = tmp_path / "config"
-    config.write_text(textwrap.dedent(initial_contents))
+    config.write_text(textwrap.dedent(initial_ssh_config))
     ssh_config = SSHConfig(config)
 
     from milatools.cli.init_command import _add_ssh_entry
@@ -278,7 +278,21 @@ def test_add_ssh_entry(
             ssh_config, host=k, entry=entry, _space_before=True, _space_after=True
         )
     resulting_contents = ssh_config.cfg.config()
-    assert resulting_contents.strip() == textwrap.dedent(expected_contents).strip()
+    assert resulting_contents.strip() == textwrap.dedent(expected_ssh_config).strip()
+
+    # We should expect that if we lookup the entries that we just added (or updated),
+    # they should have the values that we just set.
+    conf = SshConfigReader.from_text(resulting_contents)
+    for host_or_hosts, entry in entries.items():
+        for host in host_or_hosts.split():
+            conf_entry = conf.lookup(host)
+            for option, value in entry.items():
+                resolved_value = conf_entry.get(option)
+                # conf.lookup(host) will actually resolve of %h to hostname, etc, so we
+                # can't directly compare them without also doing that ourselves!
+                if "%" in value:
+                    continue
+                assert resolved_value == value, option
 
 
 @pytest.mark.parametrize(
