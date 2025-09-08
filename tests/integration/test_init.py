@@ -160,11 +160,14 @@ class TestSetupMilaSSHAccess:
         remote_ssh_dir: PurePosixPath,
         login_node_v2: RemoteV2,
     ):
-        """PYTEST_DONT_REWRITE."""
+        """Test that if we have access to the login nodes, but we're missing the step
+        where the local public key is added in the ~/.ssh/authorized_keys file, that
+        running `mila init` adds it.
 
-        # Test that if we have access to the login nodes, but we're missing the step
-        # where the local public key is added in the ~/.ssh/authorized_keys file, that
-        # running `mila init` adds it.
+        PYTEST_DONT_REWRITE
+        """
+        # TODO: look into ways to disable assert rewriting for this test
+        # https://docs.pytest.org/en/7.1.x/how-to/assert.html#disabling-assert-rewriting
         ssh_dir = Path.home() / ".ssh"
 
         authorized_public_keys = (
