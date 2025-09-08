@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import datetime
 import functools
+import io
 import os
 import re
 import socket
@@ -453,8 +455,12 @@ def ssh_config_file(
     _mock_confirm = mocker.patch("rich.prompt.Confirm.ask", side_effect=mocked_confirm)
     _mock_ask = mocker.patch("rich.prompt.Prompt.ask", side_effect=mocked_ask)
 
-    setup_ssh_config(ssh_config_path)
-
+    with (
+        contextlib.redirect_stdout(io.StringIO()),
+        contextlib.redirect_stderr(io.StringIO()),
+    ):
+        setup_ssh_config(ssh_config_path)
+    mocker.stopall()
     return ssh_config_path
 
 
