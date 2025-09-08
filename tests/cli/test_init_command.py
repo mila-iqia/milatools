@@ -18,12 +18,8 @@ from unittest.mock import Mock
 import invoke
 import pytest
 import pytest_mock
-import questionary
-import questionary.prompts
-import questionary.prompts.confirm
 import rich.prompt
 from paramiko.config import SSHConfig as SshConfigReader
-from prompt_toolkit.input import PipeInput, create_pipe_input
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import init_command
@@ -37,7 +33,7 @@ from milatools.cli.init_command import (
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.utils import SSHConfig
+from milatools.cli.utils import SSHConfig, yn
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import SSH_CACHE_DIR, SSH_CONFIG_FILE, RemoteV2
 from tests.conftest import initial_contents
@@ -80,32 +76,33 @@ pytestmark = pytest.mark.timeout(10)
 
 
 @pytest.fixture
-def input_pipe(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
-    """Fixture that creates an input pipe and makes questionary use it.
+def input_stream(monkeypatch: pytest.MonkeyPatch):
+    """Fixture that creates an input stream to be used to mock user input in tests.
 
-    TODO: This is super uber ugly to use. We should switch to something like a
-    known_question to answer mapping instead.
-
-    To use it, call `input_pipe.send_text("some text")`.
-
-    NOTE: Important: Send the \\r (with one backslash) character if the prompt is on a
-    newline.
-    For confirmation prompts, just send one letter, otherwise the '\r' is passed to the
-    next prompt, which sees it as just pressing enter, which uses the default value.
+    This creates a `io.StringIO` object that can be read and written to, and is passed
+    as the `stream` argument to `rich.prompt.Prompt.ask` and `rich.prompt.Confirm.ask`.
     """
-    request.node.add_marker(raises_NoConsoleScreenBufferError_on_windows_ci_action())
-    with create_pipe_input() as input_pipe:
+    with io.StringIO() as s:
         monkeypatch.setattr(
-            "questionary.confirm",
-            partial(questionary.confirm, input=input_pipe),
+            rich.prompt.Confirm,
+            rich.prompt.Confirm.ask.__name__,
+            Mock(
+                spec=rich.prompt.Confirm.ask,
+                side_effect=partial(rich.prompt.Confirm.ask, stream=s),
+            ),
         )
         monkeypatch.setattr(
-            "questionary.text", partial(questionary.text, input=input_pipe)
+            rich.prompt.Prompt,
+            rich.prompt.Prompt.ask.__name__,
+            Mock(
+                spec=rich.prompt.Prompt.ask,
+                side_effect=partial(rich.prompt.Prompt.ask, stream=s),
+            ),
         )
-        yield input_pipe
+        yield s
 
 
-def test_questionary_uses_input_pipe(input_pipe: PipeInput):
+def test_can_mock_input(input_stream: io.StringIO):
     """Small test just to make sure that our way of passing the input pipe to
     Questionary in tests makes sense.
 
@@ -113,20 +110,11 @@ def test_questionary_uses_input_pipe(input_pipe: PipeInput):
     way in our tests as they will for the users, but that's not something I'm confident
     I can guarantee.
     """
-    input_pipe.send_text("bob\r")
-    assert questionary.text("name?").unsafe_ask() == "bob"
-    input_pipe.send_text("y")
-    assert questionary.confirm("confirm?").unsafe_ask() is True
-    input_pipe.send_text("n")
-    assert questionary.confirm("confirm?").unsafe_ask() is False
-
-
-def _join_blocks(*blocks: str, user: str = "bob") -> str:
-    return "\n".join(textwrap.dedent(block) for block in blocks).format(user=user)
-
-
-def _yn(accept: bool):
-    return "y" if accept else "n"
+    input_stream.write("\n".join(["bob", "y", "n"]))
+    input_stream.seek(0)
+    assert rich.prompt.Prompt.ask("name?") == "bob"
+    assert yn("confirm?", default=False) is True
+    assert yn("confirm?", default=True) is False
 
 
 def test_creates_ssh_config_file(ssh_config_file: Path):
@@ -395,6 +383,7 @@ def test_get_username(
     prompt_inputs: list[str],
     expected: str,
     tmp_path: Path,
+    input_stream: io.StringIO,
     monkeypatch: pytest.MonkeyPatch,
 ):
     # TODO: We should probably also have a test that checks that keyboard interrupts
@@ -405,29 +394,10 @@ def test_get_username(
         f.write(contents)
     ssh_config = SSHConfig(ssh_config_path)
 
-    import rich.prompt
+    input_stream.write("\n".join(prompt_inputs) + "\n")
+    input_stream.seek(0)
 
-    with io.StringIO() as s:
-        s.write("\n".join(prompt_inputs) + "\n")
-        s.seek(0)
-        monkeypatch.setattr(
-            rich.prompt.Confirm,
-            rich.prompt.Confirm.ask.__name__,
-            Mock(
-                spec=rich.prompt.Confirm.ask,
-                side_effect=partial(rich.prompt.Confirm.ask, stream=s),
-            ),
-        )
-        monkeypatch.setattr(
-            rich.prompt.Prompt,
-            rich.prompt.Prompt.ask.__name__,
-            Mock(
-                spec=rich.prompt.Prompt.ask,
-                side_effect=partial(rich.prompt.Prompt.ask, stream=s),
-            ),
-        )
-
-        assert _get_mila_username(ssh_config) == expected
+    assert _get_mila_username(ssh_config) == expected
 
 
 @pytest.mark.parametrize(
@@ -513,35 +483,16 @@ def test_get_drac_username(
     prompt_inputs: list[str],
     expected: str | None,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    input_stream: io.StringIO,
 ):
     ssh_config_path = tmp_path / "config"
     with open(ssh_config_path, "w") as f:
         f.write(contents)
     ssh_config = SSHConfig(ssh_config_path)
 
-    with io.StringIO() as s:
-        s.write("\n".join(prompt_inputs) + "\n")
-        s.seek(0)
-        monkeypatch.setattr(
-            rich.prompt.Confirm,
-            rich.prompt.Confirm.ask.__name__,
-            Mock(
-                spec=rich.prompt.Confirm.ask,
-                side_effect=partial(rich.prompt.Confirm.ask, stream=s),
-            ),
-        )
-        monkeypatch.setattr(
-            rich.prompt.Prompt,
-            rich.prompt.Prompt.ask.__name__,
-            Mock(
-                spec=rich.prompt.Prompt.ask,
-                side_effect=partial(rich.prompt.Prompt.ask, stream=s),
-            ),
-        )
-        # mocker.patch("rich.prompt.Prompt.ask", spec_set=True, side_effects=prompt_inputs)
-
-        assert _get_drac_username(ssh_config) == expected
+    input_stream.write("\n".join(prompt_inputs) + "\n")
+    input_stream.seek(0)
+    assert _get_drac_username(ssh_config) == expected
 
 
 class TestSetupSshFile:
@@ -551,17 +502,6 @@ class TestSetupSshFile:
         file = _setup_ssh_config_file(config_path)
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
-
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Does not ask whether or not to create the SSH config anymore, just does it.",
-    )
-    def test_refuse_creating_file(self, tmp_path: Path, input_pipe: PipeInput):
-        config_path = tmp_path / "config"
-        input_pipe.send_text("n")
-        with pytest.raises(SystemExit):
-            config_path = _setup_ssh_config_file(config_path)
-        assert not config_path.exists()
 
     @permission_bits_check_doesnt_work_on_windows()
     def test_fix_file_permissions(self, tmp_path: Path):
@@ -666,28 +606,20 @@ def test_create_ssh_keypair(
 @pytest.fixture
 def linux_ssh_config(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    mocker: pytest_mock.MockerFixture,
+    input_stream: io.StringIO,
 ) -> SSHConfig:
     """Creates the SSH config that is generated by `mila init` on a Linux machine."""
     # Enter username, accept fixing that entry, then confirm.
     ssh_config_path = tmp_path / "ssh_config"
 
-    # for prompt in [
-    #     "bob\r",  # What's your username on the Mila cluster?
-    #     "y",  # Do you also have a DRAC account?
-    #     "bob\r",  # username on DRAC
-    #     "y",  # accept adding the entries in the ssh config
-    # ]:
-    #     input_pipe.send_text(prompt)
-
-    mocker.patch("rich.prompt.Prompt.ask", spec_set=True, side_effect=["bob", "bob"])
-    mocker.patch(
-        "rich.prompt.Confirm.ask",
-        spec_set=True,
-        return_value=True,
-    )
-
+    prompt_inputs = [
+        "bob",  # What's your username on the Mila cluster?
+        "y",  # Do you also have a DRAC account?
+        "bob",  # username on DRAC
+        "y",  # accept adding the entries in the ssh config
+    ]
+    input_stream.write("\n".join(prompt_inputs) + "\n")
+    input_stream.seek(0)
     if sys.platform.startswith("win"):
         pytest.skip(
             "TODO: Issue when changing sys.platform to get the Linux config when "
@@ -706,12 +638,13 @@ def test_setup_windows_ssh_config_from_wsl(
     file_regression: FileRegressionFixture,
     fake_linux_ssh_keypair: tuple[Path, Path],  # add this fixture so the keys exist.
     accept_changes: bool,
-    mocker: pytest_mock.MockerFixture,
+    input_stream: io.StringIO,
 ):
     initial_contents = linux_ssh_config.cfg.config()
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
-    mocker.patch("rich.prompt.Confirm.ask", spec_set=True, return_value=accept_changes)
+    input_stream.write("y\n" if accept_changes else "n\n")
+    input_stream.seek(0)
     if not accept_changes:
         with contextlib.suppress(SystemExit):
             setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
@@ -880,15 +813,19 @@ def fake_linux_ssh_keypair(linux_home: Path):
 
 def test_setup_windows_ssh_config_from_wsl_copies_keys(
     linux_ssh_config: SSHConfig,
-    input_pipe: PipeInput,
     windows_home: Path,
     linux_home: Path,
     fake_linux_ssh_keypair: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    input_stream: io.StringIO,
 ):
     linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
-
-    input_pipe.send_text("y")  # accept creating the Windows config file
-    input_pipe.send_text("y")  # accept the changes
+    prompt_inputs = [
+        "y",  # accept creating the Windows config file
+        "y",  # accept the changes
+    ]
+    input_stream.write("\n".join(prompt_inputs) + "\n")
+    input_stream.seek(0)
 
     setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
 
