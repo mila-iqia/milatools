@@ -368,7 +368,9 @@ def get_controlpath_for(
 
     if ssh_config_path.exists():
         # note: This also does the substitutions in the vars, e.g. %p -> port, etc.
-        ssh_config_values = SSHConfig.from_path(str(ssh_config_path)).lookup(cluster)
+        ssh_config_values = SSHConfig.from_path(
+            str(ssh_config_path.expanduser())
+        ).lookup(cluster)
 
     if control_path := ssh_config_values.get("controlpath"):
         # Controlpath is set in the SSH config.
