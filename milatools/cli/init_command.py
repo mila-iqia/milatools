@@ -240,26 +240,23 @@ def setup_mila_ssh_access(
         )
     )
     cluster = "mila"
-    default_private_key: Path = ssh_dir / "id_rsa"
     # docs_url = MILA_SSHKEYS_DOCS_URL
 
-    # todo: check if this would also work on Windows.
-    # mila_private_key = (
-    #     subprocess.get_output(shlex.split("ssh -G mila | grep identityfile"))
-    #     .splitlines()[0]
-    #     .split()[1]
-    # )
+    private_key_path = get_ssh_private_key_path(ssh_config, cluster)
+    if private_key_path is None:
+        private_key_path = next(
+            (k.with_suffix("") for k in ssh_dir.glob("id_*.pub")), None
+        )
 
-    private_key = get_ssh_private_key_path(ssh_config, cluster) or next(
-        (k.with_suffix("") for k in ssh_dir.glob("id_*.pub")),
-        default_private_key,
-    )
-    public_key = private_key.with_suffix(".pub")
+    if private_key_path is None:
+        create_ssh_keypair(private_key_path, local=LocalV1())
+
+    public_key = private_key_path.with_suffix(".pub")
 
     login_node: RemoteV2 | RemoteV1 | None = None
 
-    if not private_key.exists():
-        create_ssh_keypair_and_check_exists(cluster, private_key, public_key)
+    if not private_key_path.exists():
+        create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key)
         if Confirm.ask("Is this your first time connecting to the Mila cluster?"):
             rprint(
                 f"Paste the public key below during the final steps of onboarding:\n"
@@ -276,14 +273,14 @@ def setup_mila_ssh_access(
             rprint(
                 "[bold orange4]You can only use up to two SSH keys in total to connect to the Mila cluster.[/]\n"
                 "We recommend that you copy the public and private SSH keys from that "
-                f"other machine to this machine at paths {public_key} and {private_key} respectively."
+                f"other machine to this machine at paths {public_key} and {private_key_path} respectively."
             )
             if Confirm.ask(
                 "Would you like to reuse your existing key from another machine?"
             ):
                 rprint(
                     "Please copy the public and private keys from the other machine to this machine, "
-                    f"overwriting the contents of {public_key} and {private_key} and run `mila init` again."
+                    f"overwriting the contents of {public_key} and {private_key_path} and run `mila init` again."
                 )
                 return False
         rprint(
@@ -857,7 +854,7 @@ def get_windows_home_path_in_wsl() -> Path:
 
 
 def create_ssh_keypair(
-    ssh_private_key_path: Path,
+    ssh_private_key_path: Path | None,
     local: LocalV1 | None = None,
     passphrase: str | None = "",
 ) -> Path:
@@ -870,15 +867,18 @@ def create_ssh_keypair(
     local = local or LocalV1()
     command = [
         "ssh-keygen",
-        "-f",
-        str(ssh_private_key_path.expanduser()),
         "-t",
         "rsa",
-    ]
+    ] + (["-f", str(ssh_private_key_path.expanduser())] if ssh_private_key_path else [])
+
     if passphrase is not None:
         command.extend(["-N", passphrase])
     display(command)
-    subprocess.run(command, check=True)
+    out = subprocess.check_output(command)
+    if not ssh_private_key_path:
+        raise NotImplementedError(
+            f"TODO: Find the new key path from the output of ssh-keygen: {out}"
+        )
     return ssh_private_key_path
 
 
