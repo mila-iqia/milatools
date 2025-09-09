@@ -123,6 +123,16 @@ class TestSetupMilaSSHAccess:
             yield
 
     @pytest.mark.asyncio
+    async def test_login_node_access_not_setup(self):
+        """TODO: Clarify the behaviour of `mila init` in this case (by clarifying the test first)
+
+        Test that when SSH access to the Mila login nodes is not setup, running
+        `mila init` asks relevant questions and then simply prints an informative
+        message about contacting IT support, or something like that.
+        """
+        raise NotImplementedError()
+
+    @pytest.mark.asyncio
     async def test_mila_access_already_setup(
         self,
         backup_local_ssh_dir: Path,
