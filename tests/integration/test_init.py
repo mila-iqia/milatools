@@ -3,17 +3,19 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
+import functools
 import os
 import shutil
 from logging import getLogger as get_logger
 from pathlib import Path, PurePosixPath
+from typing import TypeVar
 
 import invoke
 import pytest
 import pytest_asyncio
 from paramiko.config import SSHConfig as SshConfigReader
 
-from milatools.cli.init_command import setup_mila_ssh_access
+from milatools.cli.init_command import get_ssh_public_key_path, setup_mila_ssh_access
 from milatools.cli.utils import SSHConfig
 from milatools.utils.local_v2 import run_async
 from milatools.utils.remote_v1 import RemoteV1
@@ -26,6 +28,8 @@ from milatools.utils.remote_v2 import (
 from tests.cli.common import in_github_CI, in_self_hosted_github_CI
 
 from ..conftest import mila_username  # noqa
+
+T = TypeVar("T")
 
 logger = get_logger(__name__)
 BACKUP_SSH_DIR = Path.home() / ".ssh_backup"
@@ -150,6 +154,70 @@ class TestSetupMilaSSHAccess:
         )
         assert list(ssh_dir.iterdir()) == files_before
 
+    @pytest.mark.parametrize("cluster", ["mila"], indirect=True)
+    @pytest.mark.asyncio
+    async def test_setup_compute_node_ssh_access(
+        self,
+        backup_local_ssh_dir: Path,
+        backup_local_ssh_cache_dir: Path,
+        backup_remote_ssh_dir: Path,
+        linux_ssh_config: SSHConfig,
+        remote_ssh_dir: PurePosixPath,
+        login_node_v2: RemoteV2,
+    ):
+        """Test that if we have nothing setup on the Mila cluster, `mila init` does the
+        following:
+
+        1. Creates an SSH keypair in the ~/.ssh directory
+            - Doesn't overwrite an existing keypair!
+        2. Adds the SSH public key from ~/.ssh/id_rsa.pub to the ~/.ssh/authorized_keys file
+        3. Adds the *local* public key for the mila cluster (the one given to IT support)
+           to the ~/.ssh/authorized_keys file on the cluster.
+        4. Makes sure that the permissions are correct on the ~/.ssh directory and files
+           on the cluster.
+        """
+        login_node = login_node_v2
+        # TODO: look into ways to disable assert rewriting for this test
+        # https://docs.pytest.org/en/7.1.x/how-to/assert.html#disabling-assert-rewriting
+        local_ssh_dir = Path.home() / ".ssh"
+
+        # This test makes a backup of the remote ~/.ssh directory in `backup_remote_ssh_dir`
+        # (~/.ssh_backup_remote), this is not as bad as it looks!
+        if _remote_dir_exists(login_node, remote_ssh_dir):
+            # Make sure that the remote ~/.ssh directory is not present, to simulate a
+            # first-time setup.
+            await login_node.get_output_async(
+                f"rm --recursive --verbose {remote_ssh_dir}", display=True, hide=False
+            )
+        assert not _remote_dir_exists(login_node, remote_ssh_dir)
+
+        mila_ssh_pubkey = (
+            _error_if_none(get_ssh_public_key_path(linux_ssh_config, "mila"))
+            .read_text()
+            .strip()
+        )
+
+        setup_mila_ssh_access(ssh_dir=local_ssh_dir, ssh_config=linux_ssh_config)
+
+        assert _remote_dir_exists(login_node, remote_ssh_dir)
+        assert login_node.get_output("stat -c %a ~/.ssh") == "700"
+        assert login_node.get_output("ls -l ~/.ssh").splitlines() == [
+            "authorized_keys",
+            "id_rsa",
+            "id_rsa.pub",
+        ]
+        assert login_node.get_output("stat -c %a ~/.ssh/authorized_keys") == "600"
+        assert login_node.get_output("stat -c %a ~/.ssh/id_rsa") == "600"
+        assert login_node.get_output("stat -c %a ~/.ssh/id_rsa.pub") == "644"
+
+        __remote_authorized_keys = login_node.get_output(
+            "cat ~/.ssh/authorized_keys", hide=True
+        ).splitlines()
+        check = mila_ssh_pubkey in __remote_authorized_keys
+        del mila_ssh_pubkey
+        del __remote_authorized_keys
+        assert check is True
+
     @pytest.mark.asyncio
     async def test_missing_compute_node_step(
         self,
@@ -237,6 +305,11 @@ class TestSetupMilaSSHAccess:
 async def _check_shared_connection_returncode(hostname: str) -> int:
     _result = await run_async(("ssh", "-O", "check", hostname), hide=True, warn=True)
     return _result.returncode
+
+
+def _error_if_none(v: T | None) -> T:
+    assert v is not None, "Expected value to not be None!"
+    return v
 
 
 @contextlib.asynccontextmanager
@@ -358,24 +431,21 @@ def _backup_remote_dir(
     directory: PurePosixPath,
     backup_directory: PurePosixPath,
 ):
-    # IDEA: Make the equivalent function, but that backs up a directory on a remote
-    # machine.
-    def _exists(dir: PurePosixPath) -> bool:
-        result = remote.run(f"test -d {dir}", display=True, warn=True, hide=True)
-        if isinstance(result, invoke.runners.Result):
-            return result.return_code == 0
-        return result.returncode == 0
-
+    _exists = functools.partial(_remote_dir_exists, remote)
     assert not _exists(PurePosixPath("/does/not/exist"))
     if remote.hostname == "localhost":
         assert _exists(PurePosixPath(Path.cwd()))
 
     def _rmtree(dir: PurePosixPath):
-        return remote.run(f"rm -r {dir}", display=True, hide=False)
+        return remote.run(f"rm --recursive --verbose {dir}", display=True, hide=False)
 
     def _copytree(source_dir: PurePosixPath, dest_dir: PurePosixPath):
         remote.run(f"mkdir -p {dest_dir.parent}", display=True)
-        return remote.run(f"cp -r {source_dir} {dest_dir}", display=True)
+        return remote.run(
+            f"cp --verbose --recursive {source_dir} {dest_dir}",
+            display=True,
+            hide=False,
+        )
 
     dir_existed_before = _exists(directory)
 
@@ -427,6 +497,13 @@ def _backup_remote_dir(
                 _rmtree(directory)
 
 
+def _remote_dir_exists(remote: RemoteV1 | RemoteV2, dir: PurePosixPath) -> bool:
+    result = remote.run(f"test -d {dir}", display=True, warn=True, hide=True)
+    if isinstance(result, invoke.runners.Result):  # remotev1... to be removed.
+        return result.return_code == 0
+    return result.returncode == 0
+
+
 @pytest.fixture
 def backup_local_ssh_dir():
     """Creates a backup of the ~/.ssh dir on the local machine to `BACKUP_SSH_DIR`."""
@@ -467,7 +544,7 @@ def backup_local_ssh_cache_dir():
 def remote_ssh_dir(
     login_node: RemoteV2 | RemoteV1,
 ) -> PurePosixPath:
-    """Returns the home directory on the remote cluster."""
+    """Returns the absolute path to the ~/.ssh directory on the cluster."""
 
     home_on_cluster = login_node.get_output("echo $HOME")
     remote_ssh_dir = PurePosixPath(home_on_cluster) / ".ssh"

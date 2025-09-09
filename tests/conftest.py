@@ -208,7 +208,7 @@ def login_node_v2(cluster: str) -> RemoteV2:
     return RemoteV2(cluster)
 
 
-@pytest.fixture(scope="session", params=[SLURM_CLUSTER])
+@pytest.fixture(scope="session", params=[SLURM_CLUSTER] if SLURM_CLUSTER else [])
 def cluster(request: pytest.FixtureRequest) -> str:
     """Fixture that gives the hostname of the slurm cluster to use for tests.
 
@@ -221,7 +221,7 @@ def cluster(request: pytest.FixtureRequest) -> str:
     ```
     """
 
-    cluster_name = request.param
+    cluster_name = getattr(request, "param", None)
     if not cluster_name:
         pytest.skip("Requires ssh access to a SLURM cluster.")
 
