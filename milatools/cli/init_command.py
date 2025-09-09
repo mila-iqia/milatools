@@ -685,6 +685,35 @@ def _table(
     return table
 
 
+def get_ssh_public_key_path(ssh_config: SSHConfig, hostname: str) -> Path | None:
+    private_key_path = get_ssh_private_key_path(ssh_config, hostname)
+    if private_key_path:
+        return private_key_path.with_suffix(".pub")
+    public_keys = list((Path.home() / ".ssh").glob("id_*.pub"))
+    if len(public_keys) == 1:
+        return public_keys[0]
+    if not public_keys:
+        return None
+    # There are multiple public keys, and the config doesn't specify which one to use.
+    # Use some common-sense heuristics, and warn if we can't make a good guess.
+
+    for public_key_path in public_keys:
+        if hostname in public_key_path.name:
+            # for example id_rsa_mila.pub
+            return public_key_path
+
+    public_keys = sorted(public_keys, key=lambda p: p.stat().st_mtime, reverse=True)
+    guessed_key_path = public_keys[0]
+    warnings.warn(
+        RuntimeWarning(
+            f"The SSH config does not specify which key is to be used for host {hostname}, "
+            f"and there are multiple public keys in the ~/.ssh directory! We will use "
+            f"the most recent key at path {guessed_key_path}"
+        )
+    )
+    return guessed_key_path
+
+
 def get_ssh_private_key_path(ssh_config: SSHConfig, hostname: str) -> Path | None:
     config = paramiko.SSHConfig.from_path(ssh_config.path)
     identity_file = config.lookup(hostname).get("identityfile", None)
