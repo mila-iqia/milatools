@@ -20,13 +20,24 @@ from milatools.utils.remote_v2 import RemoteV2
 from ..integration.conftest import skip_if_not_already_logged_in
 
 
-@pytest.mark.slow  # only run in integration tests.
+# @pytest.mark.slow  # only run in integration tests.
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "cluster",
     [
         "mila",
         pytest.param("tamia", marks=skip_if_not_already_logged_in("tamia")),
+        pytest.param("rorqual", marks=skip_if_not_already_logged_in("rorqual")),
+        pytest.param("nibi", marks=skip_if_not_already_logged_in("nibi")),
+        pytest.param(
+            "narval",
+            marks=[
+                pytest.mark.xfail(
+                    reason="Getting a weird error with lfs quota (number in brackets) on Narval"
+                ),
+                skip_if_not_already_logged_in("narval"),
+            ],
+        ),
     ],
     indirect=True,
 )
@@ -93,16 +104,34 @@ def test_parse_lfs_quota_output(
     "output, expected",
     [
         (
-            textwrap.dedent("""\
-                                        Description                Space         # of files
-                              /home (user normandf)        19GiB/  25GiB         206K/ 250K
-                           /scratch (user normandf)        56GiB/ 500GiB         418K/ 500K
-            --
-            On some clusters, a break down per user may be available by adding the option '--per_user'.
-            """),
+            textwrap.dedent(
+                """\
+                                            Description                Space         # of files
+                                  /home (user normandf)        19GiB/  25GiB         206K/ 250K
+                               /scratch (user normandf)        56GiB/ 500GiB         418K/ 500K
+                --
+                On some clusters, a break down per user may be available by adding the option '--per_user'.
+                """
+            ),
             (
-                (19, 25),
+                (19 * 1024 / 1000, 25 * 1024 / 1000),
                 (206000, 250000),
+            ),
+        ),
+        (
+            textwrap.dedent(
+                """\
+                                            Description                Space         # of files
+                                /home (user normandf)        4942MB/  50GB          28K/ 500K
+                            /scratch (user normandf)          25KB/  20TB           1 /1000K
+                        /project (project def-normandf)          74KB/1000GB           3 / 500K
+                --
+                On some clusters, a break down per user may be available by adding the option '--per_user'.
+                """
+            ),
+            (
+                (4942 / 1024, 50),
+                (28_000, 500_000),
             ),
         ),
     ],
