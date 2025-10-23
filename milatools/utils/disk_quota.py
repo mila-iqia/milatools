@@ -99,6 +99,34 @@ def _parse_lfs_quota_output(
     return (used_gb, max_gb), (used_files, max_files)
 
 
+def _parse_diskusage_report_output(
+    diskusage_report_output: str,
+) -> tuple[tuple[float, float], tuple[int, int]]:
+    """Parses space and # of files quota on $HOME from `diskusage_report` output."""
+
+    # Example:
+    """
+                                Description                Space         # of files
+                    /home (user normandf)        19GiB/  25GiB         206K/ 250K
+                /scratch (user normandf)        56GiB/ 500GiB         418K/ 500K
+    --
+    On some clusters, a break down per user may be available by adding the option '--per_user'.
+    """
+    for line in diskusage_report_output.splitlines()[1:]:
+        line = line.strip()
+        if line.startswith("/home"):
+            _, _, space_and_files_parts = line.partition(")")
+            space_used_with_slash, space_avail, files_used_with_slask, files_avail = (
+                space_and_files_parts.split()
+            )
+            space_used_GiB = int(space_used_with_slash.removesuffix("GiB/"))
+            space_avail_GiB = int(space_avail.removesuffix("GiB"))
+            k_files_used = 1000 * int(files_used_with_slask.removesuffix("K/"))
+            k_files_avail = 1000 * int(files_avail.removesuffix("K"))
+            return (space_used_GiB, space_avail_GiB), (k_files_used, k_files_avail)
+    raise ValueError("Could not find /home line in diskusage_report output.")
+
+
 def _check_disk_quota_common_part(home_disk_quota_output: str, cluster: str):
     if "not on a mounted Lustre filesystem" in home_disk_quota_output:
         logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
