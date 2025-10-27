@@ -20,7 +20,7 @@ from milatools.utils.remote_v2 import RemoteV2
 from ..integration.conftest import skip_if_not_already_logged_in
 
 
-# @pytest.mark.slow  # only run in integration tests.
+@pytest.mark.slow  # only run in integration tests.
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "cluster",
