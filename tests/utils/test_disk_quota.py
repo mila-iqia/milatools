@@ -14,8 +14,10 @@ from milatools.utils.disk_quota import (
     check_disk_quota,
     check_disk_quota_v1,
 )
+from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.runner import Runner
 
 from ..integration.conftest import skip_if_not_already_logged_in
 
@@ -141,3 +143,29 @@ def test_parse_diskusage_report_output(
 ):
     result = _parse_diskusage_report_output(output)
     assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("check_disk_quota_fn", [check_disk_quota, check_disk_quota_v1])
+async def test_check_disk_quota_fails_correctly(
+    caplog: pytest.LogCaptureFixture,
+    check_disk_quota_fn: Callable[[RemoteV1 | Runner], None],
+):
+    """Should fail appropriately when run on a system with no disk-quota or
+    diskusage_report commands."""
+    if (
+        subprocess.getstatusoutput("type disk-quota")[0] == 0
+        or subprocess.getstatusoutput("type diskusage_report")[0] == 0
+    ):
+        pytest.skip(
+            "disk-quota or diskusage_report command is available locally, cannot test failure case."
+        )
+
+    async def _check_disk_quota():
+        if inspect.iscoroutinefunction(check_disk_quota_fn):
+            await check_disk_quota_fn(LocalV2())
+        else:
+            check_disk_quota_fn(LocalV2())
+
+    with pytest.raises(subprocess.CalledProcessError), caplog.at_level(logging.DEBUG):
+        await _check_disk_quota()

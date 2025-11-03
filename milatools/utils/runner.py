@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import subprocess
+import typing
 from abc import ABC, abstractmethod
 
-from milatools.utils.remote_v1 import Hide
+if typing.TYPE_CHECKING:
+    from milatools.utils.remote_v1 import Hide
 
 
 class Runner(ABC):

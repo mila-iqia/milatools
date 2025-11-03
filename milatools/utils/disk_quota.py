@@ -7,12 +7,12 @@ from typing_extensions import deprecated
 from milatools.cli import console
 from milatools.cli.utils import MilatoolsUserError, T
 from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.runner import Runner
 
 logger = get_logger(__name__)
 
 
-async def check_disk_quota(remote: RemoteV2) -> None:
+async def check_disk_quota(remote: Runner) -> None:
     """Checks that the disk quota isn't exceeded on the remote $HOME filesystem."""
     # NOTE: This is what the output of the command looks like on the Mila cluster:
     #
@@ -37,7 +37,7 @@ async def check_disk_quota(remote: RemoteV2) -> None:
 
 
 @deprecated("Deprecated: use `check_disk_quota` instead. ", category=None)
-def check_disk_quota_v1(remote: RemoteV1 | RemoteV2) -> None:
+def check_disk_quota_v1(remote: RemoteV1 | Runner) -> None:
     """Checks that the user's disk quota isn't exceeded on the remote filesystem(s)."""
     # Need to check for this, because SlurmRemote is a subclass of RemoteV1 and
     # .get_output calls SlurmRemote.run which would spawn a job!
