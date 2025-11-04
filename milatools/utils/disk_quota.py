@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from logging import getLogger as get_logger
+from subprocess import CompletedProcess
 
 from typing_extensions import deprecated
 
@@ -28,12 +29,37 @@ async def check_disk_quota(remote: Runner) -> None:
     #     logger.debug("Cluster doesn't have the lfs command. Skipping check.")
     #     return
     console.log("Checking disk quota on $HOME...")
+    # Note: when `warn=True` and `hide=True`, a warning is not logged on error.
+    diskusage_report_result = await remote.run_async(
+        "bash --login -c 'diskusage_report'", display=False, warn=True, hide=True
+    )
+
+    if diskusage_report_result.returncode == 0:
+        (used_gb, max_gb), (used_files, max_files) = _parse_diskusage_report_output(
+            diskusage_report_result.stdout
+        )
+        _check_disk_quota_common_part(
+            used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+        )
+        return
+    # Option 2: Use the `lfs quota` command.
     home_disk_quota_output = await remote.get_output_async(
-        "bash --login -c 'diskusage_report 2>/dev/null || lfs quota -u $USER $HOME'",
+        "bash --login -c 'lfs quota -u $USER $HOME'",
         display=False,
+        warn=False,
         hide=True,
     )
-    _check_disk_quota_common_part(home_disk_quota_output, cluster=remote.hostname)
+
+    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
+        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
+        return
+
+    (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
+        home_disk_quota_output
+    )
+    _check_disk_quota_common_part(
+        used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+    )
 
 
 @deprecated("Deprecated: use `check_disk_quota` instead. ", category=None)
@@ -42,16 +68,42 @@ def check_disk_quota_v1(remote: RemoteV1 | Runner) -> None:
     # Need to check for this, because SlurmRemote is a subclass of RemoteV1 and
     # .get_output calls SlurmRemote.run which would spawn a job!
     assert not isinstance(remote, SlurmRemote)
-    # if not (remote.get_output("which lfs", display=False, hide=True)):
-    #     logger.debug("Cluster doesn't have the lfs command. Skipping check.")
-    #     return
     console.log("Checking disk quota on $HOME...")
+    # Note: when `warn=True` and `hide=True`, a warning is not logged on error.
+    diskusage_report_result = remote.run(
+        "bash --login -c 'diskusage_report'", display=False, warn=True, hide=True
+    )
+    returncode = (
+        diskusage_report_result.returncode
+        if isinstance(diskusage_report_result, CompletedProcess)
+        else diskusage_report_result.return_code
+    )
+    if returncode == 0:
+        (used_gb, max_gb), (used_files, max_files) = _parse_diskusage_report_output(
+            diskusage_report_result.stdout
+        )
+        _check_disk_quota_common_part(
+            used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+        )
+        return
+    # Option 2: Use the `lfs quota` command.
     home_disk_quota_output = remote.get_output(
-        "bash --login -c 'diskusage_report 2>/dev/null || lfs quota -u $USER $HOME'",
+        "bash --login -c 'lfs quota -u $USER $HOME'",
         display=False,
+        warn=False,
         hide=True,
     )
-    _check_disk_quota_common_part(home_disk_quota_output, cluster=remote.hostname)
+
+    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
+        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
+        return
+
+    (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
+        home_disk_quota_output
+    )
+    _check_disk_quota_common_part(
+        used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+    )
 
 
 def _parse_lfs_quota_output(
@@ -146,20 +198,9 @@ def _parse_diskusage_report_output(
     raise ValueError("Could not find /home line in diskusage_report output.")
 
 
-def _check_disk_quota_common_part(home_disk_quota_output: str, cluster: str):
-    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
-        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
-        return
-
-    if "Disk quotas for usr" in home_disk_quota_output:
-        (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
-            home_disk_quota_output
-        )
-    else:
-        (used_gb, max_gb), (used_files, max_files) = _parse_diskusage_report_output(
-            home_disk_quota_output
-        )
-
+def _check_disk_quota_common_part(
+    used_gb: float, max_gb: float, used_files: int, max_files: int, cluster: str
+):
     def get_colour(used: float, max: float) -> str:
         return "red" if used >= max else "orange" if used / max > 0.7 else "green"
 
