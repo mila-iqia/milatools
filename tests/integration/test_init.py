@@ -43,9 +43,14 @@ USE_MY_REAL_SSH_DIR = os.environ.get("USE_MY_REAL_SSH_DIR", "0") == "1"
 A backup is saved in `BACKUP_SSH_DIR`.
 """
 
-_real_ssh_config = SshConfigReader.from_path(Path.home() / ".ssh" / "config")
-_real_mila_username = _real_ssh_config.lookup("mila").get("user")
-_real_drac_username = _real_ssh_config.lookup("narval").get("user")
+_real_ssh_config = None
+_real_mila_username = None
+_real_drac_username = None
+
+if (_config_file := Path.home() / ".ssh" / "config").exists():
+    _real_ssh_config = SshConfigReader.from_path(_config_file)
+    _real_mila_username = _real_ssh_config.lookup("mila").get("user")
+    _real_drac_username = _real_ssh_config.lookup("narval").get("user")
 
 
 @pytest.fixture
@@ -385,7 +390,7 @@ async def temporarily_disable_shared_ssh_connection(
         await asyncio.sleep(1)
         assert not control_path.exists()
 
-    backup_of_socket_file.link_to(control_path)
+    backup_of_socket_file.symlink_to(control_path)
 
 
 @contextlib.contextmanager
