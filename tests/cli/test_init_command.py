@@ -214,6 +214,7 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
               HostName login.server.mila.quebec
               User bob
 
+
             Host beluga narval cedar graham niagara
               HostName %h.alliancecan.ca
               User bob
@@ -233,11 +234,16 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
                     "controlmaster": "auto",
                 }
             },
+            # NOTE: This isn't ideal. We'd like the config to be placed before the other
+            # existing entry, but this is hard to do.
             """\
             Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan
-              ControlMaster auto
               User bob
+
+            Host beluga narval cedar graham niagara
               HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
             """,
             id="config_already_has_more_drac_clusters",
         ),
