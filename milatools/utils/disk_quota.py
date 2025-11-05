@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 from logging import getLogger as get_logger
+from subprocess import CompletedProcess
 
 from typing_extensions import deprecated
 
 from milatools.cli import console
 from milatools.cli.utils import MilatoolsUserError, T
 from milatools.utils.remote_v1 import RemoteV1, SlurmRemote
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.runner import Runner
 
 logger = get_logger(__name__)
 
 
-async def check_disk_quota(remote: RemoteV2) -> None:
+async def check_disk_quota(remote: Runner) -> None:
     """Checks that the disk quota isn't exceeded on the remote $HOME filesystem."""
     # NOTE: This is what the output of the command looks like on the Mila cluster:
     #
@@ -24,30 +25,85 @@ async def check_disk_quota(remote: RemoteV2) -> None:
     # uid 1471600598 is using default file quota setting
 
     # Need to assert this, otherwise .get_output calls .run which would spawn a job!
-    if not (await remote.get_output_async("which lfs", display=False, hide=True)):
-        logger.debug("Cluster doesn't have the lfs command. Skipping check.")
-        return
+    # if not (await remote.get_output_async("which lfs", display=False, hide=True)):
+    #     logger.debug("Cluster doesn't have the lfs command. Skipping check.")
+    #     return
     console.log("Checking disk quota on $HOME...")
-    home_disk_quota_output = await remote.get_output_async(
-        "lfs quota -u $USER $HOME", display=False, hide=True
+    # Note: when `warn=True` and `hide=True`, a warning is not logged on error.
+    diskusage_report_result = await remote.run_async(
+        "bash --login -c 'diskusage_report'", display=False, warn=True, hide=True
     )
-    _check_disk_quota_common_part(home_disk_quota_output, cluster=remote.hostname)
+
+    if diskusage_report_result.returncode == 0:
+        (used_gb, max_gb), (used_files, max_files) = _parse_diskusage_report_output(
+            diskusage_report_result.stdout
+        )
+        _check_disk_quota_common_part(
+            used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+        )
+        return
+    # Option 2: Use the `lfs quota` command.
+    home_disk_quota_output = await remote.get_output_async(
+        "bash --login -c 'lfs quota -u $USER $HOME'",
+        display=False,
+        warn=False,
+        hide=True,
+    )
+
+    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
+        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
+        return
+
+    (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
+        home_disk_quota_output
+    )
+    _check_disk_quota_common_part(
+        used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+    )
 
 
 @deprecated("Deprecated: use `check_disk_quota` instead. ", category=None)
-def check_disk_quota_v1(remote: RemoteV1 | RemoteV2) -> None:
+def check_disk_quota_v1(remote: RemoteV1 | Runner) -> None:
     """Checks that the user's disk quota isn't exceeded on the remote filesystem(s)."""
     # Need to check for this, because SlurmRemote is a subclass of RemoteV1 and
     # .get_output calls SlurmRemote.run which would spawn a job!
     assert not isinstance(remote, SlurmRemote)
-    if not (remote.get_output("which lfs", display=False, hide=True)):
-        logger.debug("Cluster doesn't have the lfs command. Skipping check.")
-        return
     console.log("Checking disk quota on $HOME...")
-    home_disk_quota_output = remote.get_output(
-        "lfs quota -u $USER $HOME", display=False, hide=True
+    # Note: when `warn=True` and `hide=True`, a warning is not logged on error.
+    diskusage_report_result = remote.run(
+        "bash --login -c 'diskusage_report'", display=False, warn=True, hide=True
     )
-    _check_disk_quota_common_part(home_disk_quota_output, cluster=remote.hostname)
+    returncode = (
+        diskusage_report_result.returncode
+        if isinstance(diskusage_report_result, CompletedProcess)
+        else diskusage_report_result.return_code
+    )
+    if returncode == 0:
+        (used_gb, max_gb), (used_files, max_files) = _parse_diskusage_report_output(
+            diskusage_report_result.stdout
+        )
+        _check_disk_quota_common_part(
+            used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+        )
+        return
+    # Option 2: Use the `lfs quota` command.
+    home_disk_quota_output = remote.get_output(
+        "bash --login -c 'lfs quota -u $USER $HOME'",
+        display=False,
+        warn=False,
+        hide=True,
+    )
+
+    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
+        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
+        return
+
+    (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
+        home_disk_quota_output
+    )
+    _check_disk_quota_common_part(
+        used_gb, max_gb, used_files, max_files, cluster=remote.hostname
+    )
 
 
 def _parse_lfs_quota_output(
@@ -99,15 +155,52 @@ def _parse_lfs_quota_output(
     return (used_gb, max_gb), (used_files, max_files)
 
 
-def _check_disk_quota_common_part(home_disk_quota_output: str, cluster: str):
-    if "not on a mounted Lustre filesystem" in home_disk_quota_output:
-        logger.debug("Cluster doesn't use lustre on $HOME filesystem. Skipping check.")
-        return
+def _parse_diskusage_report_output(
+    diskusage_report_output: str,
+) -> tuple[tuple[float, float], tuple[int, int]]:
+    """Parses space and # of files quota on $HOME from `diskusage_report` output."""
 
-    (used_gb, max_gb), (used_files, max_files) = _parse_lfs_quota_output(
-        home_disk_quota_output
-    )
+    # Example:
+    """
+                                Description                Space         # of files
+                    /home (user normandf)        19GiB/  25GiB         206K/ 250K
+                /scratch (user normandf)        56GiB/ 500GiB         418K/ 500K
+    --
+    On some clusters, a break down per user may be available by adding the option '--per_user'.
+    """
+    for line in diskusage_report_output.splitlines()[1:]:
+        line = line.strip()
+        if line.startswith("/home"):
+            _, _, space_and_files_parts = line.partition(")")
+            space_used_with_slash, space_avail, files_used_with_slask, files_avail = (
+                space_and_files_parts.split()
+            )
+            # note: can also have MB suffix
+            if "GiB" in space_used_with_slash:
+                space_used_gb = (
+                    int(space_used_with_slash.removesuffix("GiB/")) * 1024 / 1000
+                )
+            elif "GB" in space_used_with_slash:
+                space_used_gb = int(space_used_with_slash.removesuffix("GB/"))
+            else:
+                assert "MB" in space_used_with_slash
+                space_used_gb = int(space_used_with_slash.removesuffix("MB/")) / 1024
+            if "GiB" in space_avail:
+                space_avail_gb = int(space_avail.removesuffix("GiB")) * 1024 / 1000
+            elif "GB" in space_avail:
+                space_avail_gb = int(space_avail.removesuffix("GB"))
+            else:
+                assert "MB" in space_avail
+                space_avail_gb = int(space_avail.removesuffix("MB")) / 1024
+            k_files_used = 1000 * int(files_used_with_slask.removesuffix("K/"))
+            k_files_avail = 1000 * int(files_avail.removesuffix("K"))
+            return (space_used_gb, space_avail_gb), (k_files_used, k_files_avail)
+    raise ValueError("Could not find /home line in diskusage_report output.")
 
+
+def _check_disk_quota_common_part(
+    used_gb: float, max_gb: float, used_files: int, max_files: int, cluster: str
+):
     def get_colour(used: float, max: float) -> str:
         return "red" if used >= max else "orange" if used / max > 0.7 else "green"
 
