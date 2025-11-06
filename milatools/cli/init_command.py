@@ -775,6 +775,10 @@ def run_ssh_copy_id(cluster: str, ssh_private_key_path: Path) -> bool:
                 "ssh-copy-id",
                 "-i",
                 str(ssh_private_key_path),
+                # On the Mila cluster, the ~/.ssh/authorized_keys file is not used when
+                # connecting to login nodes. Therefore ssh-copy-id does not add the key
+                # to that file. We have to use the `-f` flag to force it to add the key.
+                *(["-f"] if cluster == "mila" else []),
                 "-o",
                 "StrictHostKeyChecking=no",
                 cluster,
