@@ -247,6 +247,28 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
             """,
             id="config_already_has_more_drac_clusters",
         ),
+        pytest.param(
+            """\
+            Host beluga narval cedar graham niagara
+              hostname %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            {
+                "beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan trillium": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            """\
+            Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan trillium
+              HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            id="config_doesnt_have_new_drac_clusters",
+        ),
     ],
 )
 def test_add_ssh_entry(
