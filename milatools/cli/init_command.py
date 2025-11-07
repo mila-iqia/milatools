@@ -100,24 +100,36 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         # "User": mila_username,
     },
     # todo: add this entry (and test that `mila code` also works with it.)
-    # "cn-????": {
-    #     "HostName": "%h.server.mila.quebec",
-    #     "ProxyJump": "mila",
-    # },
+    "cn-????": {
+        # "HostName": "%h.server.mila.quebec",
+        "ProxyJump": "mila",
+    },
 }
-DRAC_CLUSTERS = ["beluga", "cedar", "graham", "narval"]
+DRAC_CLUSTERS = [
+    "beluga",
+    "cedar",
+    "graham",
+    "narval",
+    "rorqual",
+    "fir",
+    "nibi",
+    "tamia",
+    "killarney",
+    "vulcan",
+    "trillium",
+]
 DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
-    "beluga cedar graham narval niagara": {
+    " ".join(DRAC_CLUSTERS): {
         "Hostname": "%h.alliancecan.ca",
         # User=drac_username,
         # SSH multiplexing is useful here to go through 2FA only once.
         **ssh_multiplexing_config,
     },
-    "!beluga  bc????? bg????? bl?????": {
+    "bc????? bg????? bl?????": {
         "ProxyJump": "beluga",
         # User=drac_username,
     },
-    "!cedar   cdr? cdr?? cdr??? cdr????": {
+    "cdr? cdr?? cdr??? cdr????": {
         "ProxyJump": "cedar",
         # User=drac_username,
     },
@@ -125,13 +137,40 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
         "ProxyJump": "graham",
         # User=drac_username,
     },
-    "!narval  nc????? ng?????": {
+    "nc????? ng?????": {
         "ProxyJump": "narval",
         # User=drac_username,
     },
     "!niagara nia????": {
         "ProxyJump": "niagara",
         # User=drac_username,
+    },
+    "rc????? rg????? rl?????": {
+        "ProxyJump": "rorqual",
+        # User=drac_username,
+    },
+    "fc????? fb?????": {
+        "ProxyJump": "fir",
+        # User=drac_username,
+    },
+    "c? c?? c??? g? g?? l? l?? m? m?? u?": {
+        "ProxyJump": "nibi",
+        # User=drac_username,
+    },
+    "tg????? tc?????": {
+        "ProxyJump": "tamia",
+        # User=drac_username,
+    },
+    "kn???": {
+        "ProxyJump": "killarney",
+        # User=drac_username,
+    },
+    "rack??-??": {
+        "ProxyJump": "vulcan",
+        # User=drac_username,
+    },
+    "!trillium tri????": {
+        "ProxyJump": "trillium",
     },
 }
 
