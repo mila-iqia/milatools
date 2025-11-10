@@ -4,7 +4,6 @@ import copy
 import difflib
 import functools
 import json
-import shlex
 import shutil
 import subprocess
 import sys
@@ -20,14 +19,13 @@ import paramiko.config
 import rich.box
 import rich.prompt
 import rich.text
-from invoke.exceptions import UnexpectedExit
 from rich import print as rprint
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 
 from milatools.cli.utils import SSH_CONFIG_FILE, SSHConfig, T, running_inside_WSL, yn
-from milatools.utils.local_v1 import LocalV1, display
+from milatools.utils.local_v1 import display
 from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
@@ -113,10 +111,10 @@ DRAC_CLUSTERS = [
     "rorqual",
     "fir",
     "nibi",
+    "trillium",
     "tamia",
     "killarney",
     "vulcan",
-    "trillium",
 ]
 DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     " ".join(DRAC_CLUSTERS): {
@@ -174,6 +172,8 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     },
 }
 
+VSCODE_SETTINGS = {"remote.SSH.connectTimeout": 60}
+
 
 def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
     """Set up your SSH configuration and keys to access the Mila / DRAC clusters.
@@ -190,9 +190,8 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
             - Instructs the user to send it to it-support@mila.quebec.
         - Checks that everything is setup for compute node node access:
             - Checks that the public key is in ~/.ssh/authorized_keys on the login node.
-              If not, copies it explicitly (no ssh-copy-id).
-            - Checks that there is an ssh keypair on the login node (with no passphrase)
-              and that it is also in ~/.ssh/authorized_keys on the cluster. If not, does it.
+              If not, copies it explicitly. (Note: ssh-copy-id won't do it without the
+              -f option).
             - Checks that the permissions are set correctly on the ~/.ssh directory, keys,
               and ~/.ssh/authorized_keys. If not, corrects them.
     3. If the user has a DRAC account, setup the SSH access to the DRAC cluster(s).
@@ -217,20 +216,7 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
 
     rprint("Checking ssh config")
     ssh_config_path = ssh_dir / "config"
-    ssh_config = setup_ssh_config(ssh_config_path)
-
-    _hosts = ssh_config.hosts()
-    drac_clusters_in_config = [
-        c for c in DRAC_CLUSTERS if any(c in host for host in _hosts)
-    ]
-
-    mila_success = setup_mila_ssh_access(ssh_dir, ssh_config=ssh_config)
-
-    _drac_success = None
-    if drac_clusters_in_config:
-        _drac_success = setup_drac_ssh_access(
-            ssh_dir, ssh_config, drac_clusters_in_config
-        )
+    ssh_config, mila_username, drac_username = _setup_ssh_config(ssh_config_path)
 
     # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
     # ~/.ssh/config to the Windows ssh directory (taking care to remove the
@@ -239,21 +225,49 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
     if running_inside_WSL():
         setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
 
+    ##################################
+    # Step 2: Mila login node access #
+    ##################################
+
+    mila_login_node = None
+    if mila_username:
+        mila_login_node = setup_mila_ssh_access(ssh_dir, ssh_config=ssh_config)
+
+    _hosts = ssh_config.hosts()
+    drac_clusters_in_config = [
+        c for c in DRAC_CLUSTERS if any(c in host for host in _hosts)
+    ]
+
+    drac_success = None
+    if drac_username:
+        if sys.platform == "win32":
+            warnings.warn(
+                RuntimeWarning(
+                    "Setup of DRAC clusters is not supported on Windows.\n"
+                    "You need to setup the Windows Subsystem for Linux (WSL), and run `mila init` from there.\n"
+                    "See this link for instructions on setting up WSL: https://docs.alliancecan.ca/wiki/WSL\n"
+                )
+            )
+        else:
+            drac_success = setup_drac_ssh_access(
+                ssh_dir, ssh_config, drac_clusters_in_config
+            )
+
     setup_vscode_settings()
 
-    if mila_success:
+    if mila_login_node:
         print_welcome_message()
     else:
         rprint(
             "[bold red]Mila cluster access is not fully configured! See the instructions above.[/]"
         )
-    if _drac_success:
+    if drac_success:
         rprint("[bold green]DRAC cluster access is fully setup![/]")
 
-    elif _drac_success is None:
+    elif drac_success is None:
         rprint("Skipping setup for DRAC clusters (no DRAC entries in SSH config).")
     else:
-        assert _drac_success is False
+        assert drac_success is False
         rprint(
             "[bold orange4]DRAC cluster access is not fully configured! See the instructions above.[/]"
         )
@@ -270,7 +284,7 @@ def setup_compute_node_access(cluster: str):
 def setup_mila_ssh_access(
     ssh_dir: Path,
     ssh_config: SSHConfig,
-):
+) -> RemoteV2 | RemoteV1 | None:
     rprint(
         Panel(
             rich.text.Text("MILA SETUP", justify="center"),
@@ -286,25 +300,27 @@ def setup_mila_ssh_access(
         private_key_path = next(
             (k.with_suffix("") for k in ssh_dir.glob("id_*.pub")), None
         )
-
     if private_key_path is None:
-        create_ssh_keypair(private_key_path, local=LocalV1())
+        private_key_path = ssh_dir / "id_rsa_mila"
 
-    public_key = private_key_path.with_suffix(".pub")
+    public_key_path = private_key_path.with_suffix(".pub")
 
     login_node: RemoteV2 | RemoteV1 | None = None
 
     if not private_key_path.exists():
-        create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key)
         if Confirm.ask("Is this your first time connecting to the Mila cluster?"):
+            create_ssh_keypair_and_check_exists(
+                cluster, private_key_path, public_key_path
+            )
             rprint(
-                f"Paste the public key below during the final steps of onboarding:\n"
+                f"Please follow the onboarding steps provided by IT-support and paste "
+                f"this public key below during the final steps:\n"
                 f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
             )
             display_public_key(
-                public_key, cluster="mila", subtitle="Paste this into the form!"
+                public_key_path, cluster="mila", subtitle="Paste this into the form!"
             )
-            return False
+            return None
 
         if Confirm.ask(
             "Do you already have access to the Mila cluster from another machine?"
@@ -312,53 +328,62 @@ def setup_mila_ssh_access(
             rprint(
                 "[bold orange4]You can only use up to two SSH keys in total to connect to the Mila cluster.[/]\n"
                 "We recommend that you copy the public and private SSH keys from that "
-                f"other machine to this machine at paths {public_key} and {private_key_path} respectively."
+                f"other machine to this machine at paths {public_key_path} and {private_key_path} respectively."
             )
-            if Confirm.ask(
-                "Would you like to reuse your existing key from another machine?"
-            ):
-                rprint(
-                    "Please copy the public and private keys from the other machine to this machine, "
-                    f"overwriting the contents of {public_key} and {private_key_path} and run `mila init` again."
-                )
-                return False
+            rprint(
+                "Please copy the public and private keys from the other machine to this machine, "
+                f"overwriting the contents of {public_key_path} and {private_key_path} and run `mila init` again."
+            )
+            return None
+
+        create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
         rprint(
-            "Here is your SSH public key on this machine. Send it to it-support@mila.quebec:\n"
+            "Here is your SSH public key on this machine. Send it to IT-support@mila.quebec.\n"
         )
         display_public_key(
-            public_key,
+            public_key_path,
             cluster="mila",
-            subtitle="Include this in your email to it-support@mila.quebec",
+            subtitle="Include this in your email to IT-support@mila.quebec",
         )
         rprint(
             "After contacting it-support@mila.quebec, run `mila init` again to "
             "make sure that you are able to use `mila code` to connect to compute nodes."
         )
-        return False
+        return None
 
     # No point in trying to login if the config and key didn't exist to begin with.
     rprint(f"Checking connection to the {cluster} login nodes... ", flush=True)
     if login_node := try_to_login(cluster):
         rprint(f"✅ Able to `ssh {cluster}`")
-
         rprint(f"Checking connection to the {cluster} compute nodes... ")
-        if can_access_compute_nodes(login_node):
+        if can_access_compute_nodes(login_node, public_key_path=public_key_path):
             rprint(
-                f"✅ ~/.ssh/id_rsa.pub is in ~/.ssh/authorized_keys on the {cluster} cluster."
+                f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+                f"{cluster} cluster."
             )
-            return True  # all setup.
+            return login_node  # all setup.
         rprint(
-            f"❌ ~/.ssh/id_rsa.pub is not in ~/.ssh/authorized_keys on the {cluster} cluster. "
-            f"Attempting to fix this now."
+            f"❌ Local {public_key_path} is not in ~/.ssh/authorized_keys on the "
+            f"{cluster} cluster, or file permissions are incorrect. Attempting to fix "
+            f"this now."
         )
-        setup_keys_on_login_node(cluster, remote=login_node)
-        return True  # should all be setup.
+        setup_keys_on_login_node(
+            cluster, remote=login_node, public_key_path=public_key_path
+        )
+        if can_access_compute_nodes(login_node, public_key_path=public_key_path):
+            rprint(
+                f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+                f"{cluster} cluster and file permissions are correct. You should now "
+                f"be able to connect to compute nodes with SSH."
+            )
+            return login_node  # all setup.
+        raise RuntimeError(
+            f"Unable to setup SSH access to the compute nodes of the {cluster} "
+            f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
+            f"on the #mila-cluster slack channel."
+        )
     rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
-
-    display_public_key(
-        public_key,
-        cluster,
-    )
+    display_public_key(public_key_path, cluster)
 
     rprint("[bold red]You seem to be unable to connect to the `Mila` cluster.[/]")
     rprint(
@@ -382,13 +407,14 @@ def setup_mila_ssh_access(
         "[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link] and provide as "
         "much information as possible.[/]"
     )
-    # TODO: Include some useful information as part of the error message for users.
-    return False
+    return None
 
 
 def setup_drac_ssh_access(
     ssh_dir: Path, ssh_config: SSHConfig, drac_clusters_in_config: list[str]
 ):
+    assert not ON_WINDOWS
+    drac_login_nodes: list[RemoteV2] = []
     rprint(
         Panel(
             rich.text.Text("DRAC SETUP", justify="center"),
@@ -397,13 +423,12 @@ def setup_drac_ssh_access(
         )
     )
 
-    default_private_key = ssh_dir / "id_rsa"
     # Get the private key from the SSH config, otherwise the first key found in the SSH dir, otherwise the default key.
     drac_private_key = get_ssh_private_key_path(
         ssh_config, drac_clusters_in_config[0]
     ) or next(
         (k.with_suffix("") for k in ssh_dir.glob("id_*.pub")),
-        default_private_key,
+        ssh_dir / "id_rsa_drac",  # default private key path for DRAC.
     )
     drac_public_key = drac_private_key.with_suffix(".pub")
 
@@ -415,76 +440,66 @@ def setup_drac_ssh_access(
         display_public_key(drac_public_key, cluster="DRAC")
         rprint("Submit your public key to the DRAC form at this URL:")
         rprint(f" :arrow_right: [bold blue]{DRAC_FORM_URL}[/] :arrow_left:")
-        return False
+        return []
 
     display_public_key(
         drac_public_key,
         cluster="DRAC",
     )
 
-    if ON_WINDOWS and not Confirm.ask(
-        "You are running `mila init` on a Windows terminal. "
-        "We really encourage you to setup the Windows Subsystem for Linux (WSL) if you haven't already, and run `mila init` from there.\n"
-        "See this link for instructions on setting up WSL: https://docs.alliancecan.ca/wiki/WSL"
-        "\n"
-        "Would you like to continue on the Windows side? ([bold red]You will have to click through lots and lots of 2FA popups on your phone[/]!)"
-        "\n"
-    ):
-        if not Confirm.ask("Are you sure? (this is going to be annoying...)"):
-            return False
-
-    if not Confirm.ask(
-        "[bold]Did you already submit :arrow_up: your DRAC public key above :arrow_up: "
-        "to CCDB using this form?\n"
-        f" :arrow_right: [link={DRAC_FORM_URL}]{DRAC_FORM_URL}[/] :arrow_left:\n"
-        "\n"
-    ):
-        rprint(
-            "Please submit your DRAC public key above using the DRAC form and run again after "
-            "waiting for a few minutes."
-        )
-        return False
+    display_public_key(
+        drac_public_key,
+        cluster="DRAC",
+    )
 
     # Setup SSH access to the DRAC compute nodes.
     for drac_cluster in drac_clusters_in_config:
         rprint(f"Checking connection to the {drac_cluster} login nodes...")
 
-        drac_cluster_private_key = (
+        cluster_private_key_path = (
             get_ssh_private_key_path(ssh_config, drac_cluster) or drac_private_key
         )
-
-        try:
-            remote = (
-                RemoteV2(drac_cluster) if not ON_WINDOWS else RemoteV1(drac_cluster)
+        cluster_public_key_path = cluster_private_key_path.with_suffix(".pub")
+        if not (login_node := try_to_login(drac_cluster)):
+            rprint(f"❌ Unable to `ssh {drac_cluster}`!")
+            rprint(
+                "[bold]Please submit :arrow_up: your DRAC public key above :arrow_up: "
+                "to CCDB using this form: \n"
+                f" :arrow_right: [link={DRAC_FORM_URL}]{DRAC_FORM_URL}[/] :arrow_left:\n"
+                "\n"
             )
-            rprint(f"✅ Able to `ssh {drac_cluster}`")
-        except Exception as exc:
-            rprint(f"❌ Unable to `ssh {drac_cluster}`! {exc}")
-            continue
+            rprint(
+                "Then, wait a few minutes and run this again. If you still have "
+                "issues, reach out to DRAC support at support@tech.alliancecan.ca"
+            )
+            return []
+
+        assert isinstance(login_node, RemoteV2)  # since we're not on windows.
+        drac_login_nodes.append(login_node)
+        rprint(f"✅ Able to `ssh {drac_cluster}`")
 
         rprint(f"Checking connection to the {drac_cluster} compute nodes...")
-        if can_access_compute_nodes(remote):
+        if can_access_compute_nodes(login_node, cluster_public_key_path):
             rprint(
-                f"✅ ~/.ssh/id_rsa.pub is in ~/.ssh/authorized_keys on {drac_cluster}"
+                f"✅ Local {cluster_public_key_path} is in ~/.ssh/authorized_keys on {drac_cluster} "
+                f"and permissions are correct."
             )
         else:
             rprint(
-                f"❌ ~/.ssh/id_rsa.pub is not in ~/.ssh/authorized_keys on {drac_cluster}. "
-                "Attempting to fix this now."
+                f"❌ Local {cluster_public_key_path} is not in ~/.ssh/authorized_keys on {drac_cluster} "
+                f"or permissions are incorrect."
             )
-            setup_keys_on_login_node(cluster=drac_cluster, remote=remote)
-
-        # NOTE: While we're at it, might as well try to run ssh-copy-id {drac_cluster}
-        # so that if the user was able to login by putting in a password, they won't
-        # have to do it anymore.
-        try:
-            run_ssh_copy_id(drac_cluster, ssh_private_key_path=drac_cluster_private_key)
-            rprint(f"✅ Passwordless access to {drac_cluster} is now setup.")
-        except Exception as exc:
-            rprint(
-                f"❌ Unable to run ssh-copy-id {drac_cluster} ({exc}). "
-                "You may need to do this manually."
+            setup_keys_on_login_node(
+                cluster=drac_cluster,
+                remote=login_node,
+                public_key_path=cluster_public_key_path,
             )
+            if not can_access_compute_nodes(login_node, cluster_public_key_path):
+                raise RuntimeError(
+                    f"Unable to setup SSH access to the compute nodes of the {drac_cluster} "
+                    f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
+                    f"on the #mila-cluster slack channel."
+                )
 
 
 def create_ssh_keypair_and_check_exists(
@@ -558,18 +573,51 @@ def try_to_login(cluster: str) -> RemoteV2 | RemoteV1 | None:
         return None
 
 
-def can_access_compute_nodes(login_node: RemoteV2 | RemoteV1) -> bool:
-    return bool(
-        login_node.get_output(
-            shlex.join(
-                [
-                    "bash",
-                    "-c",
-                    "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)",
-                ]
-            )
-        )
+def can_access_compute_nodes(
+    login_node: RemoteV2 | RemoteV1, public_key_path: Path
+) -> bool:
+    public_key = public_key_path.read_text().strip()
+    assert public_key
+    try:
+        authorized_keys = login_node.get_output(
+            "cat ~/.ssh/authorized_keys", hide=True, warn=True, display=False
+        ).splitlines()
+    except subprocess.CalledProcessError:
+        return False
+    if public_key in authorized_keys:
+        return True
+
+    permissions = (
+        login_node.get_output("ls -l ~/.ssh/authorized_keys", hide=True)
+        .strip()
+        .split()[0]
     )
+    if permissions != "-rw-------":
+        logger.info(
+            f"Permissions for ~/.ssh/authorized_keys on the login node are {permissions}, "
+            "should be -rw-------"
+        )
+        return False
+
+    ls_la_lines = (
+        # skip the 'total XX' line, take the '.' and '..' lines (~/.ssh and ~).
+        login_node.get_output("ls -la ~/.ssh", hide=True).splitlines()[1:2]
+    )
+    sshdir_permissions = ls_la_lines[0].split()[0]
+    if sshdir_permissions != "drwx------":
+        logger.info(
+            f"Permissions for ~/.ssh on the login node are {sshdir_permissions}, "
+            "should be drwx------"
+        )
+        return False
+    home_permissions = ls_la_lines[1].split()[0]
+    if home_permissions != "drwx------" and home_permissions.count("w") > 1:
+        logger.info(
+            f"Permissions for ~ on the login node are {home_permissions}, "
+            "should be drwx------, or group/others should not have write permissions!"
+        )
+        return False
+    return True
 
 
 def setup_ssh_config(
@@ -590,13 +638,18 @@ def setup_ssh_config(
       connecting directly to compute nodes.
 
     Returns:
-        - A boolean indicating whether the config was changed.
         - an SSHConfig object used to read / write config options.
     """
+    ssh_config, _, _ = _setup_ssh_config(ssh_config_path)
+    return ssh_config
 
+
+def _setup_ssh_config(
+    ssh_config_path: str | Path = "~/.ssh/config",
+) -> tuple[SSHConfig, str | None, str | None]:
+    """Interactively set up the ~/.ssh/config file with entries for clusters."""
     ssh_config_path = _setup_ssh_config_file(ssh_config_path)
     ssh_config = SSHConfig(ssh_config_path)
-    _original_config = SSHConfig(ssh_config_path)
     initial_config_text = ssh_config.cfg.config()
 
     mila_username: str | None = _get_mila_username(ssh_config)
@@ -623,7 +676,7 @@ def setup_ssh_config(
 
     if drac_username:
         logger.debug(
-            f"Adding entries for the ComputeCanada/DRAC clusters to {ssh_config_path}."
+            f"Adding entries for the DRAC/PAICE clusters to {ssh_config_path}."
         )
         for hostname, entry in DRAC_ENTRIES.copy().items():
             entry.update(User=drac_username)
@@ -633,14 +686,14 @@ def setup_ssh_config(
     new_config_text = ssh_config.cfg.config()
     if initial_config_text == new_config_text:
         rprint("Did not change ssh config")
-        return ssh_config
+        return ssh_config, mila_username, drac_username
     if not _confirm_changes(ssh_config, previous=initial_config_text):
         exit("Refused changes to ssh config.")
         # return False, original_config
 
     ssh_config.save()
     rprint(f"Wrote {ssh_config_path}")
-    return ssh_config
+    return ssh_config, mila_username, drac_username
 
 
 def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
@@ -832,47 +885,40 @@ def run_ssh_copy_id(cluster: str, ssh_private_key_path: Path) -> bool:
 
 
 def setup_keys_on_login_node(
-    cluster: str = "mila", remote: RemoteV1 | RemoteV2 | None = None
+    cluster: str, remote: RemoteV1 | RemoteV2, public_key_path: Path
 ):
     #####################################
     # Step 3: Set up keys on login node #
     #####################################
-
+    public_key = public_key_path.read_text().strip()
     rprint(
         f"Checking connection to compute nodes on the {cluster} cluster. "
         "This is required for `mila code` to work properly."
     )
-    if remote is None:
-        remote = RemoteV1(cluster) if sys.platform == "win32" else RemoteV2(cluster)
     try:
-        pubkeys = remote.get_output("ls -t ~/.ssh/id*.pub").splitlines()
-        rprint("# OK")
-    except UnexpectedExit:
-        rprint("# MISSING")
-        rprint("Generating a new public key on the login node.")
-        private_file = "~/.ssh/id_rsa"
-        remote.run(f'ssh-keygen -q -t rsa -N "" -f {private_file}')
-        pubkeys = [f"{private_file}.pub"]
-        # else:
-        #     exit("Cannot proceed because there is no public key")
+        authorized_keys = remote.get_output(
+            "cat ~/.ssh/authorized_keys", hide=True, warn=True
+        ).splitlines()
+    except subprocess.CalledProcessError as err:
+        logger.error(f"Unable to get the authorized keys: {err}")
+        authorized_keys = []
 
-    common = remote.get_output(
-        shlex.join(
-            [
-                "bash",
-                "-c",
-                "comm -12 <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/*.pub)",
-            ]
+    if public_key in authorized_keys:
+        rprint(
+            f"✅ Your public key is already present in ~/.ssh/authorized_keys on the {cluster} cluster."
         )
-    )
-    if common:
-        # print("# OK")
-        return True
     else:
-        # print("# MISSING")
-        pubkey = pubkeys[0]
-        remote.run(f"cat {pubkey} >> ~/.ssh/authorized_keys", display=True, hide=False)
-        return True
+        remote.run("mkdir -p ~/.ssh", display=True, hide=False)
+        remote.run(
+            f"echo '{public_key}' >> ~/.ssh/authorized_keys", display=True, hide=False
+        )
+        remote.run("chmod 600 ~/.ssh/authorized_keys", display=True, hide=False)
+        remote.run("chmod 700 ~/.ssh", display=True, hide=False)
+        remote.run("chmod go-w ~", display=True, hide=False)
+        rprint(
+            f"✅ Your public key is now present in ~/.ssh/authorized_keys on the "
+            f"{cluster} cluster, and file permissions are correct."
+        )
 
 
 def print_welcome_message():
@@ -927,7 +973,7 @@ def get_windows_home_path_in_wsl() -> Path:
 
 def create_ssh_keypair(
     ssh_private_key_path: Path | None,
-    local: LocalV1 | None = None,
+    local: LocalV2 | None = None,
     passphrase: str | None = "",
 ) -> Path:
     """Creates a public/private key pair at the given path using ssh-keygen.
@@ -936,7 +982,7 @@ def create_ssh_keypair(
     Otherwise, if passphrase is an empty string, no passphrase will be used (default).
     If a string is passed, it is passed to ssh-keygen and used as the passphrase.
     """
-    local = local or LocalV1()
+    local = local or LocalV2()
     command = [
         "ssh-keygen",
         "-t",
@@ -1003,7 +1049,7 @@ def setup_vscode_settings():
     vscode_settings_json_path = get_expected_vscode_settings_json_path()
     try:
         _update_vscode_settings_json(
-            vscode_settings_json_path, new_values={"remote.SSH.connectTimeout": 60}
+            vscode_settings_json_path, new_values=VSCODE_SETTINGS
         )
     except Exception as err:
         logger.warning(
