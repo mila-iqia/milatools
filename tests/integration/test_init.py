@@ -15,7 +15,11 @@ import pytest
 import pytest_asyncio
 from paramiko.config import SSHConfig as SshConfigReader
 
-from milatools.cli.init_command import get_ssh_public_key_path, setup_mila_ssh_access
+from milatools.cli.init_command import (
+    get_ssh_public_key_path,
+    setup_mila_ssh_access,
+    try_to_login,
+)
 from milatools.cli.utils import SSHConfig
 from milatools.utils.local_v2 import run_async
 from milatools.utils.remote_v1 import RemoteV1
@@ -106,7 +110,7 @@ class TestSetupMilaSSHAccess:
         # Make sure that there aren't any active connections to the Mila cluster before
         # the test runs.
 
-        if (await _check_shared_connection_returncode("mila")) != 0:
+        if (initial_status := await _check_shared_connection_returncode("mila")) != 0:
             pytest.skip(reason="This test needs an existing connection.")
 
         async with temporarily_disable_shared_ssh_connection(
@@ -116,7 +120,7 @@ class TestSetupMilaSSHAccess:
             assert (await _check_shared_connection_returncode("mila")) == 255
 
         # Check that we successfully re-enabled the shared connection.
-        assert (await _check_shared_connection_returncode("mila")) == 0
+        assert (await _check_shared_connection_returncode("mila")) == initial_status
 
     @pytest_asyncio.fixture
     async def no_existing_mila_connection(
@@ -129,7 +133,11 @@ class TestSetupMilaSSHAccess:
 
     @pytest.mark.asyncio
     async def test_login_node_access_not_setup(
-        self, backup_local_ssh_dir: Path, linux_ssh_config: SSHConfig
+        self,
+        backup_local_ssh_dir: Path,
+        backup_local_ssh_cache_dir: Path,
+        linux_ssh_config: SSHConfig,
+        no_existing_mila_connection: None,
     ):
         """TODO: Clarify the behaviour of `mila init` in this case (by clarifying the test first)
 
@@ -137,7 +145,24 @@ class TestSetupMilaSSHAccess:
         `mila init` asks relevant questions and then simply prints an informative
         message about contacting IT support, or something like that.
         """
-        raise NotImplementedError()
+        local_ssh_dir = Path.home() / ".ssh"
+
+        # Make sure that everything in the actual ~/.ssh directory is backed up in this
+        # other directory.
+        for file in local_ssh_dir.rglob("*"):
+            backup = backup_local_ssh_dir / file.relative_to(local_ssh_dir)
+            assert backup.exists()
+            assert backup.read_text() == file.read_text()
+
+        assert try_to_login("mila")
+        shutil.rmtree(local_ssh_dir)
+
+        assert not try_to_login("mila")
+        # config = setup_ssh_config(ssh_config_path=local_ssh_dir / "config")
+        # assert config.cfg.config() == linux_ssh_config.cfg.config()
+
+        # TODO: What should we expect to happen here?
+        setup_mila_ssh_access(ssh_dir=local_ssh_dir, ssh_config=linux_ssh_config)
 
     @pytest.mark.asyncio
     async def test_mila_access_already_setup(
@@ -390,7 +415,7 @@ async def temporarily_disable_shared_ssh_connection(
         await asyncio.sleep(1)
         assert not control_path.exists()
 
-    backup_of_socket_file.symlink_to(control_path)
+    backup_of_socket_file.move(control_path)
 
 
 @contextlib.contextmanager

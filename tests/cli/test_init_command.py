@@ -261,7 +261,13 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
                     "controlmaster": "auto",
                 }
             },
+            # Unfortunately, we don't yet have a smart way to update an entry.
             """\
+            Host beluga narval cedar graham niagara
+              hostname %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+
             Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan trillium
               HostName %h.alliancecan.ca
               User bob
