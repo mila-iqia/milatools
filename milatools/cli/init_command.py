@@ -261,10 +261,9 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
     if drac_success:
         rprint("[bold green]DRAC cluster access is fully setup![/]")
 
-    elif drac_success is None:
+    elif not drac_success:
         rprint("Skipping setup for DRAC clusters (no DRAC entries in SSH config).")
     else:
-        assert drac_success is False
         rprint(
             "[bold orange4]DRAC cluster access is not fully configured! See the instructions above.[/]"
         )
@@ -594,11 +593,13 @@ def can_access_compute_nodes(
     if public_key in authorized_keys:
         return True
 
-    permissions = (
-        login_node.get_output("ls -l ~/.ssh/authorized_keys", hide=True)
-        .strip()
-        .split()[0]
-    )
+    try:
+        authorized_keys_permissions = login_node.get_output(
+            "ls -l ~/.ssh/authorized_keys", hide=True
+        )
+    except subprocess.CalledProcessError:
+        return False
+    permissions = authorized_keys_permissions.strip().split()[0]
     if permissions != "-rw-------":
         logger.info(
             f"Permissions for ~/.ssh/authorized_keys on the login node are {permissions}, "
@@ -610,6 +611,7 @@ def can_access_compute_nodes(
         # skip the 'total XX' line, take the '.' and '..' lines (~/.ssh and ~).
         login_node.get_output("ls -la ~/.ssh", hide=True).splitlines()[1:2]
     )
+    assert False, ls_la_lines
     sshdir_permissions = ls_la_lines[0].split()[0]
     if sshdir_permissions != "drwx------":
         logger.info(
