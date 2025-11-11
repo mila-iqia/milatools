@@ -211,6 +211,10 @@ class TestSetupMilaSSHAccess:
         about contacting IT support, or something like that."""
 
         assert not try_to_login("mila")
+
+        # Setup an SSH directory with the SSH config from mila init.
+        # We do this manually here instead of calling `setup_ssh_config`, because that
+        # part of `mila init` is already called in the `ssh_config_file` fixture.
         ssh_dir = Path.home() / ".ssh"
         ssh_dir.mkdir(mode=0o700, exist_ok=False)
         (ssh_dir / "config").write_text(linux_ssh_config.cfg.config())
@@ -222,13 +226,66 @@ class TestSetupMilaSSHAccess:
 
         mock_ask = unittest.mock.Mock(wraps=_ask)
         monkeypatch.setattr(rich.prompt.Confirm, "ask", mock_ask)
-        # NOTE: unclear atm if this can be any path other than the actual ~/.ssh.
-        setup_mila_ssh_access(ssh_dir=Path.home() / ".ssh", ssh_config=linux_ssh_config)
+
+        setup_mila_ssh_access(ssh_dir=ssh_dir, ssh_config=linux_ssh_config)
+
+        assert list(ssh_dir.glob("id_*_mila.pub")), (
+            "SSH keypair should have been created."
+        )
 
         mock_ask.assert_called()
         out, err = capsys.readouterr()
         assert "Please follow the onboarding steps provided by IT-support" in out
         assert MILA_ONBOARDING_URL in out.replace("\n", "")
+        # file_regression.check(out, extension=".txt", encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_first_time_on_new_machine(
+        self,
+        nothing_setup: None,
+        linux_ssh_config: SSHConfig,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Test that when this is the first time we setup access on a new machine, this
+        instructs us to copy the SSH keys from another machine or reach out to IT-
+        support, without creating new SSH keys."""
+
+        assert not try_to_login("mila")
+
+        # Setup an SSH directory with the SSH config from mila init.
+        # We do this manually here instead of calling `setup_ssh_config`
+        ssh_dir = Path.home() / ".ssh"
+        ssh_dir.mkdir(mode=0o700, exist_ok=False)
+        (ssh_dir / "config").write_text(linux_ssh_config.cfg.config())
+
+        known_questions = {
+            "Is this your first time connecting to the Mila cluster?": False,
+            "Do you already have access to the Mila cluster from another machine?": True,
+        }
+
+        def _ask(question, *args, **kwargs):
+            if question in known_questions:
+                return known_questions[question]
+            raise RuntimeError(f"Unexpected question asked: {question!r}")
+
+        mock_ask = unittest.mock.Mock(wraps=_ask)
+        monkeypatch.setattr(rich.prompt.Confirm, "ask", mock_ask)
+
+        setup_mila_ssh_access(ssh_dir=ssh_dir, ssh_config=linux_ssh_config)
+        mock_ask.assert_called()
+
+        # Check that this above did *not* create new keys in ~/.ssh, and instead
+        # recommended reusing the keypair from the other machine, or reaching out to IT support.
+        assert not list(ssh_dir.glob("id_*.pub"))
+
+        out, err = capsys.readouterr()
+        assert (
+            "You can only use up to two SSH keys in total to connect to the Mila cluster"
+            in out
+            # and "Consider copying your Mila public and private SSH keys from the other machine or reaching out to IT-support@mila.quebec."
+            # in out
+        )
         # file_regression.check(out, extension=".txt", encoding="utf-8")
 
     @pytest.mark.asyncio
@@ -363,6 +420,8 @@ class TestSetupMilaSSHAccess:
 
         PYTEST_DONT_REWRITE
         """
+        login_node = login_node_v2
+        cluster = login_node_v2.hostname
         # TODO: look into ways to disable assert rewriting for this test
         # https://docs.pytest.org/en/7.1.x/how-to/assert.html#disabling-assert-rewriting
         ssh_dir = Path.home() / ".ssh"
@@ -373,23 +432,11 @@ class TestSetupMilaSSHAccess:
             )
         ).splitlines()
 
-        local_public_key: Path | str | None = None
-        _private_key_path = _real_ssh_config.lookup("mila").get("identityfile")
-        if isinstance(_private_key_path, list):
-            # weirdly enough, getting the value for identityfile returns a list if it is
-            # in the config entry.
-            local_public_key = Path(_private_key_path[0]).with_suffix(".pub")
-        elif not _private_key_path:
-            local_public_key = next(iter((Path.home() / ".ssh").glob("id_*.pub")), None)
-        del _private_key_path  # just to be a bit cautious.
-
-        if local_public_key is None or not local_public_key.exists():
-            raise RuntimeError(
-                f"Couldn't find a SSH public key in {ssh_dir} for the Mila cluster!"
-            )
-
-        local_public_key = Path(local_public_key).expanduser()
-        local_public_key = local_public_key.read_text().strip()
+        local_public_key_path = (
+            get_ssh_public_key_path(cluster, linux_ssh_config)
+            or Path.home() / ".ssh" / f"id_rsa_{cluster}.pub"
+        )
+        local_public_key = local_public_key_path.read_text().strip()
 
         # Remove the local public key from the authorized_keys file if it's there.
         # (it might be there multiple times if the authorized keys file was edited manually).
@@ -410,6 +457,9 @@ class TestSetupMilaSSHAccess:
                     "cat ~/.ssh/authorized_keys", hide=True
                 )
             ).splitlines()
+        )
+        assert not can_access_compute_nodes(
+            login_node,
         )
 
         setup_mila_ssh_access(ssh_dir=ssh_dir, ssh_config=linux_ssh_config)

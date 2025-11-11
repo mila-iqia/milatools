@@ -267,14 +267,6 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
         )
 
 
-def setup_login_node_access(cluster: str):
-    raise NotImplementedError("TODO")
-
-
-def setup_compute_node_access(cluster: str):
-    raise NotImplementedError("TODO")
-
-
 def setup_mila_ssh_access(
     ssh_dir: Path,
     ssh_config: SSHConfig,
@@ -287,21 +279,17 @@ def setup_mila_ssh_access(
         )
     )
     cluster = "mila"
-    # docs_url = MILA_SSHKEYS_DOCS_URL
 
-    private_key_path = get_ssh_private_key_path(ssh_config, cluster)
-    if private_key_path is None:
-        private_key_path = next(
-            (k.with_suffix("") for k in ssh_dir.glob("id_*.pub")), None
-        )
-    if private_key_path is None:
-        private_key_path = ssh_dir / "id_rsa_mila"
+    public_key_path = (
+        get_ssh_public_key_path("mila", ssh_config)
+        or Path.home() / ".ssh" / "id_rsa_mila.pub"
+    )
+    private_key_path = public_key_path.with_suffix("")
 
-    public_key_path = private_key_path.with_suffix(".pub")
+    rprint(f"Checking connection to the {cluster} login nodes... ", flush=True)
+    login_node = try_to_login(cluster)
 
-    login_node: RemoteV2 | RemoteV1 | None = None
-
-    if not private_key_path.exists():
+    if not login_node:
         if Confirm.ask("Is this your first time connecting to the Mila cluster?"):
             create_ssh_keypair_and_check_exists(
                 cluster, private_key_path, public_key_path
@@ -331,83 +319,72 @@ def setup_mila_ssh_access(
                 f"other machine to this machine at paths {public_key_path} and {private_key_path} respectively."
             )
             rprint(
-                "Please copy the public and private keys from the other machine to this machine, "
-                f"overwriting the contents of {public_key_path} and {private_key_path} and run `mila init` again."
+                "After this is done, run `mila init` again, and reach out to IT-support@mila.quebec if you have any issues."
             )
             return None
 
+        rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
+
         create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
-        rprint(
-            "Here is your SSH public key on this machine. Send it to IT-support@mila.quebec.\n"
-        )
         display_public_key(
             public_key_path,
             cluster="mila",
-            subtitle="⬆️ Include this in your email to IT-support@mila.quebec ⬆️",
+            subtitle="⬆️ This is your Mila SSH public key. ⬆️",
+        )
+        rprint("[bold red]You seem to be unable to connect to the Mila cluster.[/]")
+        rprint(
+            f"- If this is your first time connecting to the Mila cluster, please make "
+            f"sure to successfully complete the onboarding, entering the public key at the "
+            f"end of the form at the final step:\n"
+            f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
         )
         rprint(
-            "After contacting it-support@mila.quebec, run `mila init` again to "
-            "make sure that you are able to use `mila code` to connect to compute nodes."
+            f"- If this isn't your first time connecting to the {cluster} cluster, send an email to "
+            f"[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link].\n"
+            "   Make sure to include :arrow_up: [bold]your public key above[/bold]:arrow_up: in the email."
+        )
+        rprint(
+            "- If you still have issues connecting, take a look at previous messages in "
+            "the [bold green]#milatools[/] and [bold green]#mila-cluster[/] channels on "
+            "Slack for common questions and known solutions."
+        )
+        rprint(
+            "- [bold green]If all else fails, contact IT-support at "
+            "[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link] and provide as "
+            "much information as possible.[/]"
         )
         return None
 
     # No point in trying to login if the config and key didn't exist to begin with.
-    rprint(f"Checking connection to the {cluster} login nodes... ", flush=True)
-    if login_node := try_to_login(cluster):
-        rprint(f"✅ Able to `ssh {cluster}`")
-        rprint(f"Checking connection to the {cluster} compute nodes... ")
-        if can_access_compute_nodes(login_node, public_key_path=public_key_path):
-            rprint(
-                f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
-                f"{cluster} cluster."
-            )
-            return login_node  # all setup.
+    rprint(f"✅ Able to `ssh {cluster}`")
+    rprint(f"Checking connection to the {cluster} compute nodes... ")
+    if can_access_compute_nodes(login_node, public_key_path=public_key_path):
         rprint(
-            f"❌ Local {public_key_path} is not in ~/.ssh/authorized_keys on the "
-            f"{cluster} cluster, or file permissions are incorrect. Attempting to fix "
-            f"this now."
+            f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+            f"{cluster} cluster, and the permissions are correct. "
+            f"You should have SSH access to the compute nodes."
         )
-        setup_keys_on_login_node(
-            cluster, remote=login_node, public_key_path=public_key_path
-        )
-        if can_access_compute_nodes(login_node, public_key_path=public_key_path):
-            rprint(
-                f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
-                f"{cluster} cluster and file permissions are correct. You should now "
-                f"be able to connect to compute nodes with SSH."
-            )
-            return login_node  # all setup.
+        return login_node  # all setup.
+    rprint(
+        f"❌ Local {public_key_path} is not in ~/.ssh/authorized_keys on the "
+        f"{cluster} cluster, or file permissions are incorrect. Attempting to fix "
+        f"this now."
+    )
+    setup_access_to_compute_nodes(
+        cluster, remote=login_node, public_key_path=public_key_path
+    )
+    if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
         raise RuntimeError(
             f"Unable to setup SSH access to the compute nodes of the {cluster} "
             f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
             f"on the #mila-cluster slack channel."
         )
-    rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
-    display_public_key(public_key_path, cluster)
-
-    rprint("[bold red]You seem to be unable to connect to the `Mila` cluster.[/]")
     rprint(
-        f"- If this is your first time connecting to the Mila cluster, please make "
-        f"sure to successfully complete the onboarding, entering the public key at the "
-        f"end of the form at the final step:\n"
-        f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
+        f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+        f"{cluster} cluster and file permissions are correct. You should now "
+        f"be able to connect to compute nodes with SSH."
     )
-    rprint(
-        f"- If this isn't your first time connecting to the {cluster} cluster, send an email to "
-        f"[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link].\n"
-        "   Make sure to include :arrow_up: [bold]your public key above[/bold]:arrow_up: in the email."
-    )
-    rprint(
-        "- If you still have issues connecting, take a look at previous messages in "
-        "the [bold green]#milatools[/] and [bold green]#mila-cluster[/] channels on "
-        "Slack for common questions and known solutions."
-    )
-    rprint(
-        "- [bold green]If all else fails, contact IT-support at "
-        "[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link] and provide as "
-        "much information as possible.[/]"
-    )
-    return None
+    return login_node  # all setup.
 
 
 def setup_drac_ssh_access(
@@ -459,10 +436,10 @@ def setup_drac_ssh_access(
     for drac_cluster in drac_clusters_in_config:
         rprint(f"Checking connection to the {drac_cluster} login nodes...")
 
-        cluster_private_key_path = (
+        private_key_path = (
             get_ssh_private_key_path(ssh_config, drac_cluster) or drac_private_key
         )
-        cluster_public_key_path = cluster_private_key_path.with_suffix(".pub")
+        public_key_path = private_key_path.with_suffix(".pub")
         if not (login_node := try_to_login(drac_cluster)):
             rprint(f"❌ Unable to `ssh {drac_cluster}`!")
             rprint(
@@ -479,30 +456,38 @@ def setup_drac_ssh_access(
 
         assert isinstance(login_node, RemoteV2)  # since we're not on windows.
         drac_login_nodes.append(login_node)
-        rprint(f"✅ Able to `ssh {drac_cluster}`")
+        cluster = drac_cluster
 
-        rprint(f"Checking connection to the {drac_cluster} compute nodes...")
-        if can_access_compute_nodes(login_node, cluster_public_key_path):
+        rprint(f"✅ Able to `ssh {cluster}`")
+        rprint(f"Checking connection to the {cluster} compute nodes... ")
+        if can_access_compute_nodes(login_node, public_key_path=public_key_path):
             rprint(
-                f"✅ Local {cluster_public_key_path} is in ~/.ssh/authorized_keys on {drac_cluster} "
-                f"and permissions are correct."
+                f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+                f"{cluster} cluster, and the permissions are correct."
             )
-        else:
-            rprint(
-                f"❌ Local {cluster_public_key_path} is not in ~/.ssh/authorized_keys on {drac_cluster} "
-                f"or permissions are incorrect."
-            )
-            setup_keys_on_login_node(
-                cluster=drac_cluster,
-                remote=login_node,
-                public_key_path=cluster_public_key_path,
-            )
-            if not can_access_compute_nodes(login_node, cluster_public_key_path):
-                raise RuntimeError(
-                    f"Unable to setup SSH access to the compute nodes of the {drac_cluster} "
+            continue  # all setup, go to the next cluster in the list.
+        rprint(
+            f"❌ Local {public_key_path} is not in ~/.ssh/authorized_keys on the "
+            f"{cluster} cluster, or file permissions are incorrect. Attempting to fix "
+            f"this now."
+        )
+        setup_access_to_compute_nodes(
+            cluster, remote=login_node, public_key_path=public_key_path
+        )
+        if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
+            warnings.warn(
+                RuntimeWarning(
+                    f"Unable to setup SSH access to the compute nodes of the {cluster} "
                     f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
                     f"on the #mila-cluster slack channel."
                 )
+            )
+
+        rprint(
+            f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+            f"{cluster} cluster and file permissions are correct. You should now "
+            f"be able to connect to compute nodes with SSH."
+        )
 
 
 def create_ssh_keypair_and_check_exists(
@@ -887,7 +872,7 @@ def run_ssh_copy_id(cluster: str, ssh_private_key_path: Path) -> bool:
     return True
 
 
-def setup_keys_on_login_node(
+def setup_access_to_compute_nodes(
     cluster: str, remote: RemoteV1 | RemoteV2, public_key_path: Path
 ):
     #####################################
