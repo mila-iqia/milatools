@@ -6,6 +6,8 @@ import errno
 import functools
 import os
 import shutil
+import unittest
+import unittest.mock
 from logging import getLogger as get_logger
 from pathlib import Path, PurePosixPath
 from typing import TypeVar
@@ -13,9 +15,14 @@ from typing import TypeVar
 import invoke
 import pytest
 import pytest_asyncio
+import rich
+import rich.progress
+import rich.prompt
 from paramiko.config import SSHConfig as SshConfigReader
 
 from milatools.cli.init_command import (
+    MILA_ONBOARDING_URL,
+    can_access_compute_nodes,
     get_ssh_public_key_path,
     setup_mila_ssh_access,
     try_to_login,
@@ -54,7 +61,7 @@ _real_drac_username = None
 if (_config_file := Path.home() / ".ssh" / "config").exists():
     _real_ssh_config = SshConfigReader.from_path(_config_file)
     _real_mila_username = _real_ssh_config.lookup("mila").get("user")
-    _real_drac_username = _real_ssh_config.lookup("narval").get("user")
+    _real_drac_username = _real_ssh_config.lookup("rorqual").get("user")
 
 
 @pytest.fixture
@@ -86,17 +93,12 @@ class TestSetupMilaSSHAccess:
     - Checks that everything is setup for compute node node access:
         - Checks that the public key is in ~/.ssh/authorized_keys on the login node.
             If not, copies it explicitly (no ssh-copy-id).
-        - Checks that there is an ssh keypair on the login node (with no passphrase)
-            and that it is also in ~/.ssh/authorized_keys on the cluster. If not, does it.
         - Checks that the permissions are set correctly on the ~/.ssh directory, keys,
             and ~/.ssh/authorized_keys. If not, corrects them.
 
 
     These tests use the real ~/.ssh directory (with a backup in ~/.ssh_backup).
     """
-
-    def real_ssh_config_reader(self, backup_local_ssh_dir: Path) -> SshConfigReader:
-        return SshConfigReader.from_path(backup_local_ssh_dir / "config")
 
     @pytest.mark.asyncio
     async def test_temporarily_disable_shared_connection(
@@ -131,38 +133,103 @@ class TestSetupMilaSSHAccess:
         ):
             yield
 
-    @pytest.mark.asyncio
-    async def test_login_node_access_not_setup(
+    @pytest_asyncio.fixture
+    async def nothing_setup(
         self,
         backup_local_ssh_dir: Path,
-        backup_local_ssh_cache_dir: Path,
+        backup_remote_ssh_dir: Path,
         linux_ssh_config: SSHConfig,
-        no_existing_mila_connection: None,
+        monkeypatch: pytest.MonkeyPatch,
+        login_node_v2: RemoteV2,
     ):
-        """TODO: Clarify the behaviour of `mila init` in this case (by clarifying the test first)
-
-        Test that when SSH access to the Mila login nodes is not setup, running
-        `mila init` asks relevant questions and then simply prints an informative
-        message about contacting IT support, or something like that.
-        """
+        login_node = login_node_v2
+        cluster = login_node.hostname
         local_ssh_dir = Path.home() / ".ssh"
-
+        local_ssh_cache_dir = Path.home() / ".cache" / "ssh"
         # Make sure that everything in the actual ~/.ssh directory is backed up in this
         # other directory.
+        assert local_ssh_dir.exists(), "need a real SSH directory for this test."
+        assert local_ssh_cache_dir.exists(), "need a real SSH directory for this test."
+
+        # Need to have everything initially setup (login node + compute node access) so
+        # that we can remove everything to simulate a first-time setup.
+        assert try_to_login(cluster)
+        mila_public_key = (
+            get_ssh_public_key_path("mila", linux_ssh_config)
+            or Path.home() / ".ssh" / "id_rsa_{cluster}}.pub"
+        )
+        assert can_access_compute_nodes(login_node, mila_public_key), (
+            f"Need to be able to SSH to {cluster} compute nodes for this test."
+        )
+
         for file in local_ssh_dir.rglob("*"):
             backup = backup_local_ssh_dir / file.relative_to(local_ssh_dir)
             assert backup.exists()
             assert backup.read_text() == file.read_text()
 
-        assert try_to_login("mila")
+        # Double-check that all the files in ~/.ssh in the remote have been backed up.
+        ssh_files = (
+            await login_node.get_output_async("ls ~/.ssh", display=True, hide=False)
+        ).split()
+        ssh_backup_files = (
+            await login_node.get_output_async(
+                f"ls {backup_remote_ssh_dir}", display=True, hide=False
+            )
+        ).split()
+        assert ssh_files == ssh_backup_files
+        for ssh_file in ssh_files:
+            filename = ssh_file.split()[-1]
+            backup_file = backup_remote_ssh_dir / filename
+            assert (await login_node.get_output_async(f"cat ~/.ssh/{filename}")) == (
+                await login_node.get_output_async(f"cat {backup_file}")
+            )
+
+        # Remove all the contents of the (backed up) ~/.ssh directory, to simulate nothing being initially setup.
+        await login_node.run_async("rm -r --verbose ~/.ssh", display=True, hide=False)
         shutil.rmtree(local_ssh_dir)
+        shutil.rmtree(local_ssh_cache_dir)  # do we need to do this?
+
+        # Try to make the login node object resilient to us removing the local ssh dir.
+        # TODO: This is tough to figure out. The local SSH directory is destroyed, which
+        # makes it difficult for the fixtures to restore the remote Ssh dir.
+
+        yield
+
+        # The backups of the local ~/.ssh, ~/.cache/ssh and remote ~/.ssh directories
+        # will be restored here.
+
+    @pytest.mark.asyncio
+    async def test_first_time_setup(
+        self,
+        nothing_setup: None,
+        linux_ssh_config: SSHConfig,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Test that when SSH access to the Mila login nodes is not setup, running `mila
+        init` asks relevant questions and then simply prints an informative message
+        about contacting IT support, or something like that."""
 
         assert not try_to_login("mila")
-        # config = setup_ssh_config(ssh_config_path=local_ssh_dir / "config")
-        # assert config.cfg.config() == linux_ssh_config.cfg.config()
+        ssh_dir = Path.home() / ".ssh"
+        ssh_dir.mkdir(mode=0o700, exist_ok=False)
+        (ssh_dir / "config").write_text(linux_ssh_config.cfg.config())
 
-        # TODO: What should we expect to happen here?
-        setup_mila_ssh_access(ssh_dir=local_ssh_dir, ssh_config=linux_ssh_config)
+        def _ask(question, *args, **kwargs):
+            if question == "Is this your first time connecting to the Mila cluster?":
+                return True
+            raise RuntimeError(f"Unexpected question asked: {question!r}")
+
+        mock_ask = unittest.mock.Mock(wraps=_ask)
+        monkeypatch.setattr(rich.prompt.Confirm, "ask", mock_ask)
+        # NOTE: unclear atm if this can be any path other than the actual ~/.ssh.
+        setup_mila_ssh_access(ssh_dir=Path.home() / ".ssh", ssh_config=linux_ssh_config)
+
+        mock_ask.assert_called()
+        out, err = capsys.readouterr()
+        assert "Please follow the onboarding steps provided by IT-support" in out
+        assert MILA_ONBOARDING_URL in out.replace("\n", "")
+        # file_regression.check(out, extension=".txt", encoding="utf-8")
 
     @pytest.mark.asyncio
     async def test_mila_access_already_setup(
@@ -173,7 +240,7 @@ class TestSetupMilaSSHAccess:
         no_existing_mila_connection: None,
     ):
         """Test that if everything is already setup correctly, nothing is changed and
-        `setup_mila_ssh_access` just returns True.
+        `setup_mila_ssh_access` just returns the login node.
 
         Using the existing SSH directory contents (same keypair) and the SSH config
         that would be generated from `mila init`, we should have access to the Mila
@@ -181,6 +248,33 @@ class TestSetupMilaSSHAccess:
         just return True.
         """
         ssh_dir = Path.home() / ".ssh"
+        if not ssh_dir.exists():
+            pytest.skip(
+                reason="This test requires an existing ~/.ssh directory with everything setup to connect to the Mila cluster."
+            )
+
+        # Make sure we use just the default SSH config from mila init.
+        ssh_config_file = ssh_dir / "config"
+        ssh_config_file.unlink()
+        ssh_config_file.write_text(linux_ssh_config.cfg.config())
+
+        mila_public_key = (
+            get_ssh_public_key_path("mila", linux_ssh_config)
+            or Path.home() / ".ssh" / "id_rsa_mila.pub"
+        )
+
+        if not (
+            (login_node := try_to_login("mila"))
+            and can_access_compute_nodes(
+                login_node,
+                public_key_path=mila_public_key,
+            )
+        ):
+            pytest.skip(
+                reason="This test requires existing access to the Mila login and compute nodes."
+            )
+
+        assert try_to_login("mila")
         # Make sure that there aren't any active connections to the Mila cluster before
         # the test runs.
         assert (await _check_shared_connection_returncode("mila")) != 0
@@ -190,9 +284,8 @@ class TestSetupMilaSSHAccess:
         ssh_config_path = ssh_dir / "config"
         ssh_config_path.write_text(linux_ssh_config.cfg.config())
 
-        assert (
-            setup_mila_ssh_access(ssh_config_path.parent, ssh_config=linux_ssh_config)
-            is True
+        assert setup_mila_ssh_access(
+            ssh_config_path.parent, ssh_config=linux_ssh_config
         )
         assert list(ssh_dir.iterdir()) == files_before
 
@@ -234,7 +327,7 @@ class TestSetupMilaSSHAccess:
         assert not _remote_dir_exists(login_node, remote_ssh_dir)
 
         mila_ssh_pubkey = (
-            _error_if_none(get_ssh_public_key_path(linux_ssh_config, "mila"))
+            _error_if_none(get_ssh_public_key_path("mila", linux_ssh_config))
             .read_text()
             .strip()
         )
@@ -243,14 +336,8 @@ class TestSetupMilaSSHAccess:
 
         assert _remote_dir_exists(login_node, remote_ssh_dir)
         assert login_node.get_output("stat -c %a ~/.ssh") == "700"
-        assert login_node.get_output("ls -l ~/.ssh").splitlines() == [
-            "authorized_keys",
-            "id_rsa",
-            "id_rsa.pub",
-        ]
+        assert login_node.get_output("ls ~/.ssh").split() == ["authorized_keys"]
         assert login_node.get_output("stat -c %a ~/.ssh/authorized_keys") == "600"
-        assert login_node.get_output("stat -c %a ~/.ssh/id_rsa") == "600"
-        assert login_node.get_output("stat -c %a ~/.ssh/id_rsa.pub") == "644"
 
         __remote_authorized_keys = login_node.get_output(
             "cat ~/.ssh/authorized_keys", hide=True
@@ -595,7 +682,11 @@ def remote_ssh_dir(
 
 @pytest.fixture
 def backup_remote_ssh_dir(
-    login_node: RemoteV2 | RemoteV1, cluster: str, remote_ssh_dir: PurePosixPath
+    login_node: RemoteV2 | RemoteV1,
+    cluster: str,
+    remote_ssh_dir: PurePosixPath,
+    backup_local_ssh_dir: Path,
+    backup_local_ssh_cache_dir: Path,
 ):
     """Creates a backup of the ~/.ssh directory on the remote cluster."""
     if USE_MY_REAL_SSH_DIR:
@@ -612,3 +703,6 @@ def backup_remote_ssh_dir(
     backup_remote_ssh_dir = remote_ssh_dir.parent / BACKUP_REMOTE_SSH_DIR
     with _backup_remote_dir(login_node, remote_ssh_dir, backup_remote_ssh_dir):
         yield backup_remote_ssh_dir
+
+        if (known_hosts := (backup_local_ssh_dir / "known_hosts")).exists():
+            known_hosts.copy_into(Path.home() / ".ssh")
