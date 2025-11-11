@@ -14,8 +14,6 @@ from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Any, Literal
 
-import paramiko
-import paramiko.config
 import rich.box
 import rich.prompt
 import rich.text
@@ -590,40 +588,32 @@ def can_access_compute_nodes(
         ).splitlines()
     except subprocess.CalledProcessError:
         return False
-    if public_key in authorized_keys:
-        return True
 
-    try:
-        authorized_keys_permissions = login_node.get_output(
-            "ls -l ~/.ssh/authorized_keys", hide=True
-        )
-    except subprocess.CalledProcessError:
+    if public_key not in authorized_keys:
         return False
-    permissions = authorized_keys_permissions.strip().split()[0]
-    if permissions != "-rw-------":
+
+    if login_node.get_output("stat -c %a ~/.ssh/authorized_keys") != "600":
         logger.info(
-            f"Permissions for ~/.ssh/authorized_keys on the login node are {permissions}, "
-            "should be -rw-------"
+            "Permissions for ~/.ssh/authorized_keys on the login node are not correct!"
         )
         return False
-
-    ls_la_lines = (
-        # skip the 'total XX' line, take the '.' and '..' lines (~/.ssh and ~).
-        login_node.get_output("ls -la ~/.ssh", hide=True).splitlines()[1:2]
-    )
-    assert False, ls_la_lines
-    sshdir_permissions = ls_la_lines[0].split()[0]
-    if sshdir_permissions != "drwx------":
+    if sshdir_permissions := login_node.get_output("stat -c %a ~/.ssh") != "700":
         logger.info(
             f"Permissions for ~/.ssh on the login node are {sshdir_permissions}, "
-            "should be drwx------"
+            "should be 700!"
         )
         return False
-    home_permissions = ls_la_lines[1].split()[0]
-    if home_permissions != "drwx------" and home_permissions.count("w") > 1:
+
+    home_permissions = login_node.get_output("stat -c %a ~")
+    # Need to be 700 ideally, but actually just need for others not to have the 'w'
+    # permission.
+    _has_write_perm = ["2", "3", "6", "7"]  # 010, 011, 110, 111
+
+    if home_permissions[1] in _has_write_perm or home_permissions[2] in _has_write_perm:
         logger.info(
-            f"Permissions for ~ on the login node are {home_permissions}, "
-            "should be drwx------, or group/others should not have write permissions!"
+            f"Permissions on the $HOME directory on the {login_node.hostname} cluster "
+            f"is {home_permissions}, but it should be drwx------ (700), or "
+            "group/others should not have write permissions!"
         )
         return False
     return True
@@ -786,10 +776,19 @@ def _table(
     return table
 
 
-def get_ssh_public_key_path(ssh_config: SSHConfig, hostname: str) -> Path | None:
-    private_key_path = get_ssh_private_key_path(ssh_config, hostname)
-    if private_key_path:
-        return private_key_path.with_suffix(".pub")
+def get_ssh_public_key_path(
+    hostname: str, ssh_config: SSHConfig | None = None
+) -> Path | None:
+    if ssh_config is None:
+        ssh_config = SSHConfig(SSH_CONFIG_FILE)
+    identity_file = ssh_config.lookup(hostname).get("identityfile", None)
+    # Seems to be a list for some reason?
+    if isinstance(identity_file, list):
+        assert identity_file
+        identity_file = identity_file[0]
+    if identity_file:
+        return Path(identity_file).expanduser().with_suffix(".pub")
+    # No IdentityFile specified in config, try to guess.
     public_keys = list((Path.home() / ".ssh").glob("id_*.pub"))
     if len(public_keys) == 1:
         return public_keys[0]
@@ -816,14 +815,9 @@ def get_ssh_public_key_path(ssh_config: SSHConfig, hostname: str) -> Path | None
 
 
 def get_ssh_private_key_path(ssh_config: SSHConfig, hostname: str) -> Path | None:
-    config = paramiko.SSHConfig.from_path(ssh_config.path)
-    identity_file = config.lookup(hostname).get("identityfile", None)
-    # Seems to be a list for some reason?
-    if isinstance(identity_file, list):
-        assert identity_file
-        identity_file = identity_file[0]
-    if identity_file:
-        return Path(identity_file).expanduser()
+    pubkey = get_ssh_public_key_path(hostname, ssh_config=ssh_config)
+    if pubkey:
+        return pubkey.with_suffix("")
     return None
 
 
