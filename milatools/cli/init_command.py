@@ -97,7 +97,6 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         "ProxyJump": "mila",
         # "User": mila_username,
     },
-    # todo: add this entry (and test that `mila code` also works with it.)
     "cn-????": {
         # "HostName": "%h.server.mila.quebec",
         "ProxyJump": "mila",
@@ -200,10 +199,8 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
             - Prints the content of the public key in a nice text block to copy-paste.
             - Displays a link to the CCDB form to submit the public key.
         - DRAC compute nodes access
-            - If running on Windows, print a big red warning to tell the user that they can
-              either suffer through LOTS of 2FA prompts on their phone, or switch to WSL.
-            - Same as in 3 but done on each of the DRAC clusters. (TODO: Is this
-              actually needed on DRAC clusters?)
+            - If running on Windows, print a big red warning and errors out, telling the
+              user that have to switch to WSL.
     5. Sets up VSCode settings if VsCode is installed locally
         - Add "remote.SSH.connectTimeout": 60 in Vscode's `settings.json` file.
     6. Displays a welcome message *only if all previous steps succeeded* with further
@@ -318,7 +315,13 @@ def setup_mila_ssh_access(
                 f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
             )
             display_public_key(
-                public_key_path, cluster="mila", subtitle="Paste this into the form!"
+                public_key_path,
+                cluster="mila",
+                subtitle="⬆️ Paste this into the form! ⬆️",
+            )
+            rprint(
+                "After completing the onboarding, you will have to [bold]wait up to "
+                "24h[/bold] to get access to the Mila cluster."
             )
             return None
 
@@ -343,7 +346,7 @@ def setup_mila_ssh_access(
         display_public_key(
             public_key_path,
             cluster="mila",
-            subtitle="Include this in your email to IT-support@mila.quebec",
+            subtitle="⬆️ Include this in your email to IT-support@mila.quebec ⬆️",
         )
         rprint(
             "After contacting it-support@mila.quebec, run `mila init` again to "
@@ -423,13 +426,24 @@ def setup_drac_ssh_access(
         )
     )
 
-    # Get the private key from the SSH config, otherwise the first key found in the SSH dir, otherwise the default key.
+    #  This should not be the same SSH key as the one used for the Mila cluster!
+    mila_private_key = get_ssh_private_key_path(ssh_config, "mila") or next(
+        (k.with_suffix("") for k in ssh_dir.glob("id_*.pub")),
+        ssh_dir / "id_rsa_mila",  # default private key path for DRAC.
+    )
+    # Get the private key from the SSH config, otherwise the first key found in the SSH
+    # dir, otherwise the default key.
     drac_private_key = get_ssh_private_key_path(
         ssh_config, drac_clusters_in_config[0]
     ) or next(
-        (k.with_suffix("") for k in ssh_dir.glob("id_*.pub")),
+        (
+            k.with_suffix("")
+            for k in ssh_dir.glob("id_*.pub")
+            if k.with_suffix("") != mila_private_key
+        ),
         ssh_dir / "id_rsa_drac",  # default private key path for DRAC.
     )
+
     drac_public_key = drac_private_key.with_suffix(".pub")
 
     logger.info(f"DRAC public key path: {drac_public_key}")
@@ -442,15 +456,7 @@ def setup_drac_ssh_access(
         rprint(f" :arrow_right: [bold blue]{DRAC_FORM_URL}[/] :arrow_left:")
         return []
 
-    display_public_key(
-        drac_public_key,
-        cluster="DRAC",
-    )
-
-    display_public_key(
-        drac_public_key,
-        cluster="DRAC",
-    )
+    display_public_key(drac_public_key, cluster="DRAC")
 
     # Setup SSH access to the DRAC compute nodes.
     for drac_cluster in drac_clusters_in_config:
@@ -472,7 +478,7 @@ def setup_drac_ssh_access(
                 "Then, wait a few minutes and run this again. If you still have "
                 "issues, reach out to DRAC support at support@tech.alliancecan.ca"
             )
-            return []
+            continue
 
         assert isinstance(login_node, RemoteV2)  # since we're not on windows.
         drac_login_nodes.append(login_node)
@@ -517,7 +523,8 @@ def create_ssh_keypair_and_check_exists(
         "\n",
         f"[blue]Enter a passphrase to set for the SSH key {private_key}:[/]",
     )
-    # `passphrase=None` lets the user set a passphrase (or not) interactively.
+    # `passphrase=None` lets the user set a passphrase (or not) interactively in ssh-keygen
+
     create_ssh_keypair(private_key, passphrase=None)
     if not public_key.exists():
         raise RuntimeError(
@@ -532,7 +539,7 @@ def create_ssh_keypair_and_check_exists(
 def display_public_key(
     public_key: Path,
     cluster: str,
-    subtitle: str = "(This is what you should Copy & paste if asked)",
+    subtitle: str = "( ⬆️  This is what you should Copy & paste if asked ⬆️  )",
 ):
     # This displays the content of the public key in a nice box with top and bottom
     # lines.
