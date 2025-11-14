@@ -7,9 +7,6 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist yes
   User bob
 
 Host mila-cpu
@@ -26,43 +23,59 @@ Host mila-cpu
   User bob
 
 Host *.server.mila.quebec !*login.server.mila.quebec
-  HostName %h
   ProxyJump mila
-  ControlMaster auto
-  ControlPath ~/.cache/ssh/%r@%h:%p
-  ControlPersist yes
   User bob
 
-Host beluga cedar graham narval niagara
+Host cn-????
+  ProxyJump mila
+  User bob
+
+Host narval rorqual fir nibi trillium trillium-gpu tamia killarney vulcan
   HostName %h.alliancecan.ca
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
   User bob
 
-Host !beluga  bc????? bg????? bl?????
-  ProxyJump beluga
-  User bob
-
-Host !cedar   cdr? cdr?? cdr??? cdr????
-  ProxyJump cedar
-  User bob
-
-Host !graham  gra??? gra????
-  ProxyJump graham
-  User bob
-
-Host !narval  nc????? ng?????
+Host nc????? ng?????
   ProxyJump narval
   User bob
 
-Host !niagara nia????
-  ProxyJump niagara
+Host rc????? rg????? rl?????
+  ProxyJump rorqual
+  User bob
+
+Host fc????? fb?????
+  ProxyJump fir
+  User bob
+
+Host c? c?? c??? g? g?? l? l?? m? m?? u?
+  ProxyJump nibi
+  User bob
+
+Host tg????? tc?????
+  ProxyJump tamia
+  User bob
+
+Host kn???
+  ProxyJump killarney
+  User bob
+
+Host rack??-??
+  ProxyJump vulcan
+  User bob
+
+Host !trillium tri????
+  ProxyJump trillium
+  User bob
+
+Host !trillium trig????
+  ProxyJump trillium-gpu
   User bob
 ```
 
 
-and these user inputs: ('y', 'n')
+and this user input: n
 leads the following ssh config file on the Windows side:
 
 ```
