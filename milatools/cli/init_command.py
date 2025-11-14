@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import textwrap
 import warnings
 from logging import getLogger as get_logger
 from pathlib import Path
@@ -540,26 +539,12 @@ def display_public_key(
     # this might be safer.
 
     # Simpler, but not as nice-looking alternative:
-    # console.print(f"------- Your public key for the {cluster} cluster -------")
-    # console.print(public_key.read_text())
-    # console.print(f"--------------------------------------------------------")
     from milatools.cli import console
 
-    with console.capture() as capture:
-        console.print(
-            Panel(
-                public_key.read_text(),
-                box=rich.box.HORIZONTALS,
-                title=f"Your public key for the {cluster} cluster",
-                subtitle=subtitle,
-                padding=(0, 0),
-                safe_box=True,
-                expand=False,
-            )
-        )
-
-    text = capture.get()
-    print(textwrap.dedent(text))
+    console.rule(f" Your public key for the {cluster} cluster ")
+    print(public_key.read_text())
+    console.rule(subtitle)
+    return
 
 
 def try_to_login(cluster: str) -> RemoteV2 | RemoteV1 | None:
