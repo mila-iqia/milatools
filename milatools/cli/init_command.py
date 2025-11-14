@@ -101,14 +101,16 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
     },
 }
 DRAC_CLUSTERS = [
-    "beluga",
-    "cedar",
-    "graham",
+    # "beluga",
+    # "cedar",
+    # "graham",
+    # "niagara",
     "narval",
     "rorqual",
     "fir",
     "nibi",
     "trillium",
+    "trillium-gpu",
     "tamia",
     "killarney",
     "vulcan",
@@ -120,24 +122,24 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
         # SSH multiplexing is useful here to go through 2FA only once.
         **ssh_multiplexing_config,
     },
-    "bc????? bg????? bl?????": {
-        "ProxyJump": "beluga",
-        # User=drac_username,
-    },
-    "cdr? cdr?? cdr??? cdr????": {
-        "ProxyJump": "cedar",
-        # User=drac_username,
-    },
-    "!graham  gra??? gra????": {
-        "ProxyJump": "graham",
-        # User=drac_username,
-    },
+    # "bc????? bg????? bl?????": {
+    #     "ProxyJump": "beluga",
+    #     # User=drac_username,
+    # },
+    # "cdr? cdr?? cdr??? cdr????": {
+    #     "ProxyJump": "cedar",
+    #     # User=drac_username,
+    # },
+    # "!graham  gra??? gra????": {
+    #     "ProxyJump": "graham",
+    #     # User=drac_username,
+    # },
+    # "!niagara nia????": {
+    #     "ProxyJump": "niagara",
+    #     # User=drac_username,
+    # },
     "nc????? ng?????": {
         "ProxyJump": "narval",
-        # User=drac_username,
-    },
-    "!niagara nia????": {
-        "ProxyJump": "niagara",
         # User=drac_username,
     },
     "rc????? rg????? rl?????": {
@@ -166,6 +168,9 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     },
     "!trillium tri????": {
         "ProxyJump": "trillium",
+    },
+    "!trillium trig????": {
+        "ProxyJump": "trillium-gpu",
     },
 }
 
@@ -322,7 +327,6 @@ def setup_mila_ssh_access(
                 "After this is done, run `mila init` again, and reach out to IT-support@mila.quebec if you have any issues."
             )
             return None
-
         rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
 
         create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
@@ -441,6 +445,8 @@ def setup_drac_ssh_access(
         )
         public_key_path = private_key_path.with_suffix(".pub")
         if not (login_node := try_to_login(drac_cluster)):
+            assert False, RemoteV2(drac_cluster)
+
             rprint(f"❌ Unable to `ssh {drac_cluster}`!")
             rprint(
                 "[bold]Please submit :arrow_up: your DRAC public key above :arrow_up: "
@@ -478,8 +484,9 @@ def setup_drac_ssh_access(
             warnings.warn(
                 RuntimeWarning(
                     f"Unable to setup SSH access to the compute nodes of the {cluster} "
-                    f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
-                    f"on the #mila-cluster slack channel."
+                    f"cluster! Please reach out to DRAC support at "
+                    f"support@tech.alliancecan.ca or check for similar issues on the "
+                    f"#compute-canada or #milatools Slack channels."
                 )
             )
 
@@ -638,7 +645,9 @@ def _setup_ssh_config(
 
     mila_username: str | None = _get_mila_username(ssh_config)
     drac_username: str | None = _get_drac_username(ssh_config)
-
+    mila_private_key_path = get_ssh_private_key_path(ssh_config, "mila") or (
+        Path.home() / ".ssh/id_rsa_mila"
+    )
     if mila_username:
         # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
         old_cnode_pattern = "*.server.mila.quebec"
@@ -653,7 +662,10 @@ def _setup_ssh_config(
 
         for hostname, entry in MILA_ENTRIES.copy().items():
             # todo: Do we want to set the `IdentityFile` value to the ssh key path?
-            entry.update(User=mila_username)
+            entry.update(
+                User=mila_username,
+                IdentityFile=str(mila_private_key_path),
+            )
             _add_ssh_entry(ssh_config, hostname, entry)
             # if "ControlPath" in entry:
             _make_controlpath_dir(entry)
@@ -662,8 +674,38 @@ def _setup_ssh_config(
         logger.debug(
             f"Adding entries for the DRAC/PAICE clusters to {ssh_config_path}."
         )
-        for hostname, entry in DRAC_ENTRIES.copy().items():
-            entry.update(User=drac_username)
+        drac_private_key_path = None
+        for hostname, entry in DRAC_ENTRIES.items():
+            entry = entry.copy()
+            if drac_private_key_path is None:
+                # Get the private key from the SSH config, otherwise the first key found in the SSH
+                # dir, otherwise the default key.
+                drac_private_key_path = get_ssh_private_key_path(
+                    ssh_config, hostname
+                ) or next(
+                    (
+                        k.with_suffix("")
+                        for k in ssh_config_path.parent.glob("id_*.pub")
+                        # Try to find a different key than the one used for Mila.
+                        if k.with_suffix("") != mila_private_key_path
+                    ),
+                    ssh_config_path.parent
+                    / "id_rsa_drac",  # default private key path for DRAC.
+                )
+                if not drac_private_key_path.exists():
+                    create_ssh_keypair_and_check_exists(
+                        hostname,
+                        drac_private_key_path,
+                        drac_private_key_path.with_suffix(".pub"),
+                    )
+
+                # If we can find the private key used for one of the DRAC clusters,
+                # then use that same key for all the drac clusters.
+                # This needs to be set for the compute nodes too.
+            entry.update(
+                User=drac_username,
+                IdentityFile=str(drac_private_key_path),
+            )
             _add_ssh_entry(ssh_config, hostname, entry)
             _make_controlpath_dir(entry)
 
@@ -1213,10 +1255,7 @@ def _add_ssh_entry(
     sorted_by_keys = False
 
     # not quite true:
-    if host in ssh_config.hosts() or (
-        (existing_entry := ssh_config.lookup(host))
-        and existing_entry != {"hostname": host}
-    ):
+    if host in ssh_config.hosts():
         existing_entry = ssh_config.host(host)
         existing_entry.update(entry)
         if sorted_by_keys:
