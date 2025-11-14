@@ -192,7 +192,8 @@ class TestSetupMilaSSHAccess:
         # Try to make the login node object resilient to us removing the local ssh dir.
         # TODO: This is tough to figure out. The local SSH directory is destroyed, which
         # makes it difficult for the fixtures to restore the remote Ssh dir.
-
+        if (known_hosts := (backup_local_ssh_dir / "known_hosts")).exists():
+            shutil.copy(known_hosts, (local_ssh_dir / "known_hosts"))
         yield
 
         # The backups of the local ~/.ssh, ~/.cache/ssh and remote ~/.ssh directories
@@ -459,7 +460,7 @@ class TestSetupMilaSSHAccess:
             ).splitlines()
         )
         assert not can_access_compute_nodes(
-            login_node,
+            login_node, public_key_path=local_public_key_path
         )
 
         setup_mila_ssh_access(ssh_dir=ssh_dir, ssh_config=linux_ssh_config)
@@ -552,7 +553,7 @@ async def temporarily_disable_shared_ssh_connection(
         await asyncio.sleep(1)
         assert not control_path.exists()
 
-    backup_of_socket_file.move(control_path)
+    backup_of_socket_file.rename(control_path)
 
 
 @contextlib.contextmanager
@@ -755,4 +756,4 @@ def backup_remote_ssh_dir(
         yield backup_remote_ssh_dir
 
         if (known_hosts := (backup_local_ssh_dir / "known_hosts")).exists():
-            known_hosts.copy_into(Path.home() / ".ssh")
+            shutil.copy(known_hosts, (Path.home() / ".ssh" / "known_hosts"))
