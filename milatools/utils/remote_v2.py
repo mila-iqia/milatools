@@ -373,6 +373,8 @@ def get_controlpath_for(
         ).lookup(cluster)
 
     if control_path := ssh_config_values.get("controlpath"):
+        if "%h" in control_path:
+            control_path = control_path.replace("%h", cluster)
         # Controlpath is set in the SSH config.
         return Path(control_path).expanduser()
 
