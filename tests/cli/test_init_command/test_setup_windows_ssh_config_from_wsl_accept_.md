@@ -30,31 +30,15 @@ Host cn-????
   ProxyJump mila
   User bob
 
-Host beluga cedar graham narval rorqual fir nibi trillium tamia killarney vulcan
+Host narval rorqual fir nibi trillium trillium-gpu tamia killarney vulcan
   HostName %h.alliancecan.ca
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
   User bob
 
-Host bc????? bg????? bl?????
-  ProxyJump beluga
-  User bob
-
-Host cdr? cdr?? cdr??? cdr????
-  ProxyJump cedar
-  User bob
-
-Host !graham  gra??? gra????
-  ProxyJump graham
-  User bob
-
 Host nc????? ng?????
   ProxyJump narval
-  User bob
-
-Host !niagara nia????
-  ProxyJump niagara
   User bob
 
 Host rc????? rg????? rl?????
@@ -83,6 +67,10 @@ Host rack??-??
 
 Host !trillium tri????
   ProxyJump trillium
+  User bob
+
+Host !trillium trig????
+  ProxyJump trillium-gpu
   User bob
 ```
 
@@ -121,28 +109,12 @@ Host cn-????
   ProxyJump mila
   User bob
 
-Host beluga cedar graham narval rorqual fir nibi trillium tamia killarney vulcan
+Host narval rorqual fir nibi trillium trillium-gpu tamia killarney vulcan
   HostName %h.alliancecan.ca
-  User bob
-
-Host bc????? bg????? bl?????
-  ProxyJump beluga
-  User bob
-
-Host cdr? cdr?? cdr??? cdr????
-  ProxyJump cedar
-  User bob
-
-Host !graham  gra??? gra????
-  ProxyJump graham
   User bob
 
 Host nc????? ng?????
   ProxyJump narval
-  User bob
-
-Host !niagara nia????
-  ProxyJump niagara
   User bob
 
 Host rc????? rg????? rl?????
@@ -171,5 +143,9 @@ Host rack??-??
 
 Host !trillium tri????
   ProxyJump trillium
+  User bob
+
+Host !trillium trig????
+  ProxyJump trillium-gpu
   User bob
 ```

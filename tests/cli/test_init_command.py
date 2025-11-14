@@ -332,6 +332,7 @@ def test_fixes_overly_general_cn_entry(
         "hostname": "cn-a001.server.mila.quebec",
         "user": mila_username,
         "proxyjump": "mila",
+        # "identityfile": unittest.mock.ANY,
     }
     assert "proxyjump" not in ssh_config.lookup("login.server.mila.quebec")
     assert "proxyjump" not in ssh_config.lookup("login-1.login.server.mila.quebec")
@@ -488,8 +489,8 @@ def test_get_username(
         pytest.param(
             textwrap.dedent(
                 """\
-                Host fooo beluga bar baz
-                    HostName beluga.alliancecan.ca
+                Host fooo narval bar baz
+                    HostName narval.alliancecan.ca
                     User george
                 """
             ),

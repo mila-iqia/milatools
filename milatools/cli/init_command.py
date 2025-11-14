@@ -647,10 +647,10 @@ def _setup_ssh_config(
 
         for hostname, entry in MILA_ENTRIES.copy().items():
             # todo: Do we want to set the `IdentityFile` value to the ssh key path?
-            entry.update(
-                User=mila_username,
-                IdentityFile=str(mila_private_key_path),
-            )
+            entry.update(User=mila_username)
+            if not mila_private_key_path.name.startswith("id_"):
+                # Need to add the IdentityFile entry only if the key doesn't have a standard name.
+                entry.update(IdentityFile=str(mila_private_key_path))
             _add_ssh_entry(ssh_config, hostname, entry)
             # if "ControlPath" in entry:
             _make_controlpath_dir(entry)
@@ -670,7 +670,7 @@ def _setup_ssh_config(
                 ) or next(
                     (
                         k.with_suffix("")
-                        for k in ssh_config_path.parent.glob("id_*.pub")
+                        for k in ssh_config_path.parent.glob("*.pub")
                         # Try to find a different key than the one used for Mila.
                         if k.with_suffix("") != mila_private_key_path
                     ),
@@ -687,10 +687,11 @@ def _setup_ssh_config(
                 # If we can find the private key used for one of the DRAC clusters,
                 # then use that same key for all the drac clusters.
                 # This needs to be set for the compute nodes too.
-            entry.update(
-                User=drac_username,
-                IdentityFile=str(drac_private_key_path),
-            )
+
+            entry.update(User=drac_username)
+            if not drac_private_key_path.name.startswith("id_"):
+                # Need to add the IdentityFile entry only if the key doesn't have a standard name.
+                entry.update(IdentityFile=str(drac_private_key_path))
             _add_ssh_entry(ssh_config, hostname, entry)
             _make_controlpath_dir(entry)
 
@@ -757,8 +758,10 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
         .expanduser()
         .resolve()
     )
+    # Resilient to tests, where the key is not in the $HOME folder.
+    linux_home = linux_private_key_file.parent.parent
     windows_private_key_file = windows_home / (
-        linux_private_key_file.relative_to(Path.home())
+        linux_private_key_file.relative_to(linux_home)
     )
     windows_private_key_file.parent.mkdir(exist_ok=True, mode=0o700, parents=True)
 
@@ -801,7 +804,7 @@ def get_ssh_public_key_path(
     if identity_file:
         return Path(identity_file).expanduser().with_suffix(".pub")
     # No IdentityFile specified in config, try to guess.
-    public_keys = list((Path.home() / ".ssh").glob("id_*.pub"))
+    public_keys = list((Path.home() / ".ssh").glob("*.pub"))
     if len(public_keys) == 1:
         return public_keys[0]
     if not public_keys:
