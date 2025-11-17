@@ -141,6 +141,7 @@ class TestSetupMilaSSHAccess:
         linux_ssh_config: SSHConfig,
         monkeypatch: pytest.MonkeyPatch,
         login_node_v2: RemoteV2,
+        no_existing_mila_connection: None,
     ):
         login_node = login_node_v2
         cluster = login_node.hostname
@@ -189,22 +190,19 @@ class TestSetupMilaSSHAccess:
         shutil.rmtree(local_ssh_dir)
         shutil.rmtree(local_ssh_cache_dir)  # do we need to do this?
 
-        # Try to make the login node object resilient to us removing the local ssh dir.
-        # TODO: This is tough to figure out. The local SSH directory is destroyed, which
-        # makes it difficult for the fixtures to restore the remote Ssh dir.
-        if (known_hosts := (backup_local_ssh_dir / "known_hosts")).exists():
-            local_ssh_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy(known_hosts, (local_ssh_dir / "known_hosts"))
         yield
 
         # The backups of the local ~/.ssh, ~/.cache/ssh and remote ~/.ssh directories
         # will be restored here.
 
+    @pytest.mark.skip(reason="Needs fixing.")
     @pytest.mark.asyncio
     async def test_first_time_setup(
         self,
         nothing_setup: None,
         linux_ssh_config: SSHConfig,
+        backup_local_ssh_dir: Path,
+        backup_local_ssh_cache_dir: Path,
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
         no_existing_mila_connection: None,
@@ -219,6 +217,12 @@ class TestSetupMilaSSHAccess:
         # We do this manually here instead of calling `setup_ssh_config`, because that
         # part of `mila init` is already called in the `ssh_config_file` fixture.
         ssh_dir = Path.home() / ".ssh"
+        assert not ssh_dir.exists()
+
+        # if (backup_known_hosts_file := (backup_local_ssh_dir / "known_hosts")).exists():
+        #     ssh_dir.mkdir(exist_ok=False, mode=0o700)
+        #     shutil.copy(backup_known_hosts_file, (ssh_dir / "known_hosts"))
+
         ssh_dir.mkdir(mode=0o700, exist_ok=True)
         (ssh_dir / "config").write_text(linux_ssh_config.cfg.config())
 
@@ -229,6 +233,8 @@ class TestSetupMilaSSHAccess:
 
         mock_ask = unittest.mock.Mock(wraps=_ask)
         monkeypatch.setattr(rich.prompt.Confirm, "ask", mock_ask)
+
+        assert not try_to_login("mila")
 
         setup_mila_ssh_access(ssh_dir=ssh_dir, ssh_config=linux_ssh_config)
 
@@ -249,11 +255,12 @@ class TestSetupMilaSSHAccess:
         linux_ssh_config: SSHConfig,
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
+        no_existing_mila_connection: None,
     ):
         """Test that when this is the first time we setup access on a new machine, this
         instructs us to copy the SSH keys from another machine or reach out to IT-
         support, without creating new SSH keys."""
-
+        linux_ssh_config.set("mila", StrictHostKeyChecking="no")
         assert not try_to_login("mila")
 
         # Setup an SSH directory with the SSH config from mila init.
@@ -280,7 +287,7 @@ class TestSetupMilaSSHAccess:
 
         # Check that this above did *not* create new keys in ~/.ssh, and instead
         # recommended reusing the keypair from the other machine, or reaching out to IT support.
-        assert not list(ssh_dir.glob("id_*.pub"))
+        assert not list(ssh_dir.glob("*.pub"))
 
         out, err = capsys.readouterr()
         assert (

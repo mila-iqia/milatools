@@ -294,6 +294,14 @@ def setup_mila_ssh_access(
     rprint(f"Checking connection to the {cluster} login nodes... ", flush=True)
 
     if login_node := try_to_login(cluster):
+        if not private_key_path.exists():
+            raise RuntimeError(
+                f"Able to `ssh {cluster}`, but the private key expected at "
+                f"{private_key_path} doesn't exist! "
+                f"Please consider adding an IdentityFile entry pointing to the private "
+                f"key you are using to connect to the Mila cluster in the mila entry of your SSH config. "
+            )
+
         rprint(f"✅ Able to `ssh {cluster}`")
         if can_access_compute_nodes(login_node, public_key_path=public_key_path):
             rprint(
