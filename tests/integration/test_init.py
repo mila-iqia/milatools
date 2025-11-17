@@ -193,6 +193,7 @@ class TestSetupMilaSSHAccess:
         # TODO: This is tough to figure out. The local SSH directory is destroyed, which
         # makes it difficult for the fixtures to restore the remote Ssh dir.
         if (known_hosts := (backup_local_ssh_dir / "known_hosts")).exists():
+            local_ssh_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy(known_hosts, (local_ssh_dir / "known_hosts"))
         yield
 
@@ -206,6 +207,7 @@ class TestSetupMilaSSHAccess:
         linux_ssh_config: SSHConfig,
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
+        no_existing_mila_connection: None,
     ):
         """Test that when SSH access to the Mila login nodes is not setup, running `mila
         init` asks relevant questions and then simply prints an informative message
@@ -217,7 +219,7 @@ class TestSetupMilaSSHAccess:
         # We do this manually here instead of calling `setup_ssh_config`, because that
         # part of `mila init` is already called in the `ssh_config_file` fixture.
         ssh_dir = Path.home() / ".ssh"
-        ssh_dir.mkdir(mode=0o700, exist_ok=False)
+        ssh_dir.mkdir(mode=0o700, exist_ok=True)
         (ssh_dir / "config").write_text(linux_ssh_config.cfg.config())
 
         def _ask(question, *args, **kwargs):
@@ -290,7 +292,7 @@ class TestSetupMilaSSHAccess:
         # file_regression.check(out, extension=".txt", encoding="utf-8")
 
     @pytest.mark.asyncio
-    async def test_mila_access_already_setup(
+    async def test_everything_already_setup(
         self,
         backup_local_ssh_dir: Path,
         backup_local_ssh_cache_dir: Path,
@@ -363,10 +365,9 @@ class TestSetupMilaSSHAccess:
 
         1. Creates an SSH keypair in the ~/.ssh directory
             - Doesn't overwrite an existing keypair!
-        2. Adds the SSH public key from ~/.ssh/id_rsa.pub to the ~/.ssh/authorized_keys file
-        3. Adds the *local* public key for the mila cluster (the one given to IT support)
+        2. Adds the *local* public key for the mila cluster (the one given to IT support)
            to the ~/.ssh/authorized_keys file on the cluster.
-        4. Makes sure that the permissions are correct on the ~/.ssh directory and files
+        3. Makes sure that the permissions are correct on the ~/.ssh directory and files
            on the cluster.
         """
         login_node = login_node_v2
@@ -756,4 +757,5 @@ def backup_remote_ssh_dir(
         yield backup_remote_ssh_dir
 
         if (known_hosts := (backup_local_ssh_dir / "known_hosts")).exists():
+            (Path.home() / ".ssh").mkdir(parents=True, exist_ok=True)
             shutil.copy(known_hosts, (Path.home() / ".ssh" / "known_hosts"))
