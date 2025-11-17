@@ -395,6 +395,8 @@ def setup_mila_ssh_access(
 
 
 def copy_ssh_keys_between_wsl_and_windows(ssh_dir: PosixPath):
+    if not ssh_dir.exists():
+        ssh_dir.mkdir(parents=True, mode=0o700)
     # todo: Do we need to set permissions on that windows .ssh directory?
     # windows_ssh_dir = get_windows_home_path_in_wsl() / ".ssh"
     _copy_keys_from_windows_to_wsl(ssh_dir)

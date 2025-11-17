@@ -3,13 +3,14 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import shutil
 import subprocess
 import sys
 import textwrap
 from collections.abc import Generator
 from functools import partial
 from logging import getLogger as get_logger
-from pathlib import Path
+from pathlib import Path, PosixPath
 from typing import Any
 from unittest.mock import Mock
 
@@ -24,6 +25,7 @@ from milatools.cli.init_command import (
     _get_drac_username,
     _get_mila_username,
     _setup_ssh_config_file,
+    copy_ssh_keys_between_wsl_and_windows,
     create_ssh_keypair,
     has_passphrase,
     setup_vscode_settings,
@@ -664,6 +666,8 @@ def test_setup_windows_ssh_config_from_wsl(
     input_stream: io.StringIO,
 ):
     initial_contents = linux_ssh_config.cfg.config()
+    linux_ssh_dir = linux_ssh_config.path.parent
+    assert isinstance(linux_ssh_dir, PosixPath)
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
     initial_pos = input_stream.seek(0, 1)  # get initial position in the buffer
@@ -672,9 +676,13 @@ def test_setup_windows_ssh_config_from_wsl(
 
     if not accept_changes:
         with contextlib.suppress(SystemExit):
-            setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+            setup_windows_ssh_config_from_wsl(
+                ssh_dir=linux_ssh_dir, linux_ssh_config=linux_ssh_config
+            )
     else:
-        setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+        setup_windows_ssh_config_from_wsl(
+            ssh_dir=linux_ssh_dir, linux_ssh_config=linux_ssh_config
+        )
 
     assert windows_ssh_config_path.exists()
     assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
@@ -839,7 +847,7 @@ def fake_linux_ssh_keypair(linux_home: Path):
 def test_setup_windows_ssh_config_from_wsl_copies_keys(
     linux_ssh_config: SSHConfig,
     windows_home: Path,
-    linux_home: Path,
+    linux_home: PosixPath,
     fake_linux_ssh_keypair: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     input_stream: io.StringIO,
@@ -853,7 +861,9 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     input_stream.write("\n".join(prompt_inputs) + "\n")
     input_stream.seek(initial_position)
 
-    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+    setup_windows_ssh_config_from_wsl(
+        linux_home / ".ssh", linux_ssh_config=linux_ssh_config
+    )
 
     windows_private_key_path = windows_home / linux_private_key_path.relative_to(
         linux_home
@@ -864,8 +874,84 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     assert windows_private_key_path.exists()
     assert windows_private_key_path.stat().st_mode & 0o777 == 0o600
     assert windows_public_key_path.exists()
-    assert windows_public_key_path.stat().st_mode & 0o777 == 0o600
+    assert windows_public_key_path.stat().st_mode & 0o777 == 0o644
     # todo: Might have to manually add the weird CRLF line endings to the public/private
     # key file?
     assert windows_private_key_path.read_text() == linux_private_key_path.read_text()
     assert windows_public_key_path.read_text() == linux_public_key_path.read_text()
+
+
+@pytest.fixture(scope="function")
+def linux_ssh_dir(linux_home: PosixPath) -> PosixPath:
+    ssh_dir = linux_home / ".ssh"
+    ssh_dir.mkdir(mode=0o700, exist_ok=True, parents=True)
+    return ssh_dir
+
+
+@pytest.fixture(scope="function")
+def linux_ssh_key(linux_ssh_dir: Path):
+    # This is a ssh key in a mock ssh directory in a temporary folder.
+    # It can't be used to connect to anything.
+    private_key_path = linux_ssh_dir / "id_rsa_test"
+    create_ssh_keypair(private_key_path, passphrase="")
+    return private_key_path
+
+
+def test_copy_keys_from_wsl_to_windows(
+    windows_home: Path,
+    linux_ssh_dir: PosixPath,
+    linux_home: PosixPath,
+    linux_ssh_key: Path,
+):
+    linux_private_key_path = linux_ssh_key
+    linux_public_key_path = linux_ssh_key.with_suffix(".pub")
+    copy_ssh_keys_between_wsl_and_windows(linux_ssh_dir)
+
+    windows_ssh_dir = windows_home / ".ssh"
+    windows_public_key_path = windows_ssh_dir / linux_public_key_path.name
+    windows_private_key_path = windows_ssh_dir / linux_private_key_path.name
+
+    assert windows_private_key_path.exists()
+    assert windows_private_key_path.stat().st_mode & 0o777 == 0o600
+    assert windows_private_key_path.read_text() == linux_private_key_path.read_text()
+    # Has Windows line endings.
+    assert windows_private_key_path.read_bytes().count(b"\r\n") != 0
+
+    assert windows_public_key_path.exists()
+    assert windows_public_key_path.stat().st_mode & 0o777 == 0o644
+    assert windows_public_key_path.read_text() == linux_public_key_path.read_text()
+    assert windows_public_key_path.read_bytes().count(b"\r\n") != 0
+
+
+def test_copy_keys_from_windows_to_wsl(
+    windows_home: Path,
+    linux_home: PosixPath,
+    fake_linux_ssh_keypair: tuple[Path, Path],
+):
+    linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
+    windows_ssh_dir = windows_home / ".ssh"
+    assert not windows_ssh_dir.exists()
+
+    copy_ssh_keys_between_wsl_and_windows(linux_home / ".ssh")
+    # Previous test shows that these are created correctly.
+    windows_public_key_path = windows_ssh_dir / linux_public_key_path.name
+    windows_private_key_path = windows_ssh_dir / linux_private_key_path.name
+
+    # Delete the WSL ssh directory to test copying back from Windows to WSL.
+    shutil.rmtree(linux_home / ".ssh")
+
+    copy_ssh_keys_between_wsl_and_windows(linux_home / ".ssh")
+
+    wsl_ssh_dir = Path.home() / ".ssh"
+    wsl_public_key_path = wsl_ssh_dir / linux_public_key_path.name
+    wsl_private_key_path = wsl_ssh_dir / linux_private_key_path.name
+
+    assert wsl_private_key_path.exists()
+    assert wsl_private_key_path.stat().st_mode & 0o777 == 0o600
+    assert wsl_private_key_path.read_text() == windows_private_key_path.read_text()
+    assert wsl_private_key_path.read_bytes().count(b"\r\n") == 0
+
+    assert wsl_public_key_path.exists()
+    assert wsl_public_key_path.stat().st_mode & 0o777 == 0o644
+    assert wsl_public_key_path.read_text() == windows_public_key_path.read_text()
+    assert wsl_public_key_path.read_bytes().count(b"\r\n") == 0
