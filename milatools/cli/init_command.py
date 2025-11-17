@@ -10,7 +10,7 @@ import sys
 import tempfile
 import warnings
 from logging import getLogger as get_logger
-from pathlib import Path
+from pathlib import Path, PosixPath
 from typing import Any, Literal
 
 import rich.box
@@ -222,7 +222,8 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
     # ControlMaster-related entries) so that the user doesn't need to install Python and
     # milatools on the Windows side.
     if running_inside_WSL():
-        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
+        assert isinstance(ssh_dir, PosixPath)
+        setup_windows_ssh_config_from_wsl(ssh_dir, linux_ssh_config=ssh_config)
 
     ##################################
     # Step 2: Mila login node access #
@@ -291,103 +292,200 @@ def setup_mila_ssh_access(
     private_key_path = public_key_path.with_suffix("")
 
     rprint(f"Checking connection to the {cluster} login nodes... ", flush=True)
-    login_node = try_to_login(cluster)
 
-    if not login_node:
-        if Confirm.ask("Is this your first time connecting to the Mila cluster?"):
-            create_ssh_keypair_and_check_exists(
-                cluster, private_key_path, public_key_path
-            )
+    if login_node := try_to_login(cluster):
+        rprint(f"✅ Able to `ssh {cluster}`")
+        if can_access_compute_nodes(login_node, public_key_path=public_key_path):
             rprint(
-                f"Please follow the onboarding steps provided by IT-support and paste "
-                f"this public key below during the final steps:\n"
-                f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
+                f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+                f"{cluster} cluster, and the permissions are correct. "
+                f"You should have SSH access to the compute nodes."
             )
-            display_public_key(
-                public_key_path,
-                cluster="mila",
-                subtitle="⬆️ Paste this into the form! ⬆️",
+            return login_node  # all setup.
+        rprint(
+            f"❌ Local {public_key_path} is not in ~/.ssh/authorized_keys on the "
+            f"{cluster} cluster, or file permissions are incorrect. Attempting to fix "
+            f"this now."
+        )
+        setup_access_to_compute_nodes(
+            cluster, remote=login_node, public_key_path=public_key_path
+        )
+        if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
+            raise RuntimeError(
+                f"Unable to setup SSH access to the compute nodes of the {cluster} "
+                f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
+                f"on the #mila-cluster slack channel."
             )
-            rprint(
-                "After completing the onboarding, you will have to [bold]wait up to "
-                "24h[/bold] to get access to the Mila cluster."
-            )
-            return None
+        rprint(
+            f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+            f"{cluster} cluster and file permissions are correct. You should now "
+            f"be able to connect to compute nodes with SSH."
+        )
+        return login_node  # all setup.
 
-        if Confirm.ask(
-            "Do you already have access to the Mila cluster from another machine?"
-        ):
-            rprint(
-                "[bold orange4]You can only use up to two SSH keys in total to connect to the Mila cluster.[/]\n"
-                "We recommend that you copy the public and private SSH keys from that "
-                f"other machine to this machine at paths {public_key_path} and {private_key_path} respectively."
-            )
-            rprint(
-                "After this is done, run `mila init` again, and reach out to IT-support@mila.quebec if you have any issues."
-            )
-            return None
-        rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
-
+    if Confirm.ask("Is this your first time connecting to the Mila cluster?"):
         create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
+
+        # If we're on WSL and we just created a new keypair. We also copy it to the
+        # Windows ssh folder.
+        if running_inside_WSL():
+            assert isinstance(ssh_dir, PosixPath)
+            _copy_keys_from_wsl_to_windows(ssh_dir)
+
+        rprint(
+            f"Please follow the onboarding steps provided by IT-support and paste "
+            f"this public key below during the final steps:\n"
+            f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
+        )
         display_public_key(
             public_key_path,
             cluster="mila",
-            subtitle="⬆️ This is your Mila SSH public key. ⬆️",
-        )
-        rprint("[bold red]You seem to be unable to connect to the Mila cluster.[/]")
-        rprint(
-            f"- If this is your first time connecting to the Mila cluster, please make "
-            f"sure to successfully complete the onboarding, entering the public key at the "
-            f"end of the form at the final step:\n"
-            f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
+            subtitle="⬆️ Paste this into the form! ⬆️",
         )
         rprint(
-            f"- If this isn't your first time connecting to the {cluster} cluster, send an email to "
-            f"[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link].\n"
-            "   Make sure to include :arrow_up: [bold]your public key above[/bold]:arrow_up: in the email."
-        )
-        rprint(
-            "- If you still have issues connecting, take a look at previous messages in "
-            "the [bold green]#milatools[/] and [bold green]#mila-cluster[/] channels on "
-            "Slack for common questions and known solutions."
-        )
-        rprint(
-            "- [bold green]If all else fails, contact IT-support at "
-            "[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link] and provide as "
-            "much information as possible.[/]"
+            "After completing the onboarding, you will have to [bold]wait up to "
+            "24h[/bold] to get access to the Mila cluster."
         )
         return None
 
-    # No point in trying to login if the config and key didn't exist to begin with.
-    rprint(f"✅ Able to `ssh {cluster}`")
-    rprint(f"Checking connection to the {cluster} compute nodes... ")
-    if can_access_compute_nodes(login_node, public_key_path=public_key_path):
+    if Confirm.ask(
+        "Do you already have access to the Mila cluster from another machine?"
+    ):
         rprint(
-            f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
-            f"{cluster} cluster, and the permissions are correct. "
-            f"You should have SSH access to the compute nodes."
+            "[bold orange4]You can only use up to two SSH keys in total to connect to the Mila cluster.[/]\n"
+            "We recommend that you copy the public and private SSH keys from that "
+            f"other machine to this machine at paths {public_key_path} and {private_key_path} respectively."
         )
-        return login_node  # all setup.
-    rprint(
-        f"❌ Local {public_key_path} is not in ~/.ssh/authorized_keys on the "
-        f"{cluster} cluster, or file permissions are incorrect. Attempting to fix "
-        f"this now."
-    )
-    setup_access_to_compute_nodes(
-        cluster, remote=login_node, public_key_path=public_key_path
-    )
-    if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
-        raise RuntimeError(
-            f"Unable to setup SSH access to the compute nodes of the {cluster} "
-            f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
-            f"on the #mila-cluster slack channel."
+        rprint(
+            "After this is done, run `mila init` again, and reach out to IT-support@mila.quebec if you have any issues."
         )
-    rprint(
-        f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
-        f"{cluster} cluster and file permissions are correct. You should now "
-        f"be able to connect to compute nodes with SSH."
+        return None
+    rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
+
+    create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
+
+    display_public_key(
+        public_key_path,
+        cluster="mila",
+        subtitle="⬆️ This is your Mila SSH public key. ⬆️",
     )
-    return login_node  # all setup.
+    rprint("[bold red]You seem to be unable to connect to the Mila cluster.[/]")
+    rprint(
+        f"- If this is your first time connecting to the Mila cluster, please make "
+        f"sure to successfully complete the onboarding, entering the public key at the "
+        f"end of the form at the final step:\n"
+        f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
+    )
+    rprint(
+        f"- If this isn't your first time connecting to the {cluster} cluster, send an email to "
+        f"[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link].\n"
+        "   Make sure to include :arrow_up: [bold]your public key above[/bold]:arrow_up: in the email."
+    )
+    rprint(
+        "- If you still have issues connecting, take a look at previous messages in "
+        "the [bold green]#milatools[/] and [bold green]#mila-cluster[/] channels on "
+        "Slack for common questions and known solutions."
+    )
+    rprint(
+        "- [bold green]If all else fails, contact IT-support at "
+        "[link=mailto:it-support@mila.quebec]it-support@mila.quebec[/link] and provide as "
+        "much information as possible.[/]"
+    )
+    return None
+
+
+def copy_ssh_keys_between_wsl_and_windows(ssh_dir: PosixPath):
+    # todo: Do we need to set permissions on that windows .ssh directory?
+    # windows_ssh_dir = get_windows_home_path_in_wsl() / ".ssh"
+    _copy_keys_from_windows_to_wsl(ssh_dir)
+    # If we are using WSL now, and already have the keys in WSL but not in Windows, do
+    # the opposite.
+    _copy_keys_from_wsl_to_windows(ssh_dir)
+
+
+def _copy_keys_from_wsl_to_windows(ssh_dir: PosixPath):
+    windows_ssh_dir = get_windows_home_path_in_wsl() / ".ssh"
+    windows_ssh_dir.mkdir(exist_ok=True)
+
+    for wsl_public_key_path in ssh_dir.glob("*.pub"):
+        wsl_private_key_path = wsl_public_key_path.with_suffix("")
+        if not wsl_private_key_path.exists():
+            logger.warning(
+                f"There is a dangling public key at {wsl_public_key_path} with no associated private key!"
+            )
+            continue
+        windows_public_key_path = windows_ssh_dir / wsl_public_key_path.name
+        windows_private_key_path = windows_ssh_dir / wsl_private_key_path.name
+        if windows_public_key_path.exists() and windows_private_key_path.exists():
+            logger.debug(
+                f"Windows SSH keypair {windows_private_key_path}, "
+                f"{windows_public_key_path} already exists, skipping copy from WSL side."
+            )
+            continue
+        rprint(
+            f"Copying SSH keypair from WSL .ssh folder at "
+            f"{wsl_private_key_path} to Windows ssh directory at {windows_ssh_dir}"
+        )
+        if not windows_private_key_path.exists():
+            shutil.copy(wsl_private_key_path, windows_private_key_path)
+        if not windows_public_key_path.exists():
+            shutil.copy(wsl_public_key_path, windows_public_key_path)
+        # TODO: make sure that this works okay and does not mess up the permissions on
+        # the Windows files!
+        windows_private_key_path.chmod(0o600)
+        windows_public_key_path.chmod(0o644)
+
+        # Replace the windows line endings with linux ones.
+        windows_private_key_path.write_bytes(
+            # Double replace since we don't want to end up with '\r\r\n's.
+            windows_private_key_path.read_bytes()
+            .replace(b"\r\n", b"\n")
+            .replace(b"\n", b"\r\n")
+        )
+        windows_public_key_path.write_bytes(
+            windows_public_key_path.read_bytes()
+            .replace(b"\r\n", b"\n")
+            .replace(b"\n", b"\r\n")
+        )
+
+
+def _copy_keys_from_windows_to_wsl(ssh_dir: PosixPath):
+    windows_ssh_dir = get_windows_home_path_in_wsl() / ".ssh"
+    windows_ssh_dir.mkdir(exist_ok=True)
+
+    for windows_public_key_path in windows_ssh_dir.glob("*.pub"):
+        windows_private_key_path = windows_public_key_path.with_suffix("")
+        if not windows_private_key_path.exists():
+            logger.warning(
+                f"There is a dangling public key at {windows_public_key_path} with no associated private key!"
+            )
+            continue
+        wsl_public_key_path = ssh_dir / windows_public_key_path.name
+        wsl_private_key_path = ssh_dir / windows_private_key_path.name
+        if wsl_public_key_path.exists() and wsl_private_key_path.exists():
+            logger.debug(
+                f"WSL SSH keypair {wsl_private_key_path}, {wsl_public_key_path} "
+                f"already exists, skipping copy from Windows side."
+            )
+            continue
+        rprint(
+            f"Copying SSH keypair from Windows .ssh folder at "
+            f"{windows_private_key_path} to WSL ssh directory at {ssh_dir}"
+        )
+        if not wsl_private_key_path.exists():
+            shutil.copy(windows_private_key_path, wsl_private_key_path)
+        if not wsl_public_key_path.exists():
+            shutil.copy(windows_public_key_path, wsl_public_key_path)
+        wsl_private_key_path.chmod(0o600)
+        wsl_public_key_path.chmod(0o644)
+
+        # Replace the windows line endings with linux ones.
+        wsl_private_key_path.write_bytes(
+            wsl_private_key_path.read_bytes().replace(b"\r\n", b"\n")
+        )
+        wsl_public_key_path.write_bytes(
+            wsl_public_key_path.read_bytes().replace(b"\r\n", b"\n")
+        )
 
 
 def setup_drac_ssh_access(
@@ -499,6 +597,7 @@ def setup_drac_ssh_access(
 def create_ssh_keypair_and_check_exists(
     cluster: str, private_key: Path, public_key: Path
 ):
+    assert not private_key.exists()
     if public_key.exists():
         raise RuntimeError(
             f"Private key doesn't exist at {private_key}, but a public key exists "
@@ -557,6 +656,8 @@ def try_to_login(cluster: str) -> RemoteV2 | RemoteV1 | None:
 def can_access_compute_nodes(
     login_node: RemoteV2 | RemoteV1, public_key_path: Path
 ) -> bool:
+    if not public_key_path.exists():
+        return False
     public_key = public_key_path.read_text().strip()
     assert public_key
     try:
@@ -708,7 +809,7 @@ def _setup_ssh_config(
     return ssh_config, mila_username, drac_username
 
 
-def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
+def setup_windows_ssh_config_from_wsl(ssh_dir: PosixPath, linux_ssh_config: SSHConfig):
     """Setup the Windows SSH configuration and public key from within WSL.
 
     This copies over the entries from the linux ssh configuration file, except for the
@@ -749,30 +850,7 @@ def setup_windows_ssh_config_from_wsl(linux_ssh_config: SSHConfig):
     # Windows.
     assert running_inside_WSL()
     windows_home = get_windows_home_path_in_wsl()
-    linux_private_key_file = (
-        Path(
-            linux_ssh_config.host("mila").get(
-                "identityfile", Path.home() / ".ssh/id_rsa"
-            )
-        )
-        .expanduser()
-        .resolve()
-    )
-    # Resilient to tests, where the key is not in the $HOME folder.
-    linux_home = linux_private_key_file.parent.parent
-    windows_private_key_file = windows_home / (
-        linux_private_key_file.relative_to(linux_home)
-    )
-    windows_private_key_file.parent.mkdir(exist_ok=True, mode=0o700, parents=True)
-
-    for linux_key_file, windows_key_file in [
-        (linux_private_key_file, windows_private_key_file),
-        (
-            linux_private_key_file.with_suffix(".pub"),
-            windows_private_key_file.with_suffix(".pub"),
-        ),
-    ]:
-        _copy_if_needed(linux_key_file, windows_key_file)
+    copy_ssh_keys_between_wsl_and_windows(ssh_dir)
 
 
 def _table(
@@ -908,6 +986,8 @@ def setup_access_to_compute_nodes(
     #####################################
     # Step 3: Set up keys on login node #
     #####################################
+    if not public_key_path.exists():
+        raise RuntimeError(f"Public key {public_key_path} does not exist!")
     public_key = public_key_path.read_text().strip()
     rprint(
         f"Checking connection to compute nodes on the {cluster} cluster. "
@@ -985,8 +1065,8 @@ def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
 @functools.lru_cache
 def get_windows_home_path_in_wsl() -> Path:
     assert running_inside_WSL()
-    windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
-    return Path(f"/mnt/c/Users/{windows_username}")
+    windows_home = subprocess.getoutput("powershell.exe '$env:USERPROFILE'").strip()
+    return windows_home
 
 
 def create_ssh_keypair(
@@ -1282,15 +1362,23 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
             )
             continue
         linux_ssh_entry: dict[str, Any] = linux_ssh_config.host(host)
-        _add_ssh_entry(
-            windows_ssh_config,
-            host,
-            {
-                key: value
-                for key, value in linux_ssh_entry.items()
-                if key.lower() not in unsupported_keys_lowercase
-            },
-        )
+        windows_ssh_entry = {
+            key: value
+            for key, value in linux_ssh_entry.items()
+            if key.lower() not in unsupported_keys_lowercase
+        }
+
+        if identityfile := linux_ssh_entry.get("IdentityFile"):
+            # Tricky: need to remap the path to the Windows path.
+            identityfile_path = Path(identityfile).expanduser().resolve()
+            windows_identityfile = (
+                get_windows_home_path_in_wsl()
+                / ".ssh"
+                / identityfile_path.relative_to(Path.home() / ".ssh")
+            )
+            windows_ssh_entry["IdentityFile"] = str(windows_identityfile)
+
+        _add_ssh_entry(windows_ssh_config, host, windows_ssh_entry)
 
 
 def _make_controlpath_dir(entry: dict[str, str | int]) -> None:
