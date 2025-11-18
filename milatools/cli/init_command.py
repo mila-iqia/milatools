@@ -240,18 +240,16 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
         c for c in DRAC_CLUSTERS if any(c in host for host in _hosts)
     ]
 
-    drac_success = None
+    drac_login_nodes = None
     if drac_username:
         if sys.platform == "win32":
-            warnings.warn(
-                RuntimeWarning(
-                    "Setup of DRAC clusters is not supported on Windows.\n"
-                    "You need to setup the Windows Subsystem for Linux (WSL), and run `mila init` from there.\n"
-                    "See this link for instructions on setting up WSL: https://docs.alliancecan.ca/wiki/WSL\n"
-                )
+            rprint(
+                "[red]Setup of DRAC clusters is not supported on Windows.\n"
+                "You need to setup the Windows Subsystem for Linux (WSL), and run `mila init` from there.\n"
+                "See this link for instructions on setting up WSL: https://docs.alliancecan.ca/wiki/WSL\n [/red]"
             )
         else:
-            drac_success = setup_drac_ssh_access(
+            drac_login_nodes = setup_drac_ssh_access(
                 ssh_dir, ssh_config, drac_clusters_in_config
             )
 
@@ -264,9 +262,9 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
             "[bold red]Mila cluster access is not fully configured! See the instructions above.[/]"
         )
 
-    if drac_success:
+    if drac_login_nodes:
         rprint("[bold green]DRAC cluster access is fully setup![/]")
-    elif not drac_success:
+    elif not drac_login_nodes:
         rprint("Skipped setup for DRAC clusters.")
     else:
         rprint(
