@@ -261,11 +261,11 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
         rprint(
             "[bold red]Mila cluster access is not fully configured! See the instructions above.[/]"
         )
+
     if drac_success:
         rprint("[bold green]DRAC cluster access is fully setup![/]")
-
     elif not drac_success:
-        rprint("Skipping setup for DRAC clusters (no DRAC entries in SSH config).")
+        rprint("Skipped setup for DRAC clusters.")
     else:
         rprint(
             "[bold orange4]DRAC cluster access is not fully configured! See the instructions above.[/]"
@@ -290,7 +290,7 @@ def setup_mila_ssh_access(
         or Path.home() / ".ssh" / "id_rsa_mila.pub"
     )
     private_key_path = public_key_path.with_suffix("")
-
+    logger.debug(f"Expecting the Mila public key to be at {public_key_path}")
     rprint(f"Checking connection to the {cluster} login nodes... ", flush=True)
 
     if login_node := try_to_login(cluster):
@@ -654,7 +654,7 @@ def display_public_key(
     # Simpler, but not as nice-looking alternative:
     from milatools.cli import console
 
-    console.rule(f" Your public key for the {cluster} cluster ")
+    console.rule(f" Your public key for the {cluster} cluster ({public_key})")
     print(public_key.read_text())
     console.rule(subtitle)
     return
