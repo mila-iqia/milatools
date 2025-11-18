@@ -776,7 +776,7 @@ def _setup_ssh_config(
     mila_username: str | None = _get_mila_username(ssh_config)
     drac_username: str | None = _get_drac_username(ssh_config)
     mila_private_key_path = get_ssh_private_key_path(ssh_config, "mila") or (
-        Path.home() / ".ssh/id_rsa_mila"
+        DEFAULT_MILA_PUBKEY_PATH.with_suffix("")
     )
     if mila_username:
         # Check for *.server.mila.quebec in ssh config, to connect to compute nodes
@@ -793,9 +793,12 @@ def _setup_ssh_config(
         for hostname, entry in MILA_ENTRIES.copy().items():
             # todo: Do we want to set the `IdentityFile` value to the ssh key path?
             entry.update(User=mila_username)
-            if not mila_private_key_path.name.startswith("id_"):
-                # Need to add the IdentityFile entry only if the key doesn't have a standard name.
-                entry.update(IdentityFile=str(mila_private_key_path))
+            # Note: we actually only need to add the IdentityFile if the key doesn't
+            # have a standard name like id_rsa, id_ed25519, etc.
+            # Here we do it unambiguously in all cases instead.
+            entry.update(
+                IdentityFile=str(mila_private_key_path.relative_to(Path.home()))
+            )
             _add_ssh_entry(ssh_config, hostname, entry)
             # if "ControlPath" in entry:
             _make_controlpath_dir(entry)
@@ -819,8 +822,7 @@ def _setup_ssh_config(
                         # Try to find a different key than the one used for Mila.
                         if k.with_suffix("") != mila_private_key_path
                     ),
-                    ssh_config_path.parent
-                    / "id_rsa_drac",  # default private key path for DRAC.
+                    DEFAULT_DRAC_PUBKEY_PATH,  # default private key path for DRAC.
                 )
                 if not drac_private_key_path.exists():
                     create_ssh_keypair_and_check_exists(
@@ -834,9 +836,12 @@ def _setup_ssh_config(
                 # This needs to be set for the compute nodes too.
 
             entry.update(User=drac_username)
-            if not drac_private_key_path.name.startswith("id_"):
-                # Need to add the IdentityFile entry only if the key doesn't have a standard name.
-                entry.update(IdentityFile=str(drac_private_key_path))
+            # Note: we actually only need to add the IdentityFile if the key doesn't
+            # have a standard name like id_rsa, id_ed25519, etc.
+            # Here we do it unambiguously in all cases instead.
+            entry.update(
+                IdentityFile=str(drac_private_key_path.relative_to(Path.home()))
+            )
             _add_ssh_entry(ssh_config, hostname, entry)
             _make_controlpath_dir(entry)
 

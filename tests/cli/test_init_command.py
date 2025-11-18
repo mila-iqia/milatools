@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import unittest.mock
 from collections.abc import Generator
 from functools import partial
 from logging import getLogger as get_logger
@@ -334,7 +335,7 @@ def test_fixes_overly_general_cn_entry(
         "hostname": "cn-a001.server.mila.quebec",
         "user": mila_username,
         "proxyjump": "mila",
-        # "identityfile": unittest.mock.ANY,
+        "identityfile": unittest.mock.ANY,
     }
     assert "proxyjump" not in ssh_config.lookup("login.server.mila.quebec")
     assert "proxyjump" not in ssh_config.lookup("login-1.login.server.mila.quebec")

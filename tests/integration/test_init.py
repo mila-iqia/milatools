@@ -54,6 +54,10 @@ USE_MY_REAL_SSH_DIR = os.environ.get("USE_MY_REAL_SSH_DIR", "0") == "1"
 A backup is saved in `BACKUP_SSH_DIR`.
 """
 
+pytestmark = pytest.mark.skipif(
+    not USE_MY_REAL_SSH_DIR, reason="These integration tests use the real ~/.ssh dir."
+)
+
 _real_ssh_config = None
 _real_mila_username = None
 _real_drac_username = None
