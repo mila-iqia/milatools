@@ -244,9 +244,9 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
     if drac_username:
         if sys.platform == "win32":
             rprint(
-                "[red]Setup of DRAC clusters is not supported on Windows.\n"
+                "[bold red]Setup of DRAC clusters is not supported on Windows.\n"
                 "You need to setup the Windows Subsystem for Linux (WSL), and run `mila init` from there.\n"
-                "See this link for instructions on setting up WSL: https://docs.alliancecan.ca/wiki/WSL\n [/red]"
+                "See this link for instructions on setting up WSL: https://docs.alliancecan.ca/wiki/WSL\n [/]"
             )
         else:
             drac_login_nodes = setup_drac_ssh_access(
