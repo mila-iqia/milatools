@@ -54,6 +54,8 @@ ssh_multiplexing_config = (
     else {}
 )
 
+DEFAULT_MILA_PUBKEY_PATH = Path.home() / ".ssh" / "id_rsa_mila.pub"
+DEFAULT_DRAC_PUBKEY_PATH = Path.home() / ".ssh" / "id_rsa_drac.pub"
 
 MILA_ENTRIES: dict[str, dict[str, int | str]] = {
     "mila": {
@@ -285,56 +287,84 @@ def setup_mila_ssh_access(
     )
     cluster = "mila"
 
-    public_key_path = (
-        get_ssh_public_key_path("mila", ssh_config)
-        or Path.home() / ".ssh" / "id_rsa_mila.pub"
+    mila_public_key_path = (
+        get_ssh_public_key_path("mila", ssh_config) or DEFAULT_MILA_PUBKEY_PATH
     )
-    private_key_path = public_key_path.with_suffix("")
-    logger.debug(f"Expecting the Mila public key to be at {public_key_path}")
+
+    for drac_cluster in DRAC_CLUSTERS:
+        if drac_public_key_path := get_ssh_public_key_path(drac_cluster, ssh_config):
+            break
+    else:
+        drac_public_key_path = DEFAULT_DRAC_PUBKEY_PATH
+
+    # This is unexpectedly difficult. If there is only one private keypair in ~/.ssh
+    # then get_ssh_public_key_path will return that one for both mila and drac.
+    # We could use fixed paths to disambiguate them perhaps?
+    if mila_public_key_path == DEFAULT_DRAC_PUBKEY_PATH:
+        mila_public_key_path = DEFAULT_MILA_PUBKEY_PATH
+    elif drac_public_key_path == DEFAULT_MILA_PUBKEY_PATH:
+        drac_public_key_path = DEFAULT_DRAC_PUBKEY_PATH
+    elif drac_public_key_path == mila_public_key_path:
+        warnings.warn(
+            UserWarning(
+                f"The same SSH public key {mila_public_key_path} is being used for "
+                f"both Mila and DRAC clusters! This is not recommended! "
+                f"Consider creating a keypair at {DEFAULT_MILA_PUBKEY_PATH} for Mila "
+                f"and {DEFAULT_DRAC_PUBKEY_PATH} for DRAC respectively."
+            )
+        )
+
+    mila_private_key_path = mila_public_key_path.with_suffix("")
+
+    logger.debug(f"Expecting the Mila public key to be at {mila_public_key_path}")
+    logger.debug(f"Expecting the DRAC public key to be at {drac_public_key_path}")
+
     rprint(f"Checking connection to the {cluster} login nodes... ", flush=True)
 
     if login_node := try_to_login(cluster):
-        if not private_key_path.exists():
+        if not mila_private_key_path.exists():
             raise RuntimeError(
                 f"Able to `ssh {cluster}`, but the private key expected at "
-                f"{private_key_path} doesn't exist! "
+                f"{mila_private_key_path} doesn't exist! "
                 f"Please consider adding an IdentityFile entry pointing to the private "
                 f"key you are using to connect to the Mila cluster in the mila entry of your SSH config. "
             )
 
         rprint(f"✅ Able to `ssh {cluster}`")
-        if can_access_compute_nodes(login_node, public_key_path=public_key_path):
+        if can_access_compute_nodes(login_node, public_key_path=mila_public_key_path):
             rprint(
-                f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+                f"✅ Local {mila_public_key_path} is in ~/.ssh/authorized_keys on the "
                 f"{cluster} cluster, and the permissions are correct. "
                 f"You should have SSH access to the compute nodes."
             )
             return login_node  # all setup.
         rprint(
-            f"❌ Local {public_key_path} is not in ~/.ssh/authorized_keys on the "
+            f"❌ Local {mila_public_key_path} is not in ~/.ssh/authorized_keys on the "
             f"{cluster} cluster, or file permissions are incorrect. Attempting to fix "
             f"this now."
         )
         setup_access_to_compute_nodes(
-            cluster, remote=login_node, public_key_path=public_key_path
+            cluster, remote=login_node, public_key_path=mila_public_key_path
         )
-        if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
+        if not can_access_compute_nodes(
+            login_node, public_key_path=mila_public_key_path
+        ):
             raise RuntimeError(
                 f"Unable to setup SSH access to the compute nodes of the {cluster} "
                 f"cluster! Please reach out to IT-support@mila.quebec or or ask for help "
                 f"on the #mila-cluster slack channel."
             )
         rprint(
-            f"✅ Local {public_key_path} is in ~/.ssh/authorized_keys on the "
+            f"✅ Local {mila_public_key_path} is in ~/.ssh/authorized_keys on the "
             f"{cluster} cluster and file permissions are correct. You should now "
             f"be able to connect to compute nodes with SSH."
         )
         return login_node  # all setup.
 
     if Confirm.ask("Is this your first time connecting to the Mila cluster?"):
-        if not private_key_path.exists():
+        if not mila_private_key_path.exists():
             create_ssh_keypair_and_check_exists(
-                cluster, private_key_path, public_key_path
+                cluster, mila_private_key_path, mila_public_key_path
             )
 
         # If we're on WSL and we just created a new keypair. We also copy it to the
@@ -349,7 +379,7 @@ def setup_mila_ssh_access(
             f" --> [bold blue]{MILA_ONBOARDING_URL}[/]"
         )
         display_public_key(
-            public_key_path,
+            mila_public_key_path,
             cluster="mila",
             subtitle="⬆️ Paste this into the form! ⬆️",
         )
@@ -365,7 +395,7 @@ def setup_mila_ssh_access(
         rprint(
             "[bold orange4]You can only use up to two SSH keys in total to connect to the Mila cluster.[/]\n"
             "We recommend that you copy the public and private SSH keys from that "
-            f"other machine to this machine at paths {public_key_path} and {private_key_path} respectively."
+            f"other machine to this machine at paths {mila_public_key_path} and {mila_private_key_path} respectively."
         )
         rprint(
             "After this is done, run `mila init` again, and reach out to IT-support@mila.quebec if you have any issues."
@@ -373,11 +403,13 @@ def setup_mila_ssh_access(
         return None
     rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
 
-    if not private_key_path.exists():
-        create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
+    if not mila_private_key_path.exists():
+        create_ssh_keypair_and_check_exists(
+            cluster, mila_private_key_path, mila_public_key_path
+        )
 
     display_public_key(
-        public_key_path,
+        mila_public_key_path,
         cluster="mila",
         subtitle="⬆️ This is your Mila SSH public key. ⬆️",
     )
@@ -908,16 +940,16 @@ def get_ssh_public_key_path(
         if hostname in public_key_path.name:
             # for example id_rsa_mila.pub
             return public_key_path
-
     public_keys = sorted(public_keys, key=lambda p: p.stat().st_mtime, reverse=True)
     guessed_key_path = public_keys[0]
     warnings.warn(
         RuntimeWarning(
             f"The SSH config does not specify which key is to be used for host {hostname}, "
-            f"and there are multiple public keys in the ~/.ssh directory! We will use "
-            f"the most recent key at path {guessed_key_path}"
+            f"and there are multiple public keys in the ~/.ssh directory! "
+            # f"We will use the most recent key at path {guessed_key_path}"
         )
     )
+    return None
     return guessed_key_path
 
 
