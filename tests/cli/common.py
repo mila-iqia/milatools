@@ -17,7 +17,7 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
-from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE
+from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE, SSHConfig
 from milatools.utils.remote_v2 import RemoteV2, get_controlpath_for
 
 if typing.TYPE_CHECKING:
@@ -50,6 +50,14 @@ def ssh_to_localhost_is_setup() -> bool:
         ssh_config_path=SSH_CONFIG_FILE,
         ssh_cache_dir=SSH_CACHE_DIR,
     )
+    # Unfortunately needs to be set.
+    config = SSHConfig(SSH_CONFIG_FILE)
+    if "localhost" not in config.hosts():
+        config.add("localhost", StrictHostKeyChecking="no")
+    else:
+        config.set("localhost", StrictHostKeyChecking="no")
+    config.save()
+
     if sys.platform != "win32":
         try:
             _localhost_remote = RemoteV2("localhost", control_path=control_path)
@@ -62,7 +70,9 @@ def ssh_to_localhost_is_setup() -> bool:
         return True
 
     try:
-        _connection = fabric.Connection("localhost")
+        _connection = fabric.Connection(
+            "localhost", inline_ssh_env={"StrictHostKeyChecking": "no"}
+        )
         _connection.open()
     except (
         paramiko.ssh_exception.SSHException,
