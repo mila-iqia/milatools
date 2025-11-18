@@ -41,33 +41,33 @@ jobs:
     env:
       PLATFORM: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v5
-    - name: Install the latest version of uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        version: "latest"
-        enable-cache: true
-        # https://github.com/astral-sh/setup-uv?tab=readme-ov-file#github-authentication-token
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        cache-suffix: ${{ matrix.python-version }}
-    - name: Pin Python version to ${{ matrix.python-version }}
-      run: uv python pin ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: uv sync
-    - name: Setup passwordless SSH access to localhost for tests
-      # Adapted from https://stackoverflow.com/a/60367309/6388696
-      if: runner.os == 'Linux'
-      run: |
-        ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_test -N ''
-        cat > ~/.ssh/config <<EOF
-          Host localhost
-            User $USER
-            HostName 127.0.0.1
-            IdentityFile ~/.ssh/id_ed25519_test
-        EOF
-        echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/id_ed25519_test.pub > ~/.ssh/authorized_keys
-        chmod og-rw ~
-        ssh -o 'StrictHostKeyChecking no' localhost id
+      - uses: actions/checkout@v5
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          # https://github.com/astral-sh/setup-uv?tab=readme-ov-file#github-authentication-token
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-suffix: ${{ matrix.python-version }}
+      - name: Pin Python version to ${{ matrix.python-version }}
+        run: uv python pin ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync
+      - name: Setup passwordless SSH access to localhost for tests
+        # Adapted from https://stackoverflow.com/a/60367309/6388696
+        if: runner.os == 'Linux'
+        run: |
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_test -N ''
+          cat > ~/.ssh/config <<EOF
+            Host localhost
+              User $USER
+              HostName 127.0.0.1
+              IdentityFile ~/.ssh/id_ed25519_test
+          EOF
+          echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/id_ed25519_test.pub > ~/.ssh/authorized_keys
+          chmod og-rw ~
+          ssh -o 'StrictHostKeyChecking no' localhost id
 
       - name: Test with pytest
         run: uv run pytest --cov=milatools --cov-report=xml --cov-append

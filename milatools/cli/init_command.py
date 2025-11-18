@@ -197,7 +197,7 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
               and ~/.ssh/authorized_keys. If not, corrects them.
     3. If the user has a DRAC account, setup the SSH access to the DRAC cluster(s).
         - Login node access:
-            - Generates (another?) keypair to connect to DRAC if there isn't one already.
+            - Generates a keypair to connect to DRAC if there isn't one already.
             - Prints the content of the public key in a nice text block to copy-paste.
             - Displays a link to the CCDB form to submit the public key.
         - DRAC compute nodes access
