@@ -332,7 +332,10 @@ def setup_mila_ssh_access(
         return login_node  # all setup.
 
     if Confirm.ask("Is this your first time connecting to the Mila cluster?"):
-        create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
+        if not private_key_path.exists():
+            create_ssh_keypair_and_check_exists(
+                cluster, private_key_path, public_key_path
+            )
 
         # If we're on WSL and we just created a new keypair. We also copy it to the
         # Windows ssh folder.
@@ -370,7 +373,8 @@ def setup_mila_ssh_access(
         return None
     rprint(f"\n❌ Unable to `ssh {cluster}`!\n")
 
-    create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
+    if not private_key_path.exists():
+        create_ssh_keypair_and_check_exists(cluster, private_key_path, public_key_path)
 
     display_public_key(
         public_key_path,
