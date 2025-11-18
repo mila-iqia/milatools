@@ -825,7 +825,8 @@ def _setup_ssh_config(
                         # Try to find a different key than the one used for Mila.
                         if k.with_suffix("") != mila_private_key_path
                     ),
-                    DEFAULT_DRAC_PUBKEY_PATH,  # default private key path for DRAC.
+                    # default private key path for DRAC.
+                    DEFAULT_DRAC_PUBKEY_PATH.with_suffix(""),
                 )
                 if not drac_private_key_path.exists():
                     create_ssh_keypair_and_check_exists(
