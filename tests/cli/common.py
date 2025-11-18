@@ -51,6 +51,9 @@ def ssh_to_localhost_is_setup() -> bool:
         ssh_cache_dir=SSH_CACHE_DIR,
     )
     # Unfortunately needs to be set.
+    SSH_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if not SSH_CONFIG_FILE.exists():
+        SSH_CONFIG_FILE.touch(mode=0o600)
     config = SSHConfig(SSH_CONFIG_FILE)
     if "localhost" not in config.hosts():
         config.add("localhost", StrictHostKeyChecking="no")
