@@ -796,9 +796,12 @@ def _setup_ssh_config(
             # Note: we actually only need to add the IdentityFile if the key doesn't
             # have a standard name like id_rsa, id_ed25519, etc.
             # Here we do it unambiguously in all cases instead.
-            entry.update(
-                IdentityFile=str(mila_private_key_path.relative_to(Path.home()))
+            identity_file = (
+                mila_private_key_path.relative_to(Path.home())
+                if mila_private_key_path.is_relative_to(Path.home())
+                else mila_private_key_path
             )
+            entry.update(IdentityFile=str(identity_file))
             _add_ssh_entry(ssh_config, hostname, entry)
             # if "ControlPath" in entry:
             _make_controlpath_dir(entry)
@@ -839,9 +842,12 @@ def _setup_ssh_config(
             # Note: we actually only need to add the IdentityFile if the key doesn't
             # have a standard name like id_rsa, id_ed25519, etc.
             # Here we do it unambiguously in all cases instead.
-            entry.update(
-                IdentityFile=str(drac_private_key_path.relative_to(Path.home()))
+            identity_file = (
+                drac_private_key_path.relative_to(Path.home())
+                if drac_private_key_path.is_relative_to(Path.home())
+                else drac_private_key_path
             )
+            entry.update(IdentityFile=str(identity_file))
             _add_ssh_entry(ssh_config, hostname, entry)
             _make_controlpath_dir(entry)
 
