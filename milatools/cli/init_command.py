@@ -1121,7 +1121,7 @@ def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
 def get_windows_home_path_in_wsl() -> Path:
     assert running_inside_WSL()
     windows_home = subprocess.getoutput("powershell.exe '$env:USERPROFILE'").strip()
-    return windows_home
+    return Path(windows_home)
 
 
 def create_ssh_keypair(
