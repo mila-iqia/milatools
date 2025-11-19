@@ -857,7 +857,8 @@ def _setup_ssh_config(
         rprint("Did not change ssh config")
         return ssh_config, mila_username, drac_username
     if not _confirm_changes(ssh_config, previous=initial_config_text):
-        exit("Refused changes to ssh config.")
+        rprint("[orange]Refused changes to ssh config.[/]")
+        return SSHConfig(ssh_config_path), mila_username, drac_username
         # return False, original_config
 
     ssh_config.save()
@@ -1121,8 +1122,8 @@ def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
 @functools.lru_cache
 def get_windows_home_path_in_wsl() -> Path:
     assert running_inside_WSL()
-    windows_home = subprocess.getoutput("powershell.exe '$env:USERPROFILE'").strip()
-    return Path(windows_home)
+    windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
+    return Path(f"/mnt/c/Users/{windows_username}")
 
 
 def create_ssh_keypair(
