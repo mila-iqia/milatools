@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -69,7 +70,7 @@ async def test_run_cli_with_clusters():
 
 
 @pytest.mark.asyncio
-async def test_run_cli_default_clusters():
+async def test_run_cli_default_clusters(tmp_path: Path):
     with (
         patch("milatools.cli.run.RemoteV2") as MockRemoteV2,
         patch(
@@ -81,12 +82,12 @@ async def test_run_cli_default_clusters():
         # Setup mocks
         mock_remote1 = MagicMock(spec=RemoteV2)
         mock_remote1.hostname = "mila"
-        mock_remote1.control_path = "/tmp/mila_control"
+        mock_remote1.control_path = tmp_path / "mila_control"
         mock_remote1._start_async = AsyncMock()
 
         mock_remote2 = MagicMock(spec=RemoteV2)
         mock_remote2.hostname = "narval"
-        mock_remote2.control_path = "/tmp/narval_control"
+        mock_remote2.control_path = tmp_path / "narval_control"
 
         # MockRemoteV2 constructor returns these mocks
         # We need to handle multiple calls to RemoteV2()
