@@ -30,7 +30,10 @@ import milatools.utils.local_v2
 import milatools.utils.parallel_progress
 import milatools.utils.remote_v2
 from milatools.cli import console
-from milatools.cli.init_command import get_windows_home_path_in_wsl, setup_ssh_config
+from milatools.cli.init_command import (
+    get_windows_home_path_in_wsl,
+    setup_ssh_config,
+)
 from milatools.cli.utils import SSH_CONFIG_FILE, running_inside_WSL
 from milatools.utils.compute_node import get_queued_milatools_job_ids
 from milatools.utils.remote_v1 import RemoteV1
@@ -412,6 +415,7 @@ def ssh_config_file(
     mila_username: str | None,
     drac_username: str | None,
     mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
     """Fixture that returns the SSH config file created by `mila init`, using the given
     parameters.
@@ -422,11 +426,23 @@ def ssh_config_file(
     fixtures that are used to create this one. For example, to change the initial contents
     of the SSH config file, parametrize the `initial_contents` fixture indirectly.
     """
-    ssh_dir = tmp_path_factory.mktemp(".ssh")
+    fake_home = tmp_path_factory.mktemp("fakehome")
+    ssh_dir = fake_home / ".ssh"
     ssh_config_path = ssh_dir / "config"
     if initial_contents:
         ssh_config_path.parent.mkdir(parents=True, exist_ok=True)
         ssh_config_path.write_text(textwrap.dedent(initial_contents) + "\n")
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setattr(
+        milatools.cli.init_command,
+        "DEFAULT_DRAC_PUBKEY_PATH",
+        ssh_dir / "id_rsa_drac.pub",
+    )
+    monkeypatch.setattr(
+        milatools.cli.init_command,
+        "DEFAULT_MILA_PUBKEY_PATH",
+        ssh_dir / "id_rsa_mila.pub",
+    )
 
     known_questions_to_answers = {
         "account on the Mila cluster": mila_username is not None,
