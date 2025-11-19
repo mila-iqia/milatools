@@ -7,19 +7,22 @@ on:
       python-version:
         required: false
         type: string
-        default: '3.11'
+        default: "3.11"
       timeout-minutes:
         required: false
         type: number
         default: 30
+      platform:
+        required: false
+        type: string
+        default: "linux"
 
   workflow_dispatch:
-
 
 jobs:
   real-slurm-integration-tests:
     name: integration tests with a real SLURM cluster
-    runs-on: self-hosted
+    runs-on: [self-hosted, "${{ inputs.platform }}"]
 
     steps:
       - name: Check that we have the pre-existing connection to the SLURM cluster.
@@ -27,9 +30,9 @@ jobs:
         # to run the tests; we don't need it to be already running.
         if: ${{ inputs.cluster != 'mila' && inputs.cluster != 'localhost'}}
         run:
-            # Check that the control socket is running on the self-hosted runner so
-            # that we don't have to go through 2FA on DRAC clusters.
-            ssh -O check -oStrictHostKeyChecking=no ${{ inputs.cluster }}
+          # Check that the control socket is running on the self-hosted runner so
+          # that we don't have to go through 2FA on DRAC clusters.
+          ssh -O check -oStrictHostKeyChecking=no ${{ inputs.cluster }}
 
       - uses: actions/checkout@v5
       - name: Install the latest version of uv
