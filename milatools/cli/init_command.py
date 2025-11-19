@@ -467,8 +467,8 @@ def _copy_keys_from_wsl_to_windows(ssh_dir: PosixPath):
             )
             continue
         rprint(
-            f"Copying SSH keypair from WSL .ssh folder at "
-            f"{wsl_private_key_path} to Windows ssh directory at {windows_ssh_dir}"
+            f"Copying SSH keypair from WSL ({wsl_private_key_path}) to Windows "
+            f"({windows_private_key_path})."
         )
         if not windows_private_key_path.exists():
             shutil.copy(wsl_private_key_path, windows_private_key_path)
@@ -513,8 +513,8 @@ def _copy_keys_from_windows_to_wsl(ssh_dir: PosixPath):
             )
             continue
         rprint(
-            f"Copying SSH keypair from Windows .ssh folder at "
-            f"{windows_private_key_path} to WSL ssh directory at {ssh_dir}"
+            f"Copying SSH keypair from Windows ({windows_private_key_path}) to WSL "
+            f"({ssh_dir})"
         )
         if not wsl_private_key_path.exists():
             shutil.copy(windows_private_key_path, wsl_private_key_path)
