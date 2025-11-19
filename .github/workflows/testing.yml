@@ -19,7 +19,48 @@ on:
 jobs:
   real-slurm-integration-tests:
     name: integration tests with a real SLURM cluster
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux]
+
+    steps:
+      - name: Check that we have the pre-existing connection to the SLURM cluster.
+        # TODO: mila cluster doesn't use 2FA yet, so we can actually create the connection
+        # to run the tests; we don't need it to be already running.
+        if: ${{ inputs.cluster != 'mila' && inputs.cluster != 'localhost'}}
+        run:
+            # Check that the control socket is running on the self-hosted runner so
+            # that we don't have to go through 2FA on DRAC clusters.
+            ssh -O check -oStrictHostKeyChecking=no ${{ inputs.cluster }}
+
+      - uses: actions/checkout@v5
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          # https://github.com/astral-sh/setup-uv?tab=readme-ov-file#github-authentication-token
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-suffix: ${{ inputs.python-version }}
+      - name: Pin Python version to ${{ inputs.python-version }}
+        run: uv python pin ${{ inputs.python-version }}
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Launch integration tests
+        id: self_hosted_integration_tests
+        run: uv run pytest --slow --cov=milatools --cov-report=xml --cov-append -vvv --log-level=DEBUG
+        timeout-minutes: ${{ inputs.timeout-minutes }}
+        env:
+          SLURM_CLUSTER: ${{ inputs.cluster }}
+
+      - name: Store coverage report as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports-integration-${{ inputs.cluster }}-${{ inputs.python-version }}
+          path: ./coverage.xml
+
+  real-slurm-integration-tests-WSL:
+    name: integration tests with a real SLURM cluster
+    runs-on: [self-hosted, WSL]
 
     steps:
       - name: Check that we have the pre-existing connection to the SLURM cluster.
