@@ -42,6 +42,7 @@ from milatools.cli.init_command import (
     setup_windows_ssh_config_from_wsl,
 )
 from milatools.cli.profile import ensure_program, setup_profile
+from milatools.cli.run import run_cli
 from milatools.cli.utils import (
     CLUSTERS,
     AllocationFlagsAction,
@@ -208,6 +209,26 @@ def add_arguments(parser: argparse.ArgumentParser):
         metavar="VALUE",
     )
     forward_parser.set_defaults(function=forward)
+
+    # ----- mila run ------
+
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a command on multiple clusters.",
+        formatter_class=SortingHelpFormatter,
+    )
+    run_parser.add_argument(
+        "COMMAND",
+        nargs=argparse.REMAINDER,
+        help="Command to run",
+    )
+    run_parser.add_argument(
+        "--clusters",
+        type=str,
+        default=None,
+        help="Comma-separated list of clusters to run on. Defaults to all active connections.",
+    )
+    run_parser.set_defaults(function=run_cli)
 
     # ----- mila code ------
 
