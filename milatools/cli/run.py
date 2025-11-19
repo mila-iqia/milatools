@@ -45,7 +45,7 @@ async def run(
     # Handle exceptions (e.g. connection errors) by converting them to CompletedProcess with error info
     return [
         result
-        if not isinstance(result, Exception)
+        if not isinstance(result, BaseException)
         # Create a fake CompletedProcess for the error
         else subprocess.CompletedProcess(
             args=command,
@@ -105,6 +105,8 @@ async def run_cli(command: str | list[str], clusters: str | list[str] | None = N
     if isinstance(command, str):
         cmd_str = command
     else:
+        # It's only a list of strings because of argparse.REMAINDER.
+        # This doesn't mean 'multiple commands'.
         cmd_str = " ".join(command)
 
     if isinstance(clusters, str):
