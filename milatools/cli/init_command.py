@@ -313,7 +313,9 @@ def setup_mila_ssh_access(
         )
 
     mila_private_key_path = mila_public_key_path.with_suffix("")
-
+    if mila_private_key_path.exists():
+        mila_private_key_path.chmod(0o600)
+        mila_public_key_path.chmod(0o644)
     logger.debug(f"Expecting the Mila public key to be at {mila_public_key_path}")
     logger.debug(f"Expecting the DRAC public key to be at {drac_public_key_path}")
 
@@ -557,10 +559,10 @@ def setup_drac_ssh_access(
     ) or next(
         (
             k.with_suffix("")
-            for k in ssh_dir.glob("id_*.pub")
+            for k in ssh_dir.glob("*.pub")
             if k.with_suffix("") != mila_private_key
         ),
-        ssh_dir / "id_rsa_drac",  # default private key path for DRAC.
+        DEFAULT_DRAC_PUBKEY_PATH.with_suffix(""),  # default private key path for DRAC.
     )
 
     drac_public_key = drac_private_key.with_suffix(".pub")
@@ -574,6 +576,9 @@ def setup_drac_ssh_access(
         rprint("Submit your public key to the DRAC form at this URL:")
         rprint(f" :arrow_right: [bold blue]{DRAC_FORM_URL}[/] :arrow_left:")
         return []
+    else:
+        drac_private_key.chmod(0o600)
+        drac_public_key.chmod(0o644)
 
     display_public_key(drac_public_key, cluster="DRAC")
 
