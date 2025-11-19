@@ -73,9 +73,8 @@ def ssh_to_localhost_is_setup() -> bool:
         return True
 
     try:
-        _connection = fabric.Connection(
-            "localhost", inline_ssh_env={"StrictHostKeyChecking": "no"}
-        )
+        # todo: do we need to disable strict host key checking here as well?
+        _connection = fabric.Connection("localhost")
         _connection.open()
     except (
         paramiko.ssh_exception.SSHException,
