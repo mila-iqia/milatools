@@ -53,6 +53,6 @@ async def test_run_cli(
         milatools.cli.run, "console", mock_console := Mock(wraps=milatools.cli.console)
     )
 
-    await run_cli(command, "localhost")
+    await run_cli(command.split(), clusters="localhost")
     mock_console.print.assert_called()
     assert expected in capsys.readouterr()[0]

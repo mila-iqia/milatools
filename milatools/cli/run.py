@@ -42,7 +42,7 @@ async def run(
         return_exceptions=True,
     )
 
-    # Handle exceptions (e.g. connection errors) by converting them to CompletedProcesswith error info
+    # Handle exceptions (e.g. connection errors) by converting them to CompletedProcess with error info
     return [
         result
         if not isinstance(result, Exception)
