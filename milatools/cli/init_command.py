@@ -35,6 +35,7 @@ logger = get_logger(__name__)
 
 WINDOWS_UNSUPPORTED_KEYS = ["ControlMaster", "ControlPath", "ControlPersist"]
 DRAC_FORM_URL = "https://ccdb.alliancecan.ca/ssh_authorized_keys"
+DRAC_ACCESS_REQUEST_URL = "https://ccdb.alliancecan.ca/me/access_systems"
 MILA_ONBOARDING_URL = "https://sites.google.com/mila.quebec/mila-intranet/it-infrastructure/it-onboarding-training"
 MILA_SSHKEYS_DOCS_URL = "https://docs.mila.quebec/Userguide.html#ssh-private-keys"
 ON_WINDOWS = sys.platform == "win32"
@@ -596,6 +597,11 @@ def setup_drac_ssh_access(
                 "[bold]Please submit :arrow_up: your DRAC public key above :arrow_up: "
                 "to CCDB using this form: \n"
                 f" :arrow_right: [link={DRAC_FORM_URL}]{DRAC_FORM_URL}[/] :arrow_left:\n"
+                "\n"
+            )
+            rprint(
+                f"[bold]Make sure that you requested access to the {drac_cluster} cluster here:\n"
+                f" :arrow_right: [link={DRAC_ACCESS_REQUEST_URL}]{DRAC_ACCESS_REQUEST_URL}[/] :arrow_left:\n"
                 "\n"
             )
             rprint(
