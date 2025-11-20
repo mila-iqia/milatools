@@ -806,9 +806,9 @@ def _setup_ssh_config(
             # have a standard name like id_rsa, id_ed25519, etc.
             # Here we do it unambiguously in all cases instead.
             identity_file = (
-                mila_private_key_path.relative_to(Path.home())
+                ("~" / mila_private_key_path.relative_to(Path.home()))
                 if mila_private_key_path.is_relative_to(Path.home())
-                else mila_private_key_path
+                else mila_private_key_path.absolute()
             )
             entry.update(IdentityFile=str(identity_file))
             _add_ssh_entry(ssh_config, hostname, entry)
@@ -853,7 +853,7 @@ def _setup_ssh_config(
             # have a standard name like id_rsa, id_ed25519, etc.
             # Here we do it unambiguously in all cases instead.
             identity_file = (
-                drac_private_key_path.relative_to(Path.home())
+                ("~" / drac_private_key_path.relative_to(Path.home()))
                 if drac_private_key_path.is_relative_to(Path.home())
                 else drac_private_key_path
             )
