@@ -31,6 +31,7 @@ import milatools.utils.parallel_progress
 import milatools.utils.remote_v2
 from milatools.cli import console
 from milatools.cli.init_command import (
+    create_ssh_keypair,
     get_windows_home_path_in_wsl,
     setup_ssh_config,
 )
@@ -451,6 +452,12 @@ def ssh_config_file(
         "username on the DRAC/ComputeCanada clusters": drac_username,
         "Is this OK?": True,
     }
+
+    monkeypatch.setattr(
+        milatools.cli.init_command,
+        "create_ssh_keypair",
+        lambda k, passphrase: create_ssh_keypair(k, passphrase=""),
+    )
 
     # This is a placeholder; in a real implementation, this would return the actual account name.
     def mocked_confirm(question: str, *args, **kwargs) -> bool:
