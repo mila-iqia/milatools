@@ -591,8 +591,6 @@ def setup_drac_ssh_access(
         )
         public_key_path = private_key_path.with_suffix(".pub")
         if not (login_node := try_to_login(drac_cluster)):
-            assert False, RemoteV2(drac_cluster)
-
             rprint(f"❌ Unable to `ssh {drac_cluster}`!")
             rprint(
                 "[bold]Please submit :arrow_up: your DRAC public key above :arrow_up: "
