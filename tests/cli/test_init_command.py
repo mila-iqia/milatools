@@ -453,7 +453,7 @@ def test_get_username(
             textwrap.dedent(
                 """\
                 Host narval
-                  HostName narval.computecanada.ca
+                  HostName narval.alliancecan.ca
                   User bob
                 """
             ),
@@ -465,7 +465,7 @@ def test_get_username(
             textwrap.dedent(
                 """\
                 Host beluga cedar graham narval niagara
-                  HostName %h.computecanada.ca
+                  HostName %h.alliancecan.ca
                   ControlMaster auto
                   ControlPath ~/.cache/ssh/%r@%h:%p
                   ControlPersist 600
