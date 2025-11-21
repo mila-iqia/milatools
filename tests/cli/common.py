@@ -32,6 +32,9 @@ in_github_CI = os.environ.get("GITHUB_ACTIONS") == "true"
 in_self_hosted_github_CI = (
     in_github_CI and os.environ.get("GITHUB_ACTION") == "self_hosted_integration_tests"
 )
+in_self_hosted_github_ci = in_github_CI and (
+    "self-hosted" in os.environ.get("RUNNER_LABELS", "")
+)
 in_github_cloud_CI = in_github_CI and not in_self_hosted_github_CI
 
 skip_if_on_github_cloud_CI = pytest.mark.skipif(

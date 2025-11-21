@@ -36,7 +36,7 @@ from milatools.cli.init_command import (
 from milatools.cli.utils import SSHConfig, yn
 from tests.conftest import initial_contents
 
-from .common import on_windows, xfails_on_windows
+from .common import in_github_cloud_CI, on_windows, xfails_on_windows
 
 logger = get_logger(__name__)
 
@@ -316,6 +316,10 @@ def test_add_ssh_entry(
                 assert resolved_value == value, option
 
 
+@pytest.mark.xfail(
+    in_github_cloud_CI and sys.platform == "darwin",
+    reason="Flaky on MacOS GitHub CI, socket.getfqdn takes >10 seconds to run.",
+)
 @pytest.mark.parametrize(
     initial_contents.__name__,
     [
@@ -434,6 +438,10 @@ def test_get_username(
     assert _get_mila_username(ssh_config) == expected
 
 
+@pytest.mark.xfail(
+    in_github_cloud_CI and sys.platform == "darwin",
+    reason="Flaky on MacOS GitHub CI, socket.getfqdn sometimes takes >10 seconds to run.",
+)
 @pytest.mark.parametrize(
     ("contents", "prompt_inputs", "expected"),
     [
