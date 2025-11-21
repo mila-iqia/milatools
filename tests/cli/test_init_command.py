@@ -23,6 +23,7 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import init_command
 from milatools.cli.init_command import (
+    ON_WINDOWS,
     _get_drac_username,
     _get_mila_username,
     _setup_ssh_config_file,
@@ -898,12 +899,20 @@ def linux_ssh_key(linux_ssh_dir: Path):
     return private_key_path
 
 
+# On Windows, we can't create files in the WSL directory with the right permissions.
+# This works when run from WSL, but not when run from Windows directly.
+# Perhaps we could invoke WSL from Windows to do this copy and chmod?
+# if shutil.which("wsl.exe") is not None: do something
+
+
+@pytest.mark.skipif(ON_WINDOWS, reason="Can't run on Windows.")
 def test_copy_keys_from_wsl_to_windows(
     windows_home: Path,
     linux_ssh_dir: PosixPath,
     linux_home: PosixPath,
     linux_ssh_key: Path,
 ):
+    # This test should be run from WSL.
     linux_private_key_path = linux_ssh_key
     linux_public_key_path = linux_ssh_key.with_suffix(".pub")
     copy_ssh_keys_between_wsl_and_windows(linux_ssh_dir)
@@ -924,11 +933,13 @@ def test_copy_keys_from_wsl_to_windows(
     assert windows_public_key_path.read_bytes().count(b"\r\n") != 0
 
 
+@pytest.mark.skipif(ON_WINDOWS, reason="Can't run on Windows.")
 def test_copy_keys_from_windows_to_wsl(
     windows_home: Path,
     linux_home: PosixPath,
     fake_linux_ssh_keypair: tuple[Path, Path],
 ):
+    # This test should be run from WSL.
     linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
     windows_ssh_dir = windows_home / ".ssh"
     assert not windows_ssh_dir.exists()
