@@ -5,10 +5,10 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'README.md'
+      - "README.md"
   pull_request:
     paths-ignore:
-      - 'README.md'
+      - "README.md"
 
 # https://stackoverflow.com/a/72408109/6388696
 # https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-concurrency-to-cancel-any-in-progress-job-or-run
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: "3.10"
       - run: pip install "pre-commit<4.0.0"
       - run: pre-commit --version
       - run: pre-commit install
@@ -37,49 +37,50 @@ jobs:
       max-parallel: 4
       matrix:
         platform: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     env:
       PLATFORM: ${{ matrix.platform }}
     steps:
-    - uses: actions/checkout@v5
-    - name: Install the latest version of uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        version: "latest"
-        enable-cache: true
-        # https://github.com/astral-sh/setup-uv?tab=readme-ov-file#github-authentication-token
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        cache-suffix: ${{ matrix.python-version }}
-    - name: Pin Python version to ${{ matrix.python-version }}
-      run: uv python pin ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: uv sync
-    - name: Setup passwordless SSH access to localhost for tests
-      # Adapted from https://stackoverflow.com/a/60367309/6388696
-      if: runner.os == 'Linux'
-      run: |
-        ssh-keygen -t ed25519 -f ~/.ssh/testkey -N ''
-        cat > ~/.ssh/config <<EOF
-          Host localhost
-            User $USER
-            HostName 127.0.0.1
-            IdentityFile ~/.ssh/testkey
-        EOF
-        echo -n 'from="127.0.0.1" ' | cat - ~/.ssh/testkey.pub > ~/.ssh/authorized_keys
-        chmod og-rw ~
-        ssh -o 'StrictHostKeyChecking no' localhost id
+      - uses: actions/checkout@v5
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          # https://github.com/astral-sh/setup-uv?tab=readme-ov-file#github-authentication-token
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-suffix: ${{ matrix.python-version }}
+      - name: Pin Python version to ${{ matrix.python-version }}
+        run: uv python pin ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync
+      - name: Setup passwordless SSH access to localhost for tests
+        # Adapted from https://stackoverflow.com/a/60367309/6388696
+        if: runner.os == 'Linux'
+        run: |
+          ssh-keygen -t ed25519 -f ~/_id_ed25519_test -N ''
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          cat > ~/.ssh/config <<EOF
+            Host localhost
+              User $USER
+              HostName 127.0.0.1
+              IdentityFile ~/_id_ed25519_test
+          EOF
+          echo -n 'from="127.0.0.1" ' | cat - ~/_id_ed25519_test.pub > ~/.ssh/authorized_keys
+          chmod og-rw ~
+          ssh -o 'StrictHostKeyChecking no' localhost id
 
-    - name: Test with pytest
-      run: uv run pytest --cov=milatools --cov-report=xml --cov-append
+      - name: Test with pytest
+        run: uv run pytest --cov=milatools --cov-report=xml --cov-append
 
-    - name: Store coverage report as an artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-reports-unit-${{ matrix.platform }}-${{ matrix.python-version }}
-        path: ./coverage.xml
+      - name: Store coverage report as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports-unit-${{ matrix.platform }}-${{ matrix.python-version }}
+          path: ./coverage.xml
 
   real-slurm-integration-tests:
-
     name: integration tests with a real SLURM cluster
     needs: [unit-tests]
 
@@ -88,8 +89,8 @@ jobs:
       matrix:
         # TODO: We should ideally also run this with Windows/Mac clients and a Linux
         # server. Unsure how to set that up with GitHub Actions though.
-        python-version: ['3.11']
-        cluster: ['mila']
+        python-version: ["3.11"]
+        cluster: ["mila"]
     uses: ./.github/workflows/testing.yml
     with:
       cluster: ${{ matrix.cluster }}

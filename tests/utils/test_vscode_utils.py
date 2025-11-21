@@ -144,7 +144,7 @@ async def test_sync_vscode_extensions(
     mock_find_code_server_executable.assert_called()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def vscode_extensions(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
