@@ -672,7 +672,7 @@ def test_setup_windows_ssh_config_from_wsl(
     windows_home: Path,
     linux_ssh_config: SSHConfig,
     file_regression: FileRegressionFixture,
-    fake_linux_ssh_keypair: tuple[Path, Path],  # add this fixture so the keys exist.
+    # fake_linux_ssh_keypair: tuple[Path, Path],  # add this fixture so the keys exist.
     accept_changes: bool,
     input_stream: io.StringIO,
     linux_home: Path,
@@ -681,6 +681,8 @@ def test_setup_windows_ssh_config_from_wsl(
     # home during testing.
     # This way, we can check that running the function will correctly change the
     # identityfile from linux to windows home.
+    initial_contents = linux_ssh_config.cfg.config()
+
     linux_ssh_config.path.write_text(
         linux_ssh_config.path.read_text()
         .replace("~", str(linux_home))
@@ -689,7 +691,6 @@ def test_setup_windows_ssh_config_from_wsl(
     )
     linux_ssh_config = SSHConfig(linux_ssh_config.path)
 
-    initial_contents = linux_ssh_config.cfg.config()
     linux_ssh_dir = linux_ssh_config.path.parent
     assert isinstance(linux_ssh_dir, PosixPath)
     windows_ssh_config_path = windows_home / ".ssh" / "config"
@@ -714,7 +715,14 @@ def test_setup_windows_ssh_config_from_wsl(
         # Unclear why paramiko returns a list here.
         assert isinstance(identity_file_entries, list)
         assert len(identity_file_entries) == 1
-        assert Path(identity_file_entries[0]) == (windows_home / ".ssh" / "id_rsa_mila")
+        # .lookup("mila") does the expansion of '~', so we can't compare to Path.home()
+        # (which we mocked with the `linux_home` fixture above).
+        # We mocked Path.home() so a `identity_file_path.relative_to(Path.home())` would
+        # not crash during testing.
+        assert (
+            Path(identity_file_entries[0])
+            == Path(os.environ["HOME"]) / ".ssh/id_rsa_mila"
+        )
 
     assert windows_ssh_config_path.exists()
     assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
@@ -722,14 +730,6 @@ def test_setup_windows_ssh_config_from_wsl(
     if not accept_changes:
         assert windows_ssh_config_path.read_text() == ""
 
-    initial_contents = initial_contents.replace(
-        str(windows_home), "<WINDOWS_HOME>"
-    ).replace(str(linux_home), "<WSL_HOME>")
-    actual_contents = (
-        windows_ssh_config_path.read_text()
-        .replace(str(windows_home), "<WINDOWS_HOME>")
-        .replace(str(linux_home), "<WSL_HOME>")
-    )
     expected_text = "\n".join(
         [
             "When this SSH config is already present in the WSL environment with "
@@ -751,7 +751,7 @@ def test_setup_windows_ssh_config_from_wsl(
             "leads the following ssh config file on the Windows side:",
             "",
             "```",
-            actual_contents,
+            windows_ssh_config_path.read_text(),
             "```",
         ]
     )
@@ -889,7 +889,6 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     windows_home: Path,
     linux_home: PosixPath,
     fake_linux_ssh_keypair: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
     input_stream: io.StringIO,
 ):
     # The references to the linux SSH keys in "home" need to be adjusted to point to the

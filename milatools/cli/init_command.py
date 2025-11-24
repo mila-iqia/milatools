@@ -1130,6 +1130,7 @@ def _copy_if_needed(linux_key_file: Path, windows_key_file: Path):
 
 @functools.lru_cache
 def get_windows_home_path_in_wsl() -> Path:
+    """Returns the path to the Windows home directory from within WSL."""
     assert running_inside_WSL()
     windows_username = subprocess.getoutput("powershell.exe '$env:UserName'").strip()
     return Path(f"/mnt/c/Users/{windows_username}")
@@ -1438,8 +1439,8 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
             # Tricky: need to remap the path to the Windows path.
             identityfile_path = Path(identityfile).expanduser().resolve()
             windows_identityfile = (
-                get_windows_home_path_in_wsl()
-                / identityfile_path.relative_to(Path.home())
+                # NOTE: This actually works, even on Windows!
+                "~" / identityfile_path.relative_to(Path.home())
             )
             windows_ssh_entry["identityfile"] = str(windows_identityfile)
 
