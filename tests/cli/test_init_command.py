@@ -892,6 +892,18 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     monkeypatch: pytest.MonkeyPatch,
     input_stream: io.StringIO,
 ):
+    # The references to the linux SSH keys in "home" need to be adjusted to point to the
+    # home during testing.
+    # This way, we can check that running the function will correctly change the
+    # identityfile from linux to windows home.
+    linux_ssh_config.path.write_text(
+        linux_ssh_config.path.read_text()
+        .replace("~", str(linux_home))
+        # Real home directory:
+        .replace(os.environ["HOME"], str(linux_home))
+    )
+    linux_ssh_config = SSHConfig(linux_ssh_config.path)
+
     linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
     prompt_inputs = [
         "y",  # accept creating the Windows config file
