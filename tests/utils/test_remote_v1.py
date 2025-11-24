@@ -25,7 +25,13 @@ from milatools.utils.remote_v1 import (
     get_first_node_name,
 )
 
-from ..cli.common import function_call_string
+from ..cli.common import function_call_string, in_self_hosted_github_CI
+
+pytestmark = pytest.mark.skipif(
+    in_self_hosted_github_CI,
+    #  Plus, we don't care about these on the self-hosted runner.
+    reason="These tests cause 'I/O operation on closed file' on the self-hosted runner.",
+)
 
 
 @pytest.mark.parametrize(
