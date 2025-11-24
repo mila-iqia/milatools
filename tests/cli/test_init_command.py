@@ -666,6 +666,10 @@ def linux_ssh_config(
     return SSHConfig(ssh_config_file)
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and in_github_cloud_CI,
+    reason="TODO: Getting a weird timeout (10s) in paramiko.SSHConfig.lookup in Github CI on MacOS.",
+)
 @pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
 def test_setup_windows_ssh_config_from_wsl(
     pretend_to_be_in_WSL,  # here even if `windows_home` already uses it (more explicit)
