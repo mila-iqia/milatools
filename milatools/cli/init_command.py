@@ -1431,18 +1431,17 @@ def _copy_valid_ssh_entries_to_windows_ssh_config_file(
         windows_ssh_entry = {
             key: value
             for key, value in linux_ssh_entry.items()
-            if key.lower() not in unsupported_keys_lowercase
+            if key.lower() not in unsupported_keys_lowercase and key != "identityfile"
         }
 
-        if identityfile := linux_ssh_entry.get("IdentityFile"):
+        if identityfile := linux_ssh_entry.get("identityfile"):
             # Tricky: need to remap the path to the Windows path.
             identityfile_path = Path(identityfile).expanduser().resolve()
             windows_identityfile = (
                 get_windows_home_path_in_wsl()
-                / ".ssh"
-                / identityfile_path.relative_to(Path.home() / ".ssh")
+                / identityfile_path.relative_to(Path.home())
             )
-            windows_ssh_entry["IdentityFile"] = str(windows_identityfile)
+            windows_ssh_entry["identityfile"] = str(windows_identityfile)
 
         _add_ssh_entry(windows_ssh_config, host, windows_ssh_entry)
 
