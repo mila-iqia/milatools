@@ -72,15 +72,6 @@ async def code(
     # Connect to the cluster's login node.
     login_node = await RemoteV2.connect(cluster)
 
-    public_key_path = get_ssh_public_key_path(
-        cluster, ssh_config=SSHConfig(SSH_CONFIG_FILE)
-    ) or (DEFAULT_MILA_PUBKEY_PATH if cluster == "mila" else DEFAULT_DRAC_PUBKEY_PATH)
-    if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
-        logger.info("Setting up access to compute nodes...")
-        setup_access_to_compute_nodes(
-            cluster, remote=login_node, public_key_path=public_key_path
-        )
-
     relative_path: PurePosixPath | None = None
     # Get $HOME because we have to give the full path to the folder to the code command.
     home = PurePosixPath(
@@ -106,6 +97,15 @@ async def code(
     except Exception as exc:
         logger.warning(
             f"Unable to check the disk-quota on the {cluster} cluster: {exc}"
+        )
+
+    public_key_path = get_ssh_public_key_path(
+        cluster, ssh_config=SSHConfig(SSH_CONFIG_FILE)
+    ) or (DEFAULT_MILA_PUBKEY_PATH if cluster == "mila" else DEFAULT_DRAC_PUBKEY_PATH)
+    if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
+        logger.info("Setting up access to compute nodes...")
+        setup_access_to_compute_nodes(
+            cluster, remote=login_node, public_key_path=public_key_path
         )
 
     # NOTE: Perhaps we could eventually do this check dynamically, if the cluster is an
