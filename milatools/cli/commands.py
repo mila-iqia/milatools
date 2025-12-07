@@ -34,12 +34,7 @@ from typing_extensions import TypedDict, deprecated
 from milatools.cli import console
 from milatools.cli.code import code
 from milatools.cli.init_command import (
-    print_welcome_message,
-    setup_keys_on_login_node,
-    setup_passwordless_ssh_access,
-    setup_ssh_config,
-    setup_vscode_settings,
-    setup_windows_ssh_config_from_wsl,
+    init,
 )
 from milatools.cli.profile import ensure_program, setup_profile
 from milatools.cli.utils import (
@@ -54,7 +49,6 @@ from milatools.cli.utils import (
     get_fully_qualified_name,
     get_hostname_to_use_for_compute_node,
     randname,
-    running_inside_WSL,
     with_control_file,
 )
 from milatools.utils.disk_quota import check_disk_quota_v1
@@ -108,6 +102,7 @@ def main():
         github_issue_url = (
             f"https://github.com/mila-iqia/milatools/issues/new?{urlencode(options)}"
         )
+
         print(
             T.bold_yellow(
                 f"An error occurred during the execution of the command `{command}`. "
@@ -506,33 +501,6 @@ def intranet(search: Sequence[str]) -> None:
         url = "https://intranet.mila.quebec"
     print(f"Opening the intranet: {url}")
     webbrowser.open(url)
-
-
-def init():
-    """Set up your configuration and credentials."""
-
-    #############################
-    # Step 1: SSH Configuration #
-    #############################
-
-    print("Checking ssh config")
-
-    ssh_config = setup_ssh_config()
-
-    success = setup_passwordless_ssh_access(ssh_config=ssh_config)
-    if not success:
-        exit()
-
-    # if we're running on WSL, we actually just copy the id_rsa + id_rsa.pub and the
-    # ~/.ssh/config to the Windows ssh directory (taking care to remove the
-    # ControlMaster-related entries) so that the user doesn't need to install Python on
-    # the Windows side.
-    if running_inside_WSL():
-        setup_windows_ssh_config_from_wsl(linux_ssh_config=ssh_config)
-
-    setup_keys_on_login_node()
-    setup_vscode_settings()
-    print_welcome_message()
 
 
 def forward(

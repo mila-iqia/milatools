@@ -345,7 +345,7 @@ async def test_del_computenode(
         await login_node_v2.run_async(f"scancel {job_id}")
 
 
-@pytest_asyncio.fixture(params=[False, True], ids=["sync", "async"])
+@pytest_asyncio.fixture(scope="function", params=[False, True], ids=["sync", "async"])
 async def mock_closed_compute_node(
     request: pytest.FixtureRequest,
     ssh_config_file: Path,

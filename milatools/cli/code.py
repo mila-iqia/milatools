@@ -1,3 +1,10 @@
+"""
+
+TODO: If we need to add a ssh-key on the login node and add it to authorized_keys to get
+ssh access to compute nodes, do it here instead of in mila init, since we're already
+going to go through 2FA once.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,10 +14,19 @@ from logging import getLogger as get_logger
 from pathlib import PurePosixPath
 
 from milatools.cli import console
-from milatools.cli.init_command import DRAC_CLUSTERS
+from milatools.cli.init_command import (
+    DEFAULT_DRAC_PUBKEY_PATH,
+    DEFAULT_MILA_PUBKEY_PATH,
+    DRAC_CLUSTERS,
+    can_access_compute_nodes,
+    get_ssh_public_key_path,
+    setup_access_to_compute_nodes,
+)
 from milatools.cli.utils import (
+    SSH_CONFIG_FILE,
     CommandNotFoundError,
     MilatoolsUserError,
+    SSHConfig,
     currently_in_a_test,
     internet_on_compute_nodes,
     running_inside_WSL,
@@ -81,6 +97,15 @@ async def code(
     except Exception as exc:
         logger.warning(
             f"Unable to check the disk-quota on the {cluster} cluster: {exc}"
+        )
+
+    public_key_path = get_ssh_public_key_path(
+        cluster, ssh_config=SSHConfig(SSH_CONFIG_FILE)
+    ) or (DEFAULT_MILA_PUBKEY_PATH if cluster == "mila" else DEFAULT_DRAC_PUBKEY_PATH)
+    if not can_access_compute_nodes(login_node, public_key_path=public_key_path):
+        logger.info("Setting up access to compute nodes...")
+        setup_access_to_compute_nodes(
+            cluster, remote=login_node, public_key_path=public_key_path
         )
 
     # NOTE: Perhaps we could eventually do this check dynamically, if the cluster is an

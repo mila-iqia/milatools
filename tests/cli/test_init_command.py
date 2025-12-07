@@ -1,62 +1,43 @@
 from __future__ import annotations
 
 import contextlib
-import errno
-import getpass
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
 import textwrap
+import unittest.mock
+from collections.abc import Generator
 from functools import partial
 from logging import getLogger as get_logger
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PosixPath
+from typing import Any
 from unittest.mock import Mock
 
-import invoke
-import paramiko
 import pytest
 import pytest_mock
-import questionary
-from prompt_toolkit.input import PipeInput, create_pipe_input
+import rich.prompt
+from paramiko.config import SSHConfig as SshConfigReader
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import init_command
 from milatools.cli.init_command import (
-    DRAC_CLUSTERS,
+    ON_WINDOWS,
     _get_drac_username,
     _get_mila_username,
     _setup_ssh_config_file,
+    copy_ssh_keys_between_wsl_and_windows,
     create_ssh_keypair,
-    get_windows_home_path_in_wsl,
     has_passphrase,
-    setup_keys_on_login_node,
-    setup_passwordless_ssh_access,
-    setup_passwordless_ssh_access_to_cluster,
-    setup_ssh_config,
     setup_vscode_settings,
     setup_windows_ssh_config_from_wsl,
 )
-from milatools.cli.utils import SSHConfig, running_inside_WSL
-from milatools.utils.local_v1 import LocalV1, check_passwordless
-from milatools.utils.remote_v1 import RemoteV1
-from milatools.utils.remote_v2 import (
-    SSH_CACHE_DIR,
-    SSH_CONFIG_FILE,
-    RemoteV2,
-    get_controlpath_for,
-    is_already_logged_in,
-)
+from milatools.cli.utils import SSHConfig, yn
+from tests.conftest import initial_contents
 
-from .common import (
-    function_call_string,
-    in_github_CI,
-    in_self_hosted_github_CI,
-    on_windows,
-    passwordless_ssh_connection_to_localhost_is_setup,
-    xfails_on_windows,
-)
+from .common import in_github_cloud_CI, on_windows, xfails_on_windows
 
 logger = get_logger(__name__)
 
@@ -84,37 +65,44 @@ def permission_bits_check_doesnt_work_on_windows():
     )
 
 
-# Set a module-level mark: Each test cannot take longer than 1 second to run.
+# Set a module-level mark: Each test cannot take longer than X second to run.
 pytestmark = pytest.mark.timeout(10)
 
 
 @pytest.fixture
-def input_pipe(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
-    """Fixture that creates an input pipe and makes questionary use it.
+def input_stream(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Generator[io.StringIO, None, None]:
+    """Fixture that creates an input stream to be used to mock user input in tests.
 
-    TODO: This is super uber ugly to use. We should switch to something like a
-    known_question to answer mapping instead.
-
-    To use it, call `input_pipe.send_text("some text")`.
-
-    NOTE: Important: Send the \\r (with one backslash) character if the prompt is on a
-    newline.
-    For confirmation prompts, just send one letter, otherwise the '\r' is passed to the
-    next prompt, which sees it as just pressing enter, which uses the default value.
+    This creates a `io.StringIO` object that can be read and written to, and is passed
+    as the `stream` argument to `rich.prompt.Prompt.ask` and `rich.prompt.Confirm.ask`.
     """
-    request.node.add_marker(raises_NoConsoleScreenBufferError_on_windows_ci_action())
-    with create_pipe_input() as input_pipe:
+    # with io.StringIO() as s:
+    # Note: Using a temporary file would allow us to do relative seeks, which
+    # could perhaps be useful for some tests, but for now StringIO works fine and is
+    # likely more efficient.
+    with open(tmp_path / "fake_input.txt", "w+") as s:
         monkeypatch.setattr(
-            "questionary.confirm",
-            partial(questionary.confirm, input=input_pipe),
+            rich.prompt.Confirm,
+            rich.prompt.Confirm.ask.__name__,
+            Mock(
+                spec=rich.prompt.Confirm.ask,
+                side_effect=partial(rich.prompt.Confirm.ask, stream=s),
+            ),
         )
         monkeypatch.setattr(
-            "questionary.text", partial(questionary.text, input=input_pipe)
+            rich.prompt.Prompt,
+            rich.prompt.Prompt.ask.__name__,
+            Mock(
+                spec=rich.prompt.Prompt.ask,
+                side_effect=partial(rich.prompt.Prompt.ask, stream=s),
+            ),
         )
-        yield input_pipe
+        yield s
 
 
-def test_questionary_uses_input_pipe(input_pipe: PipeInput):
+def test_can_mock_input(input_stream: io.StringIO):
     """Small test just to make sure that our way of passing the input pipe to
     Questionary in tests makes sense.
 
@@ -122,396 +110,241 @@ def test_questionary_uses_input_pipe(input_pipe: PipeInput):
     way in our tests as they will for the users, but that's not something I'm confident
     I can guarantee.
     """
-    input_pipe.send_text("bob\r")
-    assert questionary.text("name?").unsafe_ask() == "bob"
-    input_pipe.send_text("y")
-    assert questionary.confirm("confirm?").unsafe_ask() is True
-    input_pipe.send_text("n")
-    assert questionary.confirm("confirm?").unsafe_ask() is False
+    input_stream.write("\n".join(["bob", "y", "n"]))
+    input_stream.seek(0)
+    assert rich.prompt.Prompt.ask("name?") == "bob"
+    assert yn("confirm?", default=False) is True
+    assert yn("confirm?", default=True) is False
 
 
-def _join_blocks(*blocks: str, user: str = "bob") -> str:
-    return "\n".join(textwrap.dedent(block) for block in blocks).format(user=user)
-
-
-def _yn(accept: bool):
-    return "y" if accept else "n"
-
-
-def test_creates_ssh_config_file(tmp_path: Path, input_pipe: PipeInput):
-    ssh_config_path = tmp_path / "ssh_config"
-
-    for prompt in [
-        "y",
-        "y",  # mila?
-        "bob\r",  # mila username
-        "y",  # drac?
-        "bob\r",  # drac username
-        "y",
-        "y",
-        "y",
-        "y",
-        "y",
-    ]:
-        input_pipe.send_text(prompt)
-    setup_ssh_config(tmp_path / "ssh_config")
-    assert ssh_config_path.exists()
+def test_creates_ssh_config_file(ssh_config_file: Path):
+    assert ssh_config_file.exists()
 
 
 @pytest.mark.parametrize(
-    "mila_username",
-    [None, "bob_mila"],
-    ids=["no_mila", "mila"],
-)
-@pytest.mark.parametrize(
-    "drac_username",
-    [None, "bob_drac"],
-    ids=["no_drac", "drac"],
-)
-@pytest.mark.parametrize(
-    "confirm_changes",
-    [False, True],
-    ids=["reject_changes", "confirm_changes"],
-)
-@pytest.mark.parametrize(
-    "initial_contents",
+    ("initial_ssh_config", "entries", "expected_ssh_config"),
     [
-        "",
-        """\
-        # A comment in the file.
-        """,
-        """\
-        # a comment
-        Host foo
-            HostName foobar.com
-        """,
-        """\
-        # a comment
-        Host foo
-          HostName foobar.com
+        pytest.param(
+            "",
+            {"mila": {"hostname": "login.server.mila.quebec", "user": "bob"}},
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            id="empty_file_add_mila",
+        ),
+        pytest.param(
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            {"mila": {"hostname": "login.server.mila.quebec", "user": "bob"}},
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            id="add_exactly_same_entry",
+        ),
+        pytest.param(
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            {
+                "mila": {
+                    "hostname": "login.server.mila.quebec",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+              ControlMaster auto
+            """,
+            id="add_key_to_entry",
+        ),
+        pytest.param(
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+            """,
+            {"mila": {"controlmaster": "auto"}},
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
+              ControlMaster auto
+            """,
+            id="add_key_to_entry_2",
+        ),
+        pytest.param(
+            "",
+            {
+                "beluga narval cedar graham niagara": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            """\
+            Host beluga narval cedar graham niagara
+              HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            id="empty_add_drac",
+        ),
+        pytest.param(
+            "",
+            {
+                "mila": {
+                    "hostname": "login.server.mila.quebec",
+                    "user": "bob",
+                },
+                "beluga narval cedar graham niagara": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                },
+            },
+            """\
+            Host mila
+              HostName login.server.mila.quebec
+              User bob
 
-        # another comment
-        """,
-        """\
-        # a comment
 
-        Host foo
-          HostName foobar.com
+            Host beluga narval cedar graham niagara
+              HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            id="empty_add_drac_and_mila",
+        ),
+        pytest.param(
+            """\
+            Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan
+              User bob
+            """,
+            {
+                "beluga narval cedar graham niagara": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            # NOTE: This isn't ideal. We'd like the config to be placed before the other
+            # existing entry, but this is hard to do.
+            """\
+            Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan
+              User bob
 
+            Host beluga narval cedar graham niagara
+              HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            id="config_already_has_more_drac_clusters",
+        ),
+        pytest.param(
+            """\
+            Host beluga narval cedar graham niagara
+              hostname %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            {
+                "beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan trillium": {
+                    "hostname": "%h.alliancecan.ca",
+                    "user": "bob",
+                    "controlmaster": "auto",
+                }
+            },
+            # Unfortunately, we don't yet have a smart way to update an entry.
+            """\
+            Host beluga narval cedar graham niagara
+              hostname %h.alliancecan.ca
+              User bob
+              ControlMaster auto
 
-
-
-        # another comment after lots of empty lines.
-        """,
-    ],
-    ids=[
-        "empty",
-        "has_comment",
-        "has_different_indent",
-        "has_comment_and_entry",
-        "has_comment_and_entry_with_extra_space",
+            Host beluga narval cedar graham niagara rorqual fir nibi tamia killarney vulcan trillium
+              HostName %h.alliancecan.ca
+              User bob
+              ControlMaster auto
+            """,
+            id="config_doesnt_have_new_drac_clusters",
+        ),
     ],
 )
-def test_setup_ssh_config(
-    initial_contents: str,
-    confirm_changes: bool,
-    drac_username: str | None,
-    mila_username: str | None,
+def test_add_ssh_entry(
+    initial_ssh_config: str,
+    entries: dict[str, dict[str, Any]],
+    expected_ssh_config: str,
     tmp_path: Path,
-    file_regression: FileRegressionFixture,
-    input_pipe: PipeInput,
 ):
-    """Test what happens to the ~/.ssh/config file when it exists and is either empty or
-    contains existing entries unrelated to the Mila/DRAC clusters."""
-    ssh_config_path = tmp_path / ".ssh" / "config"
-    ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
+    """Tests that adding an entry to the ssh config file works as expected."""
+    config = tmp_path / "config"
+    config.write_text(textwrap.dedent(initial_ssh_config))
+    ssh_config = SSHConfig(config)
 
-    if initial_contents:
-        initial_contents = textwrap.dedent(initial_contents)
+    from milatools.cli.init_command import _add_ssh_entry
 
-    if initial_contents is not None:
-        with open(ssh_config_path, "w") as f:
-            f.write(initial_contents)
+    for k, entry in entries.items():
+        _add_ssh_entry(
+            ssh_config, host=k, entry=entry, _space_before=True, _space_after=True
+        )
+    resulting_contents = ssh_config.cfg.config()
+    assert resulting_contents.strip() == textwrap.dedent(expected_ssh_config).strip()
 
-    user_inputs = [
-        *(  # Mila account? + enter mila username
-            ["n"] if mila_username is None else ["y", mila_username + "\r"]
-        ),
-        *(  # DRAC account? + enter username
-            ["n"] if drac_username is None else ["y", drac_username + "\r"]
-        ),
-        _yn(confirm_changes),
-    ]
-    for prompt in user_inputs:
-        input_pipe.send_text(prompt)
-
-    # `mila init` should exit if the confirmation prompt is asked and refused.
-    # The confirmation prompt "is this ok?" only shows up if we are about to modify the
-    # content of the file.
-    should_exit = not confirm_changes and (
-        mila_username is not None or drac_username is not None
-    )
-
-    with pytest.raises(SystemExit) if should_exit else contextlib.nullcontext():
-        setup_ssh_config(ssh_config_path=ssh_config_path)
-
-    assert ssh_config_path.exists()
-    with open(ssh_config_path) as f:
-        resulting_contents = f.read()
-
-    expected_text = "\n".join(
-        [
-            "Running the `mila init` command with "
-            + (
-                "\n".join(
-                    [
-                        "this initial content:",
-                        "",
-                        "```",
-                        initial_contents,
-                        "```",
-                    ]
-                )
-                if initial_contents
-                else "no initial ssh config file"
-            ),
-            "",
-            f"and these user inputs: {tuple(user_inputs)}",
-            "leads the following ssh config file:",
-            "",
-            "```",
-            resulting_contents,
-            "```",
-            "",
-        ]
-    )
-
-    file_regression.check(expected_text, extension=".md")
+    # We should expect that if we lookup the entries that we just added (or updated),
+    # they should have the values that we just set.
+    conf = SshConfigReader.from_text(resulting_contents)
+    for host_or_hosts, entry in entries.items():
+        for host in host_or_hosts.split():
+            conf_entry = conf.lookup(host)
+            for option, value in entry.items():
+                resolved_value = conf_entry.get(option)
+                # conf.lookup(host) will actually resolve of %h to hostname, etc, so we
+                # can't directly compare them without also doing that ourselves!
+                if "%" in value:
+                    continue
+                assert resolved_value == value, option
 
 
-def test_fixes_overly_general_entry(
-    tmp_path: Path,
-    input_pipe: PipeInput,
-    file_regression: FileRegressionFixture,
-):
-    """Test the case where the user has a *.server.mila.quebec entry."""
-    ssh_config_path = tmp_path / ".ssh" / "config"
-    ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
-    initial_contents = textwrap.dedent(
+@pytest.mark.xfail(
+    in_github_cloud_CI and sys.platform == "darwin",
+    reason="Flaky on MacOS GitHub CI, socket.getfqdn takes >10 seconds to run.",
+)
+@pytest.mark.parametrize(
+    initial_contents.__name__,
+    [
         """\
         Host *.server.mila.quebec
-          User bob
+            User bob
         """
-    )
-    with open(ssh_config_path, "w") as f:
-        f.write(initial_contents)
-
-    # Enter username, accept fixing that entry, then confirm.
-    for user_input in [
-        "y",  # Mila account?
-        "bob\r",  # mila username
-        "n",  # DRAC account?
-        "y",
-        "y",
-    ]:
-        input_pipe.send_text(user_input)
-
-    setup_ssh_config(ssh_config_path=ssh_config_path)
-
-    with open(ssh_config_path) as f:
-        resulting_contents = f.read()
-
-    file_regression.check(resulting_contents)
-    assert (
-        "Host *.server.mila.quebec !*login.server.mila.quebec"
-        in resulting_contents.splitlines()
-    )
-
-
-def test_ssh_config_host(tmp_path: Path):
-    ssh_config_path = tmp_path / "config"
-    with open(ssh_config_path, "w") as f:
-        f.write(
-            textwrap.dedent(
-                """\
-                Host mila
-                    HostName login.server.mila.quebec
-                    User normandf
-                    PreferredAuthentications publickey,keyboard-interactive
-                    Port 2222
-                    ServerAliveInterval 120
-                    ServerAliveCountMax 5
-                    BatchMode yes
-                """
-            )
-        )
-    assert SSHConfig(str(ssh_config_path)).host("mila") == {
-        "hostname": "login.server.mila.quebec",
-        "user": "normandf",
-        "preferredauthentications": "publickey,keyboard-interactive",
-        "port": "2222",
-        "serveraliveinterval": "120",
-        "serveralivecountmax": "5",
-        "batchmode": "yes",
-    }
-
-
-@pytest.mark.parametrize(
-    "already_has_drac", [True, False], ids=["has_drac_entries", "no_drac_entries"]
+    ],
+    indirect=True,
 )
-@pytest.mark.parametrize(
-    "already_has_mila", [True, False], ids=["has_mila_entry", "no_mila_entry"]
-)
-@pytest.mark.parametrize(
-    "already_has_mila_cpu",
-    [True, False],
-    ids=["has_mila_cpu_entry", "no_mila_cpu_entry"],
-)
-@pytest.mark.parametrize(
-    "already_has_mila_compute",
-    [True, False],
-    ids=["has_mila_compute_entry", "no_mila_compute_entry"],
-)
-def test_with_existing_entries(
-    already_has_mila: bool,
-    already_has_mila_cpu: bool,
-    already_has_mila_compute: bool,
-    already_has_drac: bool,
-    file_regression: FileRegressionFixture,
-    tmp_path: Path,
-    input_pipe: PipeInput,
+def test_fixes_overly_general_cn_entry(
+    ssh_config_file: Path, mila_username: str | None
 ):
-    user = "bob"
-    existing_mila = textwrap.dedent(
-        f"""\
-        Host mila
-          HostName login.server.mila.quebec
-          User {user}
-        """
-    )
-    existing_mila_cpu = textwrap.dedent(
-        """\
-        Host mila-cpu
-          HostName login.server.mila.quebec
-        """
-    )
-    existing_mila_compute = textwrap.dedent(
-        """\
-        Host *.server.mila.quebec !*login.server.mila.quebec
-          HostName foooobar.com
-        """
-    )
-    existing_drac = textwrap.dedent(
-        f"""
-        # Compute Canada
-        Host beluga cedar graham narval niagara
-          Hostname %h.alliancecan.ca
-          User {user}
-        Host mist
-          Hostname mist.scinet.utoronto.ca
-          User {user}
-        Host !beluga  bc????? bg????? bl?????
-          ProxyJump beluga
-          User {user}
-        Host !cedar   cdr? cdr?? cdr??? cdr????
-          ProxyJump cedar
-          User {user}
-        Host !graham  gra??? gra????
-          ProxyJump graham
-          User {user}
-        Host !narval  nc????? ng?????
-          ProxyJump narval
-          User {user}
-        Host !niagara nia????
-          ProxyJump niagara
-          User {user}
-        """
-    )
-
-    initial_blocks = []
-    initial_blocks += [existing_mila] if already_has_mila else []
-    initial_blocks += [existing_mila_cpu] if already_has_mila_cpu else []
-    initial_blocks += [existing_mila_compute] if already_has_mila_compute else []
-    initial_blocks += [existing_drac] if already_has_drac else []
-    initial_contents = _join_blocks(*initial_blocks)
-
-    # TODO: Need to insert the entries in the right place, in the right order!
-
-    ssh_config_path = tmp_path / ".ssh" / "config"
-    ssh_config_path.parent.mkdir(parents=True, exist_ok=False)
-    with open(ssh_config_path, "w") as f:
-        f.write(initial_contents)
-
-    # Accept all the prompts.
-    username_input = (
-        ["y", "bob\r"]
-        if not already_has_mila or (already_has_mila and "User" not in existing_mila)
-        else []
-    )
-
-    controlmaster_block = "\n".join(
-        [
-            "  ControlMaster auto",
-            "  ControlPath ~/.cache/ssh/%r@%h:%p",
-            "  ControlPersist 600",
-        ]
-    )
-
-    if not all(
-        [
-            already_has_mila and controlmaster_block in existing_mila,
-            already_has_mila_cpu,
-            already_has_mila_compute and controlmaster_block in existing_mila_compute,
-            already_has_drac,
-        ]
-    ):
-        # There's a confirmation prompt only if we're adding some entry.
-        confirm_inputs = ["y"]
-    else:
-        confirm_inputs = []
-
-    drac_username_inputs = []
-    if not already_has_drac:
-        drac_username_inputs = ["y", f"{user}\r"]
-    prompt_inputs = username_input + drac_username_inputs + confirm_inputs
-
-    for prompt_input in prompt_inputs:
-        input_pipe.send_text(prompt_input)
-
-    setup_ssh_config(ssh_config_path=ssh_config_path)
-
-    with open(ssh_config_path) as f:
-        resulting_contents = f.read()
-
-    expected_text = "\n".join(
-        [
-            "Running the `mila init` command with "
-            + (
-                "\n".join(
-                    [
-                        "this initial content:",
-                        "",
-                        "```",
-                        initial_contents,
-                        "```",
-                    ]
-                )
-                if initial_contents
-                else "no initial ssh config file"
-            ),
-            "",
-            f"and these user inputs: {prompt_inputs}",
-            "leads to the following ssh config file:",
-            "",
-            "```",
-            resulting_contents,
-            "```",
-        ]
-    )
-    file_regression.check(
-        expected_text,
-        extension=".md",
-    )
+    """Test the case where the user has a *.server.mila.quebec entry."""
+    assert mila_username
+    ssh_config = SshConfigReader.from_path(ssh_config_file)
+    assert ssh_config.lookup("cn-a001.server.mila.quebec") == {
+        "hostname": "cn-a001.server.mila.quebec",
+        "user": mila_username,
+        "proxyjump": "mila",
+        "identityfile": unittest.mock.ANY,
+    }
+    assert "proxyjump" not in ssh_config.lookup("login.server.mila.quebec")
+    assert "proxyjump" not in ssh_config.lookup("login-1.login.server.mila.quebec")
 
 
 @pytest.mark.parametrize(
@@ -519,10 +352,7 @@ def test_with_existing_entries(
     [
         pytest.param(
             "",  # empty file.
-            [
-                "y",  # Yes I have a mila account,
-                "bob\r",  # my username is "bob" then enter.
-            ],
+            ["y", "bob"],  # Yes I have a mila account, then write "bob" then enter.
             "bob",  # get "bob" as username.
             id="empty_file",
         ),
@@ -546,9 +376,9 @@ def test_with_existing_entries(
                 """
             ),
             [
-                "y",  # yes I have an account on the Mila cluster
-                "bob\r",
-            ],  # My username is bob, then press enter.
+                "y",
+                "bob",
+            ],  # Yes I have a mila account (still asks), and username is bob.
             "bob",
             id="entry_without_user",
         ),
@@ -563,11 +393,8 @@ def test_with_existing_entries(
                     User Bob
                 """
             ),
-            [
-                "y",  # yes I have an account on the Mila cluster
-                "bob\r",
-            ],
-            "bob",
+            [],
+            "george",  # first entry wins based on the rules of SSH config.
             id="two_matching_entries",
         ),
         pytest.param(
@@ -584,8 +411,8 @@ def test_with_existing_entries(
         ),
         pytest.param(
             "",
-            [" \r", "bob\r"],
-            "bob",
+            ["N"],  # Don't have a Mila account, dont ask me for the username.
+            None,
             id="empty_username",
         ),
     ],
@@ -594,8 +421,9 @@ def test_get_username(
     contents: str,
     prompt_inputs: list[str],
     expected: str,
-    input_pipe: PipeInput,
     tmp_path: Path,
+    input_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # TODO: We should probably also have a test that checks that keyboard interrupts
     # work.
@@ -604,13 +432,17 @@ def test_get_username(
     with open(ssh_config_path, "w") as f:
         f.write(contents)
     ssh_config = SSHConfig(ssh_config_path)
-    if not prompt_inputs:
-        input_pipe.close()
-    for prompt_input in prompt_inputs:
-        input_pipe.send_text(prompt_input)
+
+    input_stream.write("\n".join(prompt_inputs) + "\n")
+    input_stream.seek(0)
+
     assert _get_mila_username(ssh_config) == expected
 
 
+@pytest.mark.xfail(
+    in_github_cloud_CI and sys.platform == "darwin",
+    reason="Flaky on MacOS GitHub CI, socket.getfqdn sometimes takes >10 seconds to run.",
+)
 @pytest.mark.parametrize(
     ("contents", "prompt_inputs", "expected"),
     [
@@ -630,7 +462,7 @@ def test_get_username(
             textwrap.dedent(
                 """\
                 Host narval
-                  HostName narval.computecanada.ca
+                  HostName narval.alliancecan.ca
                   User bob
                 """
             ),
@@ -642,7 +474,7 @@ def test_get_username(
             textwrap.dedent(
                 """\
                 Host beluga cedar graham narval niagara
-                  HostName %h.computecanada.ca
+                  HostName %h.alliancecan.ca
                   ControlMaster auto
                   ControlPath ~/.cache/ssh/%r@%h:%p
                   ControlPersist 600
@@ -664,14 +496,14 @@ def test_get_username(
                 """
             ),
             ["y", "bob\r"],
-            "bob",
+            "george",  # first entry wins, based on the rules of SSH config.
             id="two_matching_entries",
         ),
         pytest.param(
             textwrap.dedent(
                 """\
-                Host fooo beluga bar baz
-                    HostName beluga.alliancecan.ca
+                Host fooo narval bar baz
+                    HostName narval.alliancecan.ca
                     User george
                 """
             ),
@@ -681,9 +513,9 @@ def test_get_username(
         ),
         pytest.param(
             "",
-            # Yes (by pressing just enter), then an invalid username (space), then a
+            # Yes, then an invalid username (space), then a
             # real username.
-            ["\r", " \r", "bob\r"],
+            ["y\r", " \r", "bob\r"],
             "bob",
             id="empty_username",
         ),
@@ -693,34 +525,26 @@ def test_get_drac_username(
     contents: str,
     prompt_inputs: list[str],
     expected: str | None,
-    input_pipe: PipeInput,
     tmp_path: Path,
+    input_stream: io.StringIO,
 ):
     ssh_config_path = tmp_path / "config"
     with open(ssh_config_path, "w") as f:
         f.write(contents)
     ssh_config = SSHConfig(ssh_config_path)
-    if not prompt_inputs:
-        input_pipe.close()
-    for prompt_input in prompt_inputs:
-        input_pipe.send_text(prompt_input)
+
+    input_stream.write("\n".join(prompt_inputs) + "\n")
+    input_stream.seek(0)
     assert _get_drac_username(ssh_config) == expected
 
 
 class TestSetupSshFile:
-    def test_create_file(self, tmp_path: Path, input_pipe: PipeInput):
+    @permission_bits_check_doesnt_work_on_windows()
+    def test_create_file(self, tmp_path: Path):
         config_path = tmp_path / "config"
-        input_pipe.send_text("y")
         file = _setup_ssh_config_file(config_path)
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
-
-    def test_refuse_creating_file(self, tmp_path: Path, input_pipe: PipeInput):
-        config_path = tmp_path / "config"
-        input_pipe.send_text("n")
-        with pytest.raises(SystemExit):
-            config_path = _setup_ssh_config_file(config_path)
-        assert not config_path.exists()
 
     @permission_bits_check_doesnt_work_on_windows()
     def test_fix_file_permissions(self, tmp_path: Path):
@@ -734,34 +558,29 @@ class TestSetupSshFile:
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
 
-    def test_creates_dir(self, tmp_path: Path, input_pipe: PipeInput):
+    @permission_bits_check_doesnt_work_on_windows()
+    def test_creates_dir(self, tmp_path: Path):
         config_path = tmp_path / "fake_ssh" / "config"
-        input_pipe.send_text("y")
         file = _setup_ssh_config_file(config_path)
         assert file.parent.exists()
         assert file.parent.stat().st_mode & 0o777 == 0o700
         assert file.exists()
         assert file.stat().st_mode & 0o777 == 0o600
 
+    @permission_bits_check_doesnt_work_on_windows()
     @pytest.mark.parametrize(
         "file_exists",
         [
-            pytest.param(
-                True,
-                marks=permission_bits_check_doesnt_work_on_windows(),
-            ),
+            True,
             False,
         ],
     )
-    def test_fixes_dir_permission_issues(
-        self, file_exists: bool, tmp_path: Path, input_pipe: PipeInput
-    ):
+    def test_fixes_dir_permission_issues(self, file_exists: bool, tmp_path: Path):
         config_path = tmp_path / "fake_ssh" / "config"
-        config_path.parent.mkdir(mode=0o755)
+        config_path.parent.mkdir(mode=0o777)  # some bad permission for the SSH dir.
         if file_exists:
-            config_path.touch(mode=0o600)
-        else:
-            input_pipe.send_text("y")
+            config_path.touch(mode=0o777)  # some bad permission for the SSH file.
+        # Config file doesn't exist yet.
         file = _setup_ssh_config_file(config_path)
         assert file.parent.exists()
         assert file.parent.stat().st_mode & 0o777 == 0o700
@@ -828,56 +647,86 @@ def test_create_ssh_keypair(
 
 
 @pytest.fixture
+def mila_username(request: pytest.FixtureRequest) -> str:
+    return getattr(request, "param", "bob")
+
+
+@pytest.fixture
+def drac_username(request: pytest.FixtureRequest) -> str:
+    return getattr(request, "param", "bob")
+
+
+@pytest.fixture
 def linux_ssh_config(
-    tmp_path: Path, input_pipe: PipeInput, monkeypatch: pytest.MonkeyPatch
+    ssh_config_file: Path,
 ) -> SSHConfig:
     """Creates the SSH config that is generated by `mila init` on a Linux machine."""
-    # Enter username, accept fixing that entry, then confirm.
-    ssh_config_path = tmp_path / "ssh_config"
-
-    for prompt in [
-        "y",  # Create an ssh config file?
-        "y",  # Do you also have a Mila account?
-        "bob\r",  # What's your username on the Mila cluster?
-        "y",  # Do you also have a DRAC account?
-        "bob\r",  # username on DRAC
-        "y",  # accept adding the entries in the ssh config
-    ]:
-        input_pipe.send_text(prompt)
-
-    if sys.platform.startswith("win"):
-        pytest.skip(
-            "TODO: Issue when changing sys.platform to get the Linux config when "
-            "on Windows."
-        )
-    setup_ssh_config(ssh_config_path)
-
-    return SSHConfig(ssh_config_path)
+    if sys.platform == "win32":
+        pytest.skip("Only relevant on Linux or MacOS.")
+    return SSHConfig(ssh_config_file)
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and in_github_cloud_CI,
+    reason="TODO: Getting a weird timeout (10s) in paramiko.SSHConfig.lookup in Github CI on MacOS.",
+)
 @pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
 def test_setup_windows_ssh_config_from_wsl(
     pretend_to_be_in_WSL,  # here even if `windows_home` already uses it (more explicit)
     windows_home: Path,
     linux_ssh_config: SSHConfig,
-    input_pipe: PipeInput,
     file_regression: FileRegressionFixture,
-    fake_linux_ssh_keypair: tuple[Path, Path],  # add this fixture so the keys exist.
+    # fake_linux_ssh_keypair: tuple[Path, Path],  # add this fixture so the keys exist.
     accept_changes: bool,
+    input_stream: io.StringIO,
+    linux_home: Path,
 ):
+    # The references to the linux SSH keys in "home" need to be adjusted to point to the
+    # home during testing.
+    # This way, we can check that running the function will correctly change the
+    # identityfile from linux to windows home.
     initial_contents = linux_ssh_config.cfg.config()
+
+    linux_ssh_config.path.write_text(
+        linux_ssh_config.path.read_text()
+        .replace("~", str(linux_home))
+        # Real home directory:
+        .replace(os.environ["HOME"], str(linux_home))
+    )
+    linux_ssh_config = SSHConfig(linux_ssh_config.path)
+
+    linux_ssh_dir = linux_ssh_config.path.parent
+    assert isinstance(linux_ssh_dir, PosixPath)
     windows_ssh_config_path = windows_home / ".ssh" / "config"
 
-    user_inputs: list[str] = []
-    if not windows_ssh_config_path.exists():
-        # We accept creating the Windows SSH config file for now.
-        user_inputs.append("y")
-    user_inputs.append("y" if accept_changes else "n")
+    initial_pos = input_stream.seek(0, 1)  # get initial position in the buffer
+    input_stream.write("y\n" if accept_changes else "n\n")
+    input_stream.seek(initial_pos)  # reset cursor to initial position.
 
-    for prompt in user_inputs:
-        input_pipe.send_text(prompt)
-
-    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+    if not accept_changes:
+        with contextlib.suppress(SystemExit):
+            setup_windows_ssh_config_from_wsl(
+                ssh_dir=linux_ssh_dir, linux_ssh_config=linux_ssh_config
+            )
+    else:
+        setup_windows_ssh_config_from_wsl(
+            ssh_dir=linux_ssh_dir, linux_ssh_config=linux_ssh_config
+        )
+    if accept_changes:
+        identity_file_entries = (
+            SSHConfig(windows_ssh_config_path).lookup("mila").get("identityfile")
+        )
+        # Unclear why paramiko returns a list here.
+        assert isinstance(identity_file_entries, list)
+        assert len(identity_file_entries) == 1
+        # .lookup("mila") does the expansion of '~', so we can't compare to Path.home()
+        # (which we mocked with the `linux_home` fixture above).
+        # We mocked Path.home() so a `identity_file_path.relative_to(Path.home())` would
+        # not crash during testing.
+        assert (
+            Path(identity_file_entries[0])
+            == Path(os.environ["HOME"]) / ".ssh/id_rsa_mila"
+        )
 
     assert windows_ssh_config_path.exists()
     assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
@@ -902,7 +751,7 @@ def test_setup_windows_ssh_config_from_wsl(
                 else "no initial ssh config file"
             ),
             "",
-            f"and these user inputs: {tuple(user_inputs)}",
+            f"and this user input: {'y' if accept_changes else 'n'}",
             "leads the following ssh config file on the Windows side:",
             "",
             "```",
@@ -912,43 +761,6 @@ def test_setup_windows_ssh_config_from_wsl(
     )
 
     file_regression.check(expected_text, extension=".md")
-
-
-@pytest.fixture
-def windows_ssh_config(
-    linux_ssh_config: SSHConfig,
-    windows_home: Path,
-    input_pipe: PipeInput,
-    monkeypatch: pytest.MonkeyPatch,
-) -> SSHConfig:
-    """Returns the Windows ssh config as it would be when we create it from WSL."""
-    windows_ssh_config_path = windows_home / ".ssh" / "config"
-    monkeypatch.setattr(
-        init_command,
-        running_inside_WSL.__name__,  # type: ignore
-        Mock(spec=running_inside_WSL, return_value=True),
-    )
-    monkeypatch.setattr(
-        init_command,
-        get_windows_home_path_in_wsl.__name__,  # type: ignore
-        Mock(spec=get_windows_home_path_in_wsl, return_value=windows_home),
-    )
-    user_inputs: list[str] = []
-    if not windows_ssh_config_path.exists():
-        # We accept creating the Windows SSH config file for now.
-        user_inputs.append("y")
-    user_inputs.append("y")  # accept changes.
-
-    for prompt in user_inputs:
-        input_pipe.send_text(prompt)
-
-    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
-
-    assert windows_ssh_config_path.exists()
-    assert windows_ssh_config_path.stat().st_mode & 0o777 == 0o600
-    assert windows_ssh_config_path.parent.stat().st_mode & 0o777 == 0o700
-
-    return SSHConfig(windows_ssh_config_path)
 
 
 @xfails_on_windows(
@@ -961,10 +773,10 @@ def windows_ssh_config(
 def test_setup_vscode_settings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    input_pipe: PipeInput,
     initial_settings: dict | None,
     file_regression: FileRegressionFixture,
     accept_changes: bool,
+    mocker: pytest_mock.MockerFixture,
 ):
     vscode_settings_json_path = tmp_path / "settings.json"
     if initial_settings is not None:
@@ -986,8 +798,7 @@ def test_setup_vscode_settings(
     )
 
     user_inputs = ["y" if accept_changes else "n"]
-    for user_input in user_inputs:
-        input_pipe.send_text(user_input)
+    mocker.patch("rich.prompt.Confirm.ask", spec_set=True, return_value=accept_changes)
 
     setup_vscode_settings()
 
@@ -1079,17 +890,35 @@ def fake_linux_ssh_keypair(linux_home: Path):
 
 def test_setup_windows_ssh_config_from_wsl_copies_keys(
     linux_ssh_config: SSHConfig,
-    input_pipe: PipeInput,
     windows_home: Path,
-    linux_home: Path,
+    linux_home: PosixPath,
     fake_linux_ssh_keypair: tuple[Path, Path],
+    input_stream: io.StringIO,
 ):
+    # The references to the linux SSH keys in "home" need to be adjusted to point to the
+    # home during testing.
+    # This way, we can check that running the function will correctly change the
+    # identityfile from linux to windows home.
+    linux_ssh_config.path.write_text(
+        linux_ssh_config.path.read_text()
+        .replace("~", str(linux_home))
+        # Real home directory:
+        .replace(os.environ["HOME"], str(linux_home))
+    )
+    linux_ssh_config = SSHConfig(linux_ssh_config.path)
+
     linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
+    prompt_inputs = [
+        "y",  # accept creating the Windows config file
+        "y",  # accept the changes
+    ]
+    initial_position = input_stream.seek(0, 1)
+    input_stream.write("\n".join(prompt_inputs) + "\n")
+    input_stream.seek(initial_position)
 
-    input_pipe.send_text("y")  # accept creating the Windows config file
-    input_pipe.send_text("y")  # accept the changes
-
-    setup_windows_ssh_config_from_wsl(linux_ssh_config=linux_ssh_config)
+    setup_windows_ssh_config_from_wsl(
+        linux_home / ".ssh", linux_ssh_config=linux_ssh_config
+    )
 
     windows_private_key_path = windows_home / linux_private_key_path.relative_to(
         linux_home
@@ -1100,594 +929,94 @@ def test_setup_windows_ssh_config_from_wsl_copies_keys(
     assert windows_private_key_path.exists()
     assert windows_private_key_path.stat().st_mode & 0o777 == 0o600
     assert windows_public_key_path.exists()
-    assert windows_public_key_path.stat().st_mode & 0o777 == 0o600
+    assert windows_public_key_path.stat().st_mode & 0o777 == 0o644
     # todo: Might have to manually add the weird CRLF line endings to the public/private
     # key file?
     assert windows_private_key_path.read_text() == linux_private_key_path.read_text()
     assert windows_public_key_path.read_text() == linux_public_key_path.read_text()
 
 
-BACKUP_SSH_DIR = Path.home() / ".ssh_backup"
-BACKUP_SSH_CACHE_DIR = Path.home() / ".cache/ssh_backup"
-# note: Needs to have a different name (in the case where) we're using the
-BACKUP_REMOTE_SSH_DIR = ".ssh_backup_remote"
-USE_MY_REAL_SSH_DIR = os.environ.get("USE_MY_REAL_SSH_DIR", "0") == "1"
-"""Set this to `True` for the tests below to actually use your real SSH directory.
-
-A backup is saved in `BACKUP_SSH_DIR`.
-"""
+@pytest.fixture(scope="function")
+def linux_ssh_dir(linux_home: PosixPath) -> PosixPath:
+    ssh_dir = linux_home / ".ssh"
+    ssh_dir.mkdir(mode=0o700, exist_ok=True, parents=True)
+    return ssh_dir
 
 
-@contextlib.contextmanager
-def backup_dir(directory: Path, backup_directory: Path):
-    dir_existed_before = directory.exists()
-
-    # make hard links to the files in the backup directory.
-    def copy_fn(source, dest):
-        source = Path(source)
-        dest = Path(dest)
-        try:
-            return shutil.copy2(source, dest)
-        except OSError as err:
-            if err.errno != errno.ENXIO:
-                raise
-            # This error (errno 6) happens when trying to copy a socket file.
-            # In this case, we make a hard link in the backup dir.
-
-            os.link(source, dest)
-            return dest
-
-    if dir_existed_before:
-        logger.warning(f"Backing up {directory} to {backup_directory}")
-        if backup_directory.exists():
-            # shutil.rmtree(backup_directory)
-            raise RuntimeError(
-                f"The backup directory {backup_directory} to be used as backup for "
-                f"{directory} already exists! "
-                f"Refusing to remove it to avoid losing backed up files. "
-                f"(Consider manually restoring {directory} from {backup_directory})."
-            )
-        shutil.copytree(directory, backup_directory, copy_function=copy_fn)
-    else:
-        logger.warning(f"Test might temporarily create files in {directory}.")
-    try:
-        yield backup_directory
-    finally:
-        if dir_existed_before:
-            logger.warning(f"Restoring {directory} from backup at {backup_directory}")
-            if directory.exists():
-                shutil.rmtree(directory)
-
-            shutil.copytree(backup_directory, directory, copy_function=copy_fn)
-            shutil.rmtree(backup_directory)
-        else:
-            logger.warning(f"Removing temporarily generated dir {directory}.")
-            if directory.exists():
-                shutil.rmtree(directory)
+@pytest.fixture(scope="function")
+def linux_ssh_key(linux_ssh_dir: Path):
+    # This is a ssh key in a mock ssh directory in a temporary folder.
+    # It can't be used to connect to anything.
+    private_key_path = linux_ssh_dir / "id_rsa_test"
+    create_ssh_keypair(private_key_path, passphrase="")
+    return private_key_path
 
 
-@contextlib.contextmanager
-def backup_remote_dir(
-    remote: RemoteV2 | RemoteV1,
-    directory: PurePosixPath,
-    backup_directory: PurePosixPath,
+# On Windows, we can't create files in the WSL directory with the right permissions.
+# This works when run from WSL, but not when run from Windows directly.
+# Perhaps we could invoke WSL from Windows to do this copy and chmod?
+# if shutil.which("wsl.exe") is not None: do something
+
+
+@pytest.mark.skipif(ON_WINDOWS, reason="Can't run on Windows.")
+def test_copy_keys_from_wsl_to_windows(
+    windows_home: Path,
+    linux_ssh_dir: PosixPath,
+    linux_home: PosixPath,
+    linux_ssh_key: Path,
 ):
-    # IDEA: Make the equivalent function, but that backs up a directory on a remote
-    # machine.
-    def _exists(dir: PurePosixPath) -> bool:
-        result = remote.run(f"test -d {dir}", display=True, warn=True, hide=True)
-        if isinstance(result, invoke.runners.Result):
-            return result.return_code == 0
-        return result.returncode == 0
+    # This test should be run from WSL.
+    linux_private_key_path = linux_ssh_key
+    linux_public_key_path = linux_ssh_key.with_suffix(".pub")
+    copy_ssh_keys_between_wsl_and_windows(linux_ssh_dir)
 
-    assert not _exists(PurePosixPath("/does/not/exist"))
-    if remote.hostname == "localhost":
-        assert _exists(PurePosixPath(Path.cwd()))
+    windows_ssh_dir = windows_home / ".ssh"
+    windows_public_key_path = windows_ssh_dir / linux_public_key_path.name
+    windows_private_key_path = windows_ssh_dir / linux_private_key_path.name
 
-    def _rmtree(dir: PurePosixPath):
-        return remote.run(f"rm -r {dir}", display=True, hide=False)
+    assert windows_private_key_path.exists()
+    assert windows_private_key_path.stat().st_mode & 0o777 == 0o600
+    assert windows_private_key_path.read_text() == linux_private_key_path.read_text()
+    # Has Windows line endings.
+    assert windows_private_key_path.read_bytes().count(b"\r\n") != 0
 
-    def _copytree(source_dir: PurePosixPath, dest_dir: PurePosixPath):
-        remote.run(f"mkdir -p {dest_dir.parent}", display=True)
-        return remote.run(f"cp -r {source_dir} {dest_dir}", display=True)
-
-    dir_existed_before = _exists(directory)
-
-    if dir_existed_before:
-        logger.warning(
-            f"Backing up {directory} to {backup_directory} on the "
-            f"{remote.hostname} cluster."
-        )
-        if _exists(backup_directory):
-            # _rmtree(backup_directory)
-            raise RuntimeError(
-                f"The backup directory {backup_directory} to be used as backup for "
-                f"{directory} already exists on the {remote.hostname} cluster! "
-                f"Refusing to remove it to avoid losing backed up files. "
-                f"(Consider logging in to {remote.hostname} and manually restoring "
-                f"{directory} from {backup_directory})."
-            )
-        _copytree(directory, backup_directory)
-    else:
-        logger.warning(
-            f"Test might temporarily create files in {directory} on the "
-            f"{remote.hostname} cluster."
-        )
-    try:
-        yield backup_directory
-    except Exception:
-        logger.critical(
-            f"An error occurred while running the test. Will still attempt to restore "
-            f"dir {directory} from backup at {backup_directory} on the "
-            f"{remote.hostname} cluster!"
-        )
-        raise
-    finally:
-        if dir_existed_before:
-            logger.warning(
-                f"Restoring {directory} from backup at {backup_directory} on the "
-                f"{remote.hostname} cluster."
-            )
-            if _exists(directory):
-                _rmtree(directory)
-            _copytree(backup_directory, directory)
-            _rmtree(backup_directory)
-        else:
-            logger.warning(
-                f"Removing temporarily generated dir {directory} on the "
-                f"{remote.hostname} cluster."
-            )
-            if _exists(directory):
-                _rmtree(directory)
+    assert windows_public_key_path.exists()
+    assert windows_public_key_path.stat().st_mode & 0o777 == 0o644
+    assert windows_public_key_path.read_text() == linux_public_key_path.read_text()
+    assert windows_public_key_path.read_bytes().count(b"\r\n") != 0
 
 
-@pytest.fixture
-def backup_local_ssh_dir():
-    """Creates a backup of the ~/.ssh dir on the local machine to `BACKUP_SSH_DIR`."""
-    assert (in_github_CI and not in_self_hosted_github_CI) or USE_MY_REAL_SSH_DIR
-    ssh_dir = SSH_CONFIG_FILE.parent
-    backup_ssh_dir = BACKUP_SSH_DIR
-    with backup_dir(ssh_dir, backup_ssh_dir):
-        yield backup_ssh_dir
-
-
-@pytest.fixture
-def backup_local_ssh_cache_dir():
-    """Creates a backup of the `SSH_CACHE_DIR` dir on the local machine to
-    `BACKUP_SSH_CACHE_DIR`."""
-    assert (in_github_CI and not in_self_hosted_github_CI) or USE_MY_REAL_SSH_DIR
-    ssh_cache_dir = SSH_CACHE_DIR
-    backup_ssh_cache_dir = BACKUP_SSH_CACHE_DIR
-    with backup_dir(ssh_cache_dir, backup_ssh_cache_dir):
-        yield backup_ssh_cache_dir
-
-
-@pytest.fixture
-def backup_remote_ssh_dir(login_node: RemoteV2 | RemoteV1, cluster: str):
-    """Creates a backup of the ~/.ssh directory on the remote cluster."""
-    if USE_MY_REAL_SSH_DIR:
-        logger.critical(
-            f"Running a test that is probably going to modify the REAL '~/.ssh' "
-            f"directory on the {cluster} cluster! Make sure you know what you're doing!"
-            f"(The directory will be backed up to the {BACKUP_REMOTE_SSH_DIR} folder "
-            "and should (hopefully) be restored correctly after the tests run (even if "
-            "they fail)."
-        )
-    else:
-        assert in_github_CI and not in_self_hosted_github_CI
-
-    home_on_cluster = login_node.get_output("echo $HOME")
-    remote_ssh_dir = PurePosixPath(home_on_cluster) / ".ssh"
-    backup_remote_ssh_dir = PurePosixPath(home_on_cluster) / BACKUP_REMOTE_SSH_DIR
-    with backup_remote_dir(login_node, remote_ssh_dir, backup_remote_ssh_dir):
-        yield backup_remote_ssh_dir
-
-
-@pytest.mark.skipif(
-    in_self_hosted_github_CI or not USE_MY_REAL_SSH_DIR,
-    reason=(
-        "It's a risky to modify the actual SSH directories."
-        "Only doing it in the (non-self-hosted) CI runner or if the "
-        "USE_MY_REAL_SSH_DIR env var is set."
-    ),
-)
-@pytest.mark.timeout(20)
-@pytest.mark.parametrize(
-    "passwordless_ssh_was_previously_setup",
-    [True, False],
-    ids=["already_setup", "not_already_setup"],
-)
-@pytest.mark.parametrize(
-    "user_accepts_registering_key",
-    [True, False],
-    ids=["accept_registering_key", "reject_registering_key"],
-)
-def test_setup_passwordless_ssh_access_to_cluster(
-    cluster: str,
-    login_node: RemoteV1 | RemoteV2,
-    input_pipe: PipeInput,
-    backup_local_ssh_dir: Path,
-    backup_local_ssh_cache_dir: Path,
-    backup_remote_ssh_dir: PurePosixPath,
-    mocker: pytest_mock.MockerFixture,
-    passwordless_ssh_was_previously_setup: bool,
-    user_accepts_registering_key: bool,
-    file_regression: FileRegressionFixture,
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.skipif(ON_WINDOWS, reason="Can't run on Windows.")
+def test_copy_keys_from_windows_to_wsl(
+    windows_home: Path,
+    linux_home: PosixPath,
+    fake_linux_ssh_keypair: tuple[Path, Path],
 ):
-    """Test the function that sets up passwordless SSH to a cluster.
+    # This test should be run from WSL.
+    linux_public_key_path, linux_private_key_path = fake_linux_ssh_keypair
+    windows_ssh_dir = windows_home / ".ssh"
+    assert not windows_ssh_dir.exists()
 
-    TODO: This test is way too complex. Need to refactor it later. For now, just
-    adapting it to work on the self-hosted CI runner (which should have access to all
-    the slurm clusters we care about).
+    copy_ssh_keys_between_wsl_and_windows(linux_home / ".ssh")
+    # Previous test shows that these are created correctly.
+    windows_public_key_path = windows_ssh_dir / linux_public_key_path.name
+    windows_private_key_path = windows_ssh_dir / linux_private_key_path.name
 
-    NOTE: Running this test will make a backup of the ~/.ssh directory in
-    `backup_ssh_dir` (~/.ssh_backup), and ~/.cache/ssh to `BACKUP_SSH_CACHE_DIR` and
-    restore it after the test.
-    For that reason, it currently only runs in the (not self-hosted) GitHub CI runner,
-    unless you specifically set the `USE_MY_REAL_SSH_DIR` env variable to '1'.
-    """
-    assert passwordless_ssh_connection_to_localhost_is_setup
-    assert (in_github_CI and not in_self_hosted_github_CI) or USE_MY_REAL_SSH_DIR
-    ssh_dir = SSH_CONFIG_FILE.parent
+    # Delete the WSL ssh directory to test copying back from Windows to WSL.
+    shutil.rmtree(linux_home / ".ssh")
 
-    if cluster == "localhost":
-        assert ssh_dir.exists()
-        authorized_keys_file = ssh_dir / "authorized_keys"
-        backup_authorized_keys_file = backup_local_ssh_dir / "authorized_keys"
-        assert backup_authorized_keys_file.exists()
-    else:
-        authorized_keys_file = PurePosixPath(".ssh/authorized_keys")
-        backup_authorized_keys_file = backup_remote_ssh_dir / "authorized_keys"
+    copy_ssh_keys_between_wsl_and_windows(linux_home / ".ssh")
 
-    ssh_config = paramiko.SSHConfig.from_path(str(SSH_CONFIG_FILE))
-    # Get the public and private keys to use for connecting to the cluster.
-    ssh_private_key_path = Path(
-        ssh_config.lookup(cluster).get("identityfile") or (ssh_dir / "id_rsa")
-    )
-    ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
-    assert ssh_private_key_path.exists()
-    assert ssh_public_key_path.exists()
+    wsl_ssh_dir = Path.home() / ".ssh"
+    wsl_public_key_path = wsl_ssh_dir / linux_public_key_path.name
+    wsl_private_key_path = wsl_ssh_dir / linux_private_key_path.name
 
-    def have_passwordless_ssh_access_to(cluster: str) -> bool:
-        if sys.platform == "win32":
-            return check_passwordless(cluster)
-        return is_already_logged_in(cluster, ssh_config_path=SSH_CONFIG_FILE)
+    assert wsl_private_key_path.exists()
+    assert wsl_private_key_path.stat().st_mode & 0o777 == 0o600
+    assert wsl_private_key_path.read_text() == windows_private_key_path.read_text()
+    assert wsl_private_key_path.read_bytes().count(b"\r\n") == 0
 
-    def _exists(file: PurePosixPath | Path):
-        if cluster == "localhost":
-            assert isinstance(file, Path)
-            return file.exists()
-        else:
-            result = login_node.run(
-                f"test -e {file}", display=True, warn=True, hide=True
-            )
-            if isinstance(result, invoke.runners.Result):
-                return result.return_code == 0
-            return result.returncode == 0
-
-    def temporarily_disable_ssh_access_to_cluster():
-        # NOTE: We already have a backup of the ~/.ssh and ~/.cache/ssh dirs, so we
-        # could in principle delete ~/.ssh and it will be restored after the test.
-        # todo: Here we take advantage of the fact that we can remove the
-        # ~/.ssh/authorized_keys file locally to disable ssh access to localhost.
-        # We could do the same on a cluster by temporarily moving
-        # ~/.ssh/authorized_keys (on the cluster!) to a backup location.
-        if cluster == "localhost":
-            # passwordless SSH to localhost should already be setup before tests.
-            assert passwordless_ssh_connection_to_localhost_is_setup
-            assert isinstance(authorized_keys_file, Path)
-            if authorized_keys_file.exists():
-                logger.warning(
-                    f"Temporarily removing {authorized_keys_file} to disable ssh access to "
-                    f"{cluster}. (A backup is available at {backup_authorized_keys_file})"
-                )
-                authorized_keys_file.unlink()
-            # Remove the socket files from currently ongoing ssh connections to the
-            # cluster.
-
-            control_path = get_controlpath_for(cluster)
-            if control_path.exists():
-                # NOTE: There is a hard link of the ssh socket in the backup ssh cache dir.
-                # If we close this socket in the ssh cache dir with `ssh -O exit`, the
-                # control master process is killed and the socket file is removed, and the
-                # "backup" hard link to the same socket file in the backup dir gives
-                # "Connection refused" when used with `ssh -O exit` or `ssh -O check`.
-                # When used as the controlpath for a regular ssh command (no -O flag), it
-                # goes through the login sequence again.
-                # Therefore, we only remove the (backed-up) socket file, instead of shutting
-                # down the ssh Control master process.
-
-                # The `login_node` uses the control path in the SSH cache dir.
-                assert isinstance(login_node, RemoteV2)
-                backup_control_path = backup_local_ssh_cache_dir / control_path.name
-                assert backup_control_path.exists()
-                monkeypatch.setattr(login_node, "control_path", backup_control_path)
-                control_path.unlink()
-                # subprocess.check_call(
-                #     ["ssh", "-O", "exit", f"-oControlPath={control_path}", cluster]
-                # )
-            assert not check_passwordless(cluster)
-        else:
-            assert passwordless_ssh_was_previously_setup
-            if _exists(authorized_keys_file):
-                logger.warning(
-                    f"Temporarily moving {authorized_keys_file} to {backup_authorized_keys_file} "
-                    f"to disable passwordless ssh access to the {cluster} cluster. "
-                )
-                login_node.run(f"mkdir -p {backup_authorized_keys_file.parent}")
-                login_node.run(
-                    f"mv {authorized_keys_file} {backup_authorized_keys_file}",
-                    warn=False,
-                    display=True,
-                    hide=False,
-                )
-            # todo: might not work well for the DRAC clusters!
-            assert not check_passwordless(cluster)
-
-    def reenable_ssh_access_to_cluster():
-        if cluster == "localhost":
-            if sys.platform != "win32":
-                # Mock running `ssh-copy-id` and re-enable passwordless ssh access by
-                # restoring the authorized_keys file.
-                # todo: do the equivalent for a remote cluster:
-                # remote.run(f"mkdir -p ~/.ssh")
-                # remote.run(f"cp {backup_authorized_keys_file} {authorized_keys_file}")
-                ssh_dir.mkdir(exist_ok=True, mode=0o700)
-                assert not passwordless_ssh_was_previously_setup
-                shutil.copy(backup_authorized_keys_file, authorized_keys_file)
-                assert isinstance(authorized_keys_file, Path)
-                assert authorized_keys_file.stat().st_mode & 0o777 == 0o600
-            elif sys.platform == "win32":
-                # We're doing the Windows equivalent of ssh-copy-id.
-                ssh_dir.mkdir(exist_ok=True, mode=0o700)
-                assert not passwordless_ssh_was_previously_setup
-                shutil.copy(backup_authorized_keys_file, authorized_keys_file)
-            assert check_passwordless(cluster)
-        else:
-            logger.info(
-                f"Restoring the original {authorized_keys_file} from backup at "
-                f"{backup_authorized_keys_file} on the {cluster} cluster."
-            )
-            login_node.run(
-                f"cp {backup_authorized_keys_file} {authorized_keys_file}",
-                warn=False,
-                display=True,
-                hide=False,
-            )
-
-    # NOTE: We already have passwordless ssh access to the cluster, otherwise this test
-    # would get skipped (because of the `login_node` fixture.)
-    assert have_passwordless_ssh_access_to(cluster)
-
-    if not passwordless_ssh_was_previously_setup:
-        # We're not supposed to have the passwordless SSH access to the 'cluster' before
-        # running the function under test (which sets it up for us).
-        # We're supposed to not already have passwordless SSH access to the 'cluster'.
-        assert have_passwordless_ssh_access_to(cluster)
-        temporarily_disable_ssh_access_to_cluster()
-        assert not have_passwordless_ssh_access_to(cluster)
-        # Pass the 'y' input for accepting to register the SSH key on the cluster.
-        input_pipe.send_text("y" if user_accepts_registering_key else "n")
-
-    subprocess_run = subprocess.run
-
-    subprocess_run_calls: list[str] = []
-
-    def _mock_subprocess_run(command: tuple[str], *args, **kwargs):
-        """Mock of the ssh-copy-id command (otherwise it would wait for a password/2FA).
-
-        Copies the `authorized_keys` file from the backup to the (temporarily cleared)
-        .ssh directory.
-        """
-
-        if (sys.platform != "win32" and command[0] == "ssh-copy-id") or (
-            sys.platform == "win32" and command[-1] == "cat >> ~/.ssh/authorized_keys"
-        ):
-            # NOTE: `ssh-copy-id` appears to be called all the time, not just when
-            # passwordless SSH access is not setup...
-            assert not passwordless_ssh_was_previously_setup
-            reenable_ssh_access_to_cluster()
-            # Mock running `ssh-copy-id` and re-enable passwordless ssh access by
-            # restoring the authorized_keys file.
-            return subprocess.CompletedProcess(
-                command, returncode=0, stdout="", stderr=""
-            )
-        # Run other commands normally.
-        logger.debug(f"Actually running command {command}")
-        return subprocess_run(command, *args, **kwargs)
-
-    mock_subprocess_run = mocker.patch("subprocess.run", wraps=_mock_subprocess_run)
-    success = setup_passwordless_ssh_access_to_cluster(cluster)
-    if passwordless_ssh_was_previously_setup:
-        # We already had access to the cluster.
-        assert success is True
-        assert _exists(authorized_keys_file)
-    elif user_accepts_registering_key:
-        assert success is True
-        assert _exists(authorized_keys_file)
-    else:
-        # User refuses to register the public key on the cluster.
-        assert success is False
-        assert not _exists(authorized_keys_file)
-
-    subprocess_run_calls = [
-        (
-            f"subprocess.run({call.args[0]}"
-            + ((", " + ", ".join(other_args)) if (other_args := call.args[1:]) else "")
-            + (
-                ", " + ", ".join(f"{k}={v}" for k, v in kwargs.items())
-                if (kwargs := call.kwargs)
-                else ""
-            )
-            + ")"
-        )
-        for call in mock_subprocess_run.call_args_list
-    ]
-    regression_text = "\n".join(
-        [
-            f"Calling {function_call_string(setup_passwordless_ssh_access_to_cluster, cluster)}",
-        ]
-        + [
-            f"with passwordless SSH access to {cluster} already setup"
-            if passwordless_ssh_was_previously_setup
-            else "without having setup passwordless SSH access to the cluster beforehand",
-        ]
-        + [
-            f"and the user {'accepting' if user_accepts_registering_key else 'rejecting'} "
-            f"to register the new public key on the remote"
-        ]
-        + [
-            "leads to the following commands being executed locally:",
-        ]
-        + [f"- {call}" for call in subprocess_run_calls]
-        + [""],
-    )
-    regression_text = regression_text.replace(str(SSH_CACHE_DIR), "~/.cache/ssh")
-    regression_text = regression_text.replace(str(getpass.getuser()), "<USER>")
-    file_regression.check(
-        regression_text,
-        extension=".md",
-    )
-
-
-@pytest.mark.timeout(10)
-@pytest.mark.skipif(
-    not ((in_github_CI and not in_self_hosted_github_CI) or USE_MY_REAL_SSH_DIR),
-    reason=(
-        "It's a bit risky to actually change the SSH config directory on a dev "
-        "machine. Only doing it in the CI or if the USE_MY_REAL_SSH_DIR env var is set."
-    ),
-)
-@pytest.mark.parametrize(
-    "drac_clusters_in_ssh_config",
-    [[]] + [DRAC_CLUSTERS[i:] for i in range(len(DRAC_CLUSTERS))],
-)
-@pytest.mark.parametrize(
-    "accept_generating_key",
-    [True, False],
-    ids=["accept_generate_key", "accept_generate_key"],
-)
-@pytest.mark.parametrize(
-    "public_key_exists",
-    [True, False],
-    ids=["key_exists", "no_key"],
-)
-@pytest.mark.parametrize(
-    "accept_mila", [True, False], ids=["accept_mila", "reject_mila"]
-)
-@pytest.mark.parametrize(
-    "accept_drac", [True, False], ids=["accept_drac", "reject_drac"]
-)
-def test_setup_passwordless_ssh_access(
-    accept_generating_key: bool,
-    public_key_exists: bool,
-    accept_mila: bool,
-    accept_drac: bool,
-    drac_clusters_in_ssh_config: list[str],
-    # capsys: pytest.CaptureFixture,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    backup_local_ssh_dir: Path,
-    input_pipe: PipeInput,
-):
-    assert in_github_CI or USE_MY_REAL_SSH_DIR
-    ssh_dir = Path.home() / ".ssh"
-    if ssh_dir.exists():
-        logger.warning(
-            f"Temporarily deleting the ssh dir (backed up at {backup_local_ssh_dir})"
-        )
-        shutil.rmtree(ssh_dir)
-    ssh_dir.mkdir(mode=0o700, exist_ok=False)
-
-    if not public_key_exists:
-        # There should be no ssh keys in the ssh dir before calling the function.
-        # We should get a prompt asking if we want to generate a key.
-        input_pipe.send_text("y" if accept_generating_key else "n")
-    else:
-        # There should be an ssh key in the .ssh dir.
-        # Won't ask to generate a key.
-        create_ssh_keypair(
-            ssh_private_key_path=ssh_dir / "id_rsa_milatools", local=LocalV1()
-        )
-        if drac_clusters_in_ssh_config:
-            # We should get a prompt asking if we want to register the public key
-            # on the DRAC clusters or not.
-            input_pipe.send_text("y" if accept_drac else "n")
-
-    # Pre-populate the ssh config file.
-    ssh_config_path = tmp_path / "ssh_config"
-    ssh_config_path.write_text(
-        textwrap.dedent(
-            f"""\
-            Host {" ".join(drac_clusters_in_ssh_config)}
-                Hostname %h.computecanada.ca
-                User bob
-            """
-        )
-        if drac_clusters_in_ssh_config
-        else ""
-    )
-    ssh_config = SSHConfig(path=ssh_config_path)
-
-    # We mock the main function used by the `setup_passwordless_ssh_access` function.
-    # It's okay because we have a good test for it above. Therefore we just test how it
-    # gets called here.
-    mock_setup_passwordless_ssh_access_to_cluster = Mock(
-        spec=setup_passwordless_ssh_access_to_cluster,
-        side_effect=[accept_mila, *(accept_drac for _ in drac_clusters_in_ssh_config)],
-    )
-    import milatools.cli.init_command
-
-    monkeypatch.setattr(
-        milatools.cli.init_command,
-        setup_passwordless_ssh_access_to_cluster.__name__,
-        mock_setup_passwordless_ssh_access_to_cluster,
-    )
-
-    monkeypatch.setattr(
-        milatools.cli.init_command,
-        setup_keys_on_login_node.__name__,
-        Mock(spec=setup_keys_on_login_node),
-    )
-
-    result = setup_passwordless_ssh_access(ssh_config)
-
-    if not public_key_exists:
-        if accept_generating_key:
-            assert ssh_dir.exists()
-            assert ssh_dir.stat().st_mode & 0o777 == 0o700
-            assert (ssh_dir / "id_rsa").exists()
-            assert (ssh_dir / "id_rsa").stat().st_mode & 0o777 == 0o600
-            assert (ssh_dir / "id_rsa.pub").exists()
-        else:
-            assert not (ssh_dir / "id_rsa").exists()
-            assert not (ssh_dir / "id_rsa.pub").exists()
-            assert not result
-            mock_setup_passwordless_ssh_access_to_cluster.assert_not_called()
-            return
-
-    mock_setup_passwordless_ssh_access_to_cluster.assert_any_call("mila")
-    if not accept_mila:
-        mock_setup_passwordless_ssh_access_to_cluster.assert_called_once_with("mila")
-        assert result is False
-        return
-
-    # If we accept to setup passwordless SSH access to the Mila cluster, we go on
-    # to ask for DRAC clusters.
-    if not drac_clusters_in_ssh_config:
-        assert result is True
-        mock_setup_passwordless_ssh_access_to_cluster.assert_called_once_with("mila")
-        return
-
-    # If there were DRAC clusters in the SSH config, then the fn is called for each
-    # cluster, unless the user rejects setting up passwordless SSH access to one of the
-    # clusters, in which case there's an early return False.
-    if not accept_drac:
-        assert len(mock_setup_passwordless_ssh_access_to_cluster.mock_calls) == 2
-        assert result is False
-        return
-
-    for drac_cluster in drac_clusters_in_ssh_config:
-        mock_setup_passwordless_ssh_access_to_cluster.assert_any_call(drac_cluster)
-    assert result is True
+    assert wsl_public_key_path.exists()
+    assert wsl_public_key_path.stat().st_mode & 0o777 == 0o644
+    assert wsl_public_key_path.read_text() == windows_public_key_path.read_text()
+    assert wsl_public_key_path.read_bytes().count(b"\r\n") == 0

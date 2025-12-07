@@ -17,7 +17,7 @@ import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
-from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE
+from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE, SSHConfig
 from milatools.utils.remote_v2 import RemoteV2, get_controlpath_for
 
 if typing.TYPE_CHECKING:
@@ -32,6 +32,9 @@ in_github_CI = os.environ.get("GITHUB_ACTIONS") == "true"
 in_self_hosted_github_CI = (
     in_github_CI and os.environ.get("GITHUB_ACTION") == "self_hosted_integration_tests"
 )
+# in_self_hosted_github_CI = in_github_CI and (
+#     "self-hosted" in os.environ.get("RUNNER_LABELS", "")
+# )
 in_github_cloud_CI = in_github_CI and not in_self_hosted_github_CI
 
 skip_if_on_github_cloud_CI = pytest.mark.skipif(
@@ -50,6 +53,17 @@ def ssh_to_localhost_is_setup() -> bool:
         ssh_config_path=SSH_CONFIG_FILE,
         ssh_cache_dir=SSH_CACHE_DIR,
     )
+    # Unfortunately needs to be set.
+    SSH_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if not SSH_CONFIG_FILE.exists():
+        SSH_CONFIG_FILE.touch(mode=0o600)
+    config = SSHConfig(SSH_CONFIG_FILE)
+    if "localhost" not in config.hosts():
+        config.add("localhost", StrictHostKeyChecking="no")
+    else:
+        config.set("localhost", StrictHostKeyChecking="no")
+    config.save()
+
     if sys.platform != "win32":
         try:
             _localhost_remote = RemoteV2("localhost", control_path=control_path)
@@ -62,6 +76,7 @@ def ssh_to_localhost_is_setup() -> bool:
         return True
 
     try:
+        # todo: do we need to disable strict host key checking here as well?
         _connection = fabric.Connection("localhost")
         _connection.open()
     except (

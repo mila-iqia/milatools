@@ -111,6 +111,12 @@ def get_first_node_name(node_names_out: str) -> str:
 
 @deprecated("RemoteV1 is being deprecated. Use RemoteV2 instead.", category=None)
 class RemoteV1:
+    """Runs commands over SSH using paramiko.
+
+    Importantly, this doesn't support the ControlMaster directive, so the user will have
+    to go through 2FA prompts every time this object is created.
+    """
+
     def __init__(
         self,
         hostname: str,
