@@ -31,7 +31,7 @@ jobs:
             # that we don't have to go through 2FA on DRAC clusters.
             ssh -O check -oStrictHostKeyChecking=no ${{ inputs.cluster }}
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v7
         with:
