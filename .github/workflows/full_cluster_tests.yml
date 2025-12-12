@@ -36,7 +36,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:

@@ -75,7 +75,7 @@ jobs:
         run: uv run pytest --cov=milatools --cov-report=xml --cov-append
 
       - name: Store coverage report as an artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-reports-unit-${{ matrix.platform }}-${{ matrix.python-version }}
           path: ./coverage.xml
@@ -106,7 +106,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: coverage-reports-*
           merge-multiple: false
