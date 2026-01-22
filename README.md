@@ -12,6 +12,29 @@ The `mila` command is meant to be used on your local machine. Trying to run it o
 ---
 
 
+## All-in-one setup for a Windows machine:
+
+1. Open PowerShell as an administrator (Right click --> Run as administrator).
+Enter the following command:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/mila-iqia/milatools/refs/heads/windows-setup-script/scripts/windows_setup.ps1 | iex"
+```
+
+2. Reboot your machine
+
+3. After the reboot is complete, open a WSL shell (enter Ubuntu in the search bar, then press enter)
+
+Run the following commands:
+
+```console
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool install milatools
+mila init
+```
+
+
+
 ## Install
 
 Requires Python >= 3.8
