@@ -1,6 +1,6 @@
-usage: mila code [-h] [--cluster CLUSTER] [--command VALUE] [--job JOB_ID]
-                 [--node NODE] [--persist] [--alloc ...] [--salloc ...]
-                 [--sbatch ...]
+usage: mila code [-h] [--cluster CLUSTER] [--command VALUE] [--type TYPE]
+                 [--job JOB_ID] [--node NODE] [--persist] [--alloc ...]
+                 [--salloc ...] [--sbatch ...]
                  [PATH]
 
 positional arguments:
@@ -16,6 +16,8 @@ optional arguments:
   --cluster CLUSTER  Which cluster to connect to.
   --command VALUE    Command to use to start vscode (defaults to "code" or the
                      value of $MILATOOLS_CODE_COMMAND)
+  --type TYPE        Type of editor ("vscode" or "zed"), (defaults to
+                     "vscode")
   --job JOB_ID       Job ID to connect to
   --node NODE        Node to connect to
 

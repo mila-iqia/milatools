@@ -240,6 +240,13 @@ def add_arguments(parser: argparse.ArgumentParser):
         metavar="VALUE",
     )
     code_parser.add_argument(
+        "--type",
+        dest="editor_type",
+        default="vscode",
+        help=('Type of editor ("vscode" or "zed"), (defaults to "vscode")'),
+        metavar="TYPE",
+    )
+    code_parser.add_argument(
         "--job",
         type=int,
         default=None,
@@ -545,6 +552,7 @@ def code_v1(
     node: str | None,
     alloc: list[str],
     cluster: str = "mila",
+    editor_type: str = "vscode",
 ):
     """Open a remote VSCode session on a compute node.
 
@@ -557,6 +565,10 @@ def code_v1(
         node: Node to connect to
         alloc: Extra options to pass to slurm
     """
+    if editor_type != "vscode":
+        raise MilatoolsUserError(
+            "The only supported editor type on windows is 'vscode'"
+        )
     if command is None:
         command = get_code_command()
     command_path = shutil.which(command)
