@@ -48,6 +48,7 @@ async def code(
     node: str | None,
     alloc: list[str],
     cluster: str = "mila",
+    editor_type: str = "vscode",
 ) -> ComputeNode | int:
     """Open a remote VSCode session on a compute node.
 
@@ -111,7 +112,7 @@ async def code(
     # NOTE: Perhaps we could eventually do this check dynamically, if the cluster is an
     # unknown cluster?
     sync_vscode_extensions_task = None
-    if not internet_on_compute_nodes(cluster):
+    if not internet_on_compute_nodes(cluster) or editor_type != "vscode":
         # Sync the VsCode extensions from the local machine over to the target cluster.
         console.log(
             f"Installing VSCode extensions that are on the local machine on {cluster}.",
@@ -186,7 +187,7 @@ async def code(
     else:
         compute_node = await compute_node_task
 
-    await launch_vscode_loop(command, compute_node, path)
+    await launch_vscode_loop(command, editor_type, compute_node, path)
 
     if not persist and not (job or node):
         # Cancel the job if it was not persistent.
@@ -208,16 +209,28 @@ async def code(
     return compute_node
 
 
-async def launch_vscode_loop(code_command: str, compute_node: ComputeNode, path: str):
+async def launch_vscode_loop(
+    code_command: str, editor_type: str, compute_node: ComputeNode, path: str
+):
     while True:
-        code_command_to_run = (
-            code_command,
-            "--new-window",
-            "--wait",
-            "--remote",
-            f"ssh-remote+{compute_node.hostname}",
-            path,
-        )
+        if editor_type == "vscode":
+            code_command_to_run = (
+                code_command,
+                "--new-window",
+                "--wait",
+                "--remote",
+                f"ssh-remote+{compute_node.hostname}",
+                path,
+            )
+        elif editor_type == "zed":
+            code_command_to_run = (
+                "zed",
+                "--new",
+                "--wait",
+                f"ssh://{compute_node.hostname}/{path}",
+            )
+        else:
+            raise MilatoolsUserError(f"Unknown editor type: {editor_type}")
         if running_inside_WSL():
             code_command_to_run = ("powershell.exe", *code_command_to_run)
 
