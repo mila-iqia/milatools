@@ -7,6 +7,9 @@ Host mila
   Port 2222
   ServerAliveInterval 120
   ServerAliveCountMax 5
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist yes
   User bob
   IdentityFile ~/.ssh/id_rsa_mila
 
@@ -21,16 +24,25 @@ Host mila-cpu
   ServerAliveInterval 120
   ProxyCommand ssh mila "/cvmfs/config.mila.quebec/scripts/milatools/slurm-proxy.sh mila-cpu --mem=8G"
   RemoteCommand /cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh mila-cpu
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist yes
   User bob
   IdentityFile ~/.ssh/id_rsa_mila
 
 Host *.server.mila.quebec !*login.server.mila.quebec
   ProxyJump mila
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist yes
   User bob
   IdentityFile ~/.ssh/id_rsa_mila
 
 Host cn-????
   ProxyJump mila
+  ControlMaster auto
+  ControlPath ~/.cache/ssh/%r@%h:%p
+  ControlPersist yes
   User bob
   IdentityFile ~/.ssh/id_rsa_mila
 

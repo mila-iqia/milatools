@@ -341,6 +341,9 @@ def test_fixes_overly_general_cn_entry(
         "hostname": "cn-a001.server.mila.quebec",
         "user": mila_username,
         "proxyjump": "mila",
+        "controlmaster": "auto",
+        "controlpath": unittest.mock.ANY,
+        "controlpersist": "yes",
         "identityfile": unittest.mock.ANY,
     }
     assert "proxyjump" not in ssh_config.lookup("login.server.mila.quebec")
