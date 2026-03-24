@@ -34,21 +34,11 @@ repos:
     hooks:
       # Run the linter.
       - id: ruff
-        args: ['--fix']
+        args: ["--fix"]
         require_serial: true
       # Run the formatter.
       - id: ruff-format
         args: []
-
-  # python docstring formatting
-  - repo: https://github.com/myint/docformatter
-    rev: v1.7.5
-    hooks:
-      - id: docformatter
-        # https://github.com/PyCQA/docformatter/issues/172#issuecomment-1496443857
-        additional_dependencies: [tomli]
-        args: [--in-place]
-        require_serial: true
 
   # md formatting
   # NOTE: Disabling, since it wants to change the markdown regression files with escaped
