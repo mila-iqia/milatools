@@ -8,7 +8,7 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.commands import code_v1
-from milatools.cli.utils import SSHConnectionError, get_hostname_to_use_for_compute_node
+from milatools.cli.utils import get_hostname_to_use_for_compute_node
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
@@ -21,9 +21,8 @@ logger = get_logger(__name__)
 
 @pytest.mark.slow
 @launches_jobs
-@pytest.mark.xfail(
+@pytest.mark.skipif(
     in_github_CI,
-    raises=SSHConnectionError,
     reason="Misbehaving since the 2FA changes on the Mila cluster.",
 )
 @pytest.mark.parametrize("persist", [True, False])
