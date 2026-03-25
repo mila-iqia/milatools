@@ -66,6 +66,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         "Port": 2222,
         "ServerAliveInterval": 120,
         "ServerAliveCountMax": 5,
+        **ssh_multiplexing_config,
     },
     "mila-cpu": {
         # "User": mila_username,
@@ -91,15 +92,18 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
             "/cvmfs/config.mila.quebec/scripts/milatools/entrypoint.sh "
             "mila-cpu"  # job name (matches above).
         ),
+        **ssh_multiplexing_config,
     },
     # Compute nodes:
     "*.server.mila.quebec !*login.server.mila.quebec": {
         "ProxyJump": "mila",
         # "User": mila_username,
+        **ssh_multiplexing_config,
     },
     "cn-????": {
         # "HostName": "%h.server.mila.quebec",
         "ProxyJump": "mila",
+        **ssh_multiplexing_config,
     },
 }
 DRAC_CLUSTERS = [

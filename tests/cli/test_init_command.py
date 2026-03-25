@@ -337,12 +337,21 @@ def test_fixes_overly_general_cn_entry(
     """Test the case where the user has a *.server.mila.quebec entry."""
     assert mila_username
     ssh_config = SshConfigReader.from_path(ssh_config_file)
-    assert ssh_config.lookup("cn-a001.server.mila.quebec") == {
+    expected = {
         "hostname": "cn-a001.server.mila.quebec",
         "user": mila_username,
         "proxyjump": "mila",
         "identityfile": unittest.mock.ANY,
     }
+    if not ON_WINDOWS:
+        expected.update(
+            {
+                "controlmaster": "auto",
+                "controlpath": unittest.mock.ANY,
+                "controlpersist": "yes",
+            }
+        )
+    assert ssh_config.lookup("cn-a001.server.mila.quebec") == expected
     assert "proxyjump" not in ssh_config.lookup("login.server.mila.quebec")
     assert "proxyjump" not in ssh_config.lookup("login-1.login.server.mila.quebec")
 
