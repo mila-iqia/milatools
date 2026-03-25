@@ -31,8 +31,9 @@ from milatools.utils.disk_quota import check_disk_quota, check_disk_quota_v1
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
+from ..cli.common import in_github_CI
 from ..conftest import job_name, launches_jobs
-from .test_slurm_remote import PARAMIKO_SSH_BANNER_BUG, get_recent_jobs_info_dicts
+from .test_slurm_remote import get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
 
@@ -298,7 +299,16 @@ doesnt_create_new_jobs = pytest.mark.usefixtures(
 @doesnt_create_new_jobs
 @pytest.mark.parametrize(
     "use_v1",
-    [False, pytest.param(True, marks=[PARAMIKO_SSH_BANNER_BUG])],
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                in_github_CI,
+                reason="Misbehaving since the 2FA changes on the Mila cluster.",
+            ),
+        ),
+    ],
     ids=["code", "code_v1"],
 )
 @pytest.mark.parametrize(

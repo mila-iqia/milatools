@@ -12,15 +12,19 @@ from milatools.cli.utils import get_hostname_to_use_for_compute_node
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
+from ..cli.common import in_github_CI
 from ..conftest import launches_jobs
-from .test_slurm_remote import PARAMIKO_SSH_BANNER_BUG, get_recent_jobs_info_dicts
+from .test_slurm_remote import get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
 
 
 @pytest.mark.slow
 @launches_jobs
-@PARAMIKO_SSH_BANNER_BUG
+@pytest.mark.skipif(
+    in_github_CI,
+    reason="Misbehaving since the 2FA changes on the Mila cluster.",
+)
 @pytest.mark.parametrize("persist", [True, False])
 def test_code_v1(
     login_node: RemoteV1 | RemoteV2,
