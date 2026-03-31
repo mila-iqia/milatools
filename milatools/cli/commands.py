@@ -240,7 +240,7 @@ def add_arguments(parser: argparse.ArgumentParser):
         metavar="VALUE",
     )
     code_parser.add_argument(
-        "--type",
+        "--editor-type",
         dest="editor_type",
         default="vscode",
         help=('Type of editor ("vscode" or "zed"), (defaults to "vscode")'),
