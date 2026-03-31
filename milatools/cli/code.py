@@ -13,6 +13,7 @@ import shutil
 from collections.abc import Awaitable
 from logging import getLogger as get_logger
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 import pyjson5 as json5
 
@@ -51,7 +52,7 @@ async def code(
     node: str | None,
     alloc: list[str],
     cluster: str = "mila",
-    editor_type: str = "vscode",
+    editor_type: Literal["vscode", "zed"] = "vscode",
 ) -> ComputeNode | int:
     """Open a remote VSCode session on a compute node.
 
@@ -63,7 +64,13 @@ async def code(
         job: ID of the job to connect to
         node: Name of the node to connect to
         alloc: Extra options to pass to slurm
+        editor_type: Type of editor ("vscode" or "zed").
     """
+
+    if editor_type == "zed" and command == "code":
+        # A bit ugly.
+        command = "zed"
+
     # Check that the `code` command is in the $PATH so that we can use just `code` as
     # the command.
     if not shutil.which(command):
@@ -218,12 +225,12 @@ async def code(
 
 
 async def launch_editor_loop(
-    code_command: str, editor_type: str, compute_node: ComputeNode, path: str
+    editor_command: str, editor_type: str, compute_node: ComputeNode, path: str
 ):
     while True:
         if editor_type == "vscode":
             code_command_to_run = (
-                code_command,
+                editor_command,
                 "--new-window",
                 "--wait",
                 "--remote",
@@ -232,7 +239,7 @@ async def launch_editor_loop(
             )
         elif editor_type == "zed":
             code_command_to_run = (
-                "zed",
+                editor_command,
                 "--new",
                 "--wait",
                 f"ssh://{compute_node.hostname}/{path}",

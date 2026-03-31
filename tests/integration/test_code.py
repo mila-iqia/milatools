@@ -8,6 +8,7 @@ import shutil
 import sys
 from datetime import timedelta
 from logging import getLogger as get_logger
+from typing import Literal
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -31,7 +32,7 @@ from milatools.utils.disk_quota import check_disk_quota, check_disk_quota_v1
 from milatools.utils.remote_v1 import RemoteV1
 from milatools.utils.remote_v2 import RemoteV2
 
-from ..cli.common import in_github_CI
+from ..cli.common import in_github_CI, skip_on_windows
 from ..conftest import job_name, launches_jobs
 from .test_slurm_remote import get_recent_jobs_info_dicts
 
@@ -313,8 +314,23 @@ doesnt_create_new_jobs = pytest.mark.usefixtures(
 )
 @pytest.mark.parametrize(
     ("use_node_name", "use_job_id"),
-    [(True, False), (False, True), (True, True)],
+    [
+        (
+            pytest.param(
+                True,
+                marks=pytest.mark.xfail(
+                    reason="Might fail if we have more than one job on the node while the test is running."
+                ),
+            ),
+            False,
+        ),
+        (False, True),
+        (True, True),  # Both are passed, so jobid is used, which is unambiguous.
+    ],
     ids=["node", "job", "both"],
+)
+@pytest.mark.parametrize(
+    "editor_type", ["vscode", pytest.param("zed", marks=skip_on_windows)]
 )
 @pytest.mark.asyncio
 async def test_code_with_existing_job(
@@ -325,6 +341,7 @@ async def test_code_with_existing_job(
     use_v1: bool,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
+    editor_type: Literal["vscode", "zed"],
 ):
     """Test using `mila code <path> --job <job_id>`"""
 
@@ -369,6 +386,7 @@ async def test_code_with_existing_job(
             node=node,
             alloc=[],
             cluster=cluster,
+            editor_type=editor_type,
         )
         assert isinstance(compute_node_or_job_id, ComputeNode)
         assert compute_node_or_job_id.job_id == existing_job.job_id
