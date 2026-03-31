@@ -456,7 +456,7 @@ def parse_args(parser: argparse.ArgumentParser) -> tuple[int, Callable, dict[str
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
 
     # Set the default value for command if not set
-    if args_dict["command"] is None:
+    if "command" in args_dict and args_dict["command"] is None:
         editor_type = args_dict["editor_type"]
         if editor_type == "zed":
             args_dict["command"] = "zed"
