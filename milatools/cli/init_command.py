@@ -1196,7 +1196,8 @@ def has_passphrase(ssh_private_key_path: Path) -> bool:
 
 def setup_vscode_settings():
     rprint("Setting up VsCode settings for Remote development.")
-
+    # TODO: Use pyjson5 to load and store, seems to preserve comments and is more
+    # resilient to trailing commas.
     # TODO: Could also change some other useful settings as needed.
 
     # For example, we could skip a prompt if we had the qualified node name:

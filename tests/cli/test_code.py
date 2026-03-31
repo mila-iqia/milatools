@@ -23,7 +23,7 @@ async def test_code_from_WSL(
     mock_localv2 = Mock(spec=LocalV2)
     monkeypatch.setattr(milatools.cli.code, LocalV2.__name__, mock_localv2)
 
-    await milatools.cli.code.launch_vscode_loop(
+    await milatools.cli.code.launch_editor_loop(
         "code", "vscode", Mock(spec=ComputeNode, hostname="foo"), "/bob/path"
     )
     assert isinstance(mock_localv2.run_async, AsyncMock)
