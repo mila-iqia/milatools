@@ -58,19 +58,13 @@ async def code(
 
     Arguments:
         path: Path to open on the remote machine
-        command: Command to use to start vscode (defaults to "code" or the value of \
-            $MILATOOLS_CODE_COMMAND)
+        command: Command to use to start the editor
         persist: Whether the server should persist or not after exiting the terminal.
         job: ID of the job to connect to
         node: Name of the node to connect to
         alloc: Extra options to pass to slurm
         editor_type: Type of editor ("vscode" or "zed").
     """
-
-    if editor_type == "zed" and command == "code":
-        # A bit ugly.
-        command = "zed"
-
     # Check that the `code` command is in the $PATH so that we can use just `code` as
     # the command.
     if not shutil.which(command):

@@ -232,10 +232,10 @@ def add_arguments(parser: argparse.ArgumentParser):
     )
     code_parser.add_argument(
         "--command",
-        default=get_code_command(),
+        default=None,
         help=(
             "Command to use to start vscode\n"
-            '(defaults to "code" or the value of $MILATOOLS_CODE_COMMAND)'
+            '(defaults to "code" or "zed" depending on the editor or the value of $MILATOOLS_CODE_COMMAND)'
         ),
         metavar="VALUE",
     )
@@ -454,6 +454,16 @@ def parse_args(parser: argparse.ArgumentParser) -> tuple[int, Callable, dict[str
     _ = args_dict.pop("<sync_subcommand>", None)
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
+
+    # Set the default value for command if not set
+    if args_dict["command"] is None:
+        editor_type = args_dict["editor_type"]
+        if editor_type == "zed":
+            args_dict["command"] = "zed"
+        elif editor_type == "vscode":
+            args_dict["command"] = get_code_command()
+        else:
+            raise NotImplementedError(f"editor_type: {editor_type}")
 
     assert callable(function)
     return verbose, function, args_dict
