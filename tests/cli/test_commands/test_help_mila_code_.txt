@@ -1,4 +1,4 @@
-usage: mila code [-h] [--cluster CLUSTER] [--command VALUE] [--type TYPE]
+usage: mila code [-h] [--cluster CLUSTER] [--command VALUE] [--editor-type TYPE]
                  [--job JOB_ID] [--node NODE] [--persist] [--alloc ...]
                  [--salloc ...] [--sbatch ...]
                  [PATH]
