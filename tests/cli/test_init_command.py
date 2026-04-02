@@ -863,6 +863,99 @@ def test_setup_vscode_settings(
     file_regression.check(expected_text, extension=".md")
 
 
+@xfails_on_windows(
+    raises=AssertionError, reason="TODO: buggy test: getting assert None is not None."
+)
+@pytest.mark.parametrize(
+    "initial_settings", [None, {}, {"foo": "bar"}, {"remote.SSH.connectTimeout": 123}]
+)
+@pytest.mark.parametrize("accept_changes", [True, False], ids=["accept", "reject"])
+def test_setup_vscode_settings_windows_or_wsl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_settings: dict | None,
+    file_regression: FileRegressionFixture,
+    accept_changes: bool,
+    mocker: pytest_mock.MockerFixture,
+):
+    """Test that `remote.SSH.showLoginTerminal` is set when running on Windows or WSL."""
+    vscode_settings_json_path = tmp_path / "settings.json"
+    if initial_settings is not None:
+        with open(vscode_settings_json_path, "w") as f:
+            json.dump(initial_settings, f, indent=4)
+
+    monkeypatch.setattr(
+        init_command,
+        init_command.vscode_installed.__name__,
+        Mock(spec=init_command.vscode_installed, return_value=True),
+    )
+    monkeypatch.setattr(
+        init_command,
+        init_command.get_expected_vscode_settings_json_path.__name__,
+        Mock(
+            spec=init_command.get_expected_vscode_settings_json_path,
+            return_value=vscode_settings_json_path,
+        ),
+    )
+    monkeypatch.setattr(init_command, "ON_WINDOWS", True)
+
+    user_inputs = ["y" if accept_changes else "n"]
+    mocker.patch("rich.prompt.Confirm.ask", spec_set=True, return_value=accept_changes)
+
+    setup_vscode_settings()
+
+    resulting_contents: str | None = None
+    resulting_settings: dict | None = None
+
+    if not accept_changes and initial_settings is None:
+        # Shouldn't create the file if we don't accept the changes and there's no
+        # initial file.
+        assert not vscode_settings_json_path.exists()
+
+    if vscode_settings_json_path.exists():
+        resulting_contents = vscode_settings_json_path.read_text()
+        resulting_settings = json.loads(resulting_contents)
+        assert isinstance(resulting_settings, dict)
+
+    if not accept_changes:
+        if initial_settings is None:
+            assert not vscode_settings_json_path.exists()
+            return  # skip creating the regression file in that case.
+        assert resulting_settings == initial_settings
+        return
+
+    assert resulting_contents is not None
+    assert resulting_settings is not None
+
+    expected_text = "\n".join(
+        [
+            f"Calling `{setup_vscode_settings.__name__}()` with "
+            + (
+                "\n".join(
+                    [
+                        "this initial content:",
+                        "",
+                        "```json",
+                        json.dumps(initial_settings, indent=4),
+                        "```",
+                    ]
+                )
+                if initial_settings is not None
+                else "no initial VsCode settings file"
+            ),
+            "",
+            f"and these user inputs: {tuple(user_inputs)}",
+            "leads the following VsCode settings file:",
+            "",
+            "```json",
+            resulting_contents,
+            "```",
+        ]
+    )
+
+    file_regression.check(expected_text, extension=".md")
+
+
 @pytest.fixture
 def linux_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Creates a fake home directory where we will make a fake SSH directory for

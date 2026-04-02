@@ -181,6 +181,10 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
 }
 
 VSCODE_SETTINGS = {"remote.SSH.connectTimeout": 60}
+VSCODE_SETTINGS_WINDOWS_OR_WSL = {
+    **VSCODE_SETTINGS,
+    "remote.SSH.showLoginTerminal": True,
+}
 
 
 def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
@@ -1216,10 +1220,13 @@ def setup_vscode_settings():
         )
         return
     vscode_settings_json_path = get_expected_vscode_settings_json_path()
+    new_values = (
+        VSCODE_SETTINGS_WINDOWS_OR_WSL
+        if ON_WINDOWS or running_inside_WSL()
+        else VSCODE_SETTINGS
+    )
     try:
-        _update_vscode_settings_json(
-            vscode_settings_json_path, new_values=VSCODE_SETTINGS
-        )
+        _update_vscode_settings_json(vscode_settings_json_path, new_values=new_values)
     except Exception as err:
         logger.warning(
             (
