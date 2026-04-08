@@ -863,9 +863,6 @@ def test_setup_vscode_settings(
     file_regression.check(expected_text, extension=".md")
 
 
-@xfails_on_windows(
-    raises=AssertionError, reason="TODO: buggy test: getting assert None is not None."
-)
 @pytest.mark.parametrize(
     "initial_settings", [None, {}, {"foo": "bar"}, {"remote.SSH.connectTimeout": 123}]
 )
@@ -884,18 +881,20 @@ def test_setup_vscode_settings_windows_or_wsl(
         with open(vscode_settings_json_path, "w") as f:
             json.dump(initial_settings, f, indent=4)
 
+    mock_vscode_installed = Mock(spec=init_command.vscode_installed, return_value=True)
     monkeypatch.setattr(
         init_command,
         init_command.vscode_installed.__name__,
-        Mock(spec=init_command.vscode_installed, return_value=True),
+        mock_vscode_installed,
+    )
+    mock_get_settings_path = Mock(
+        spec=init_command.get_expected_vscode_settings_json_path,
+        return_value=vscode_settings_json_path,
     )
     monkeypatch.setattr(
         init_command,
         init_command.get_expected_vscode_settings_json_path.__name__,
-        Mock(
-            spec=init_command.get_expected_vscode_settings_json_path,
-            return_value=vscode_settings_json_path,
-        ),
+        mock_get_settings_path,
     )
     monkeypatch.setattr(init_command, "ON_WINDOWS", True)
 
@@ -903,6 +902,9 @@ def test_setup_vscode_settings_windows_or_wsl(
     mocker.patch("rich.prompt.Confirm.ask", spec_set=True, return_value=accept_changes)
 
     setup_vscode_settings()
+
+    mock_vscode_installed.assert_called_once()
+    mock_get_settings_path.assert_called_once()
 
     resulting_contents: str | None = None
     resulting_settings: dict | None = None
