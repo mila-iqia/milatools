@@ -1,6 +1,6 @@
 usage: mila code [-h] [--cluster CLUSTER] [--command VALUE] [--job JOB_ID]
                  [--node NODE] [--persist] [--alloc ...] [--salloc ...]
-                 [--sbatch ...]
+                 [--sbatch ...] [--reuse-window]
                  [PATH]
 
 positional arguments:
@@ -18,6 +18,8 @@ optional arguments:
                      value of $MILATOOLS_CODE_COMMAND)
   --job JOB_ID       Job ID to connect to
   --node NODE        Node to connect to
+  --reuse-window     Open the path in an existing VSCode window instead of
+                     opening a new window.
 
 Allocation optional arguments:
   Extra options to pass to slurm.
