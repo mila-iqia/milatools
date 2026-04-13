@@ -48,6 +48,7 @@ async def code(
     node: str | None,
     alloc: list[str],
     cluster: str = "mila",
+    reuse_window: bool = False,
 ) -> ComputeNode | int:
     """Open a remote VSCode session on a compute node.
 
@@ -59,6 +60,8 @@ async def code(
         job: ID of the job to connect to
         node: Name of the node to connect to
         alloc: Extra options to pass to slurm
+        reuse_window: Whether to reuse an existing VSCode window instead of opening a \
+            new one.
     """
     # Check that the `code` command is in the $PATH so that we can use just `code` as
     # the command.
@@ -186,7 +189,7 @@ async def code(
     else:
         compute_node = await compute_node_task
 
-    await launch_vscode_loop(command, compute_node, path)
+    await launch_vscode_loop(command, compute_node, path, reuse_window=reuse_window)
 
     if not persist and not (job or node):
         # Cancel the job if it was not persistent.
@@ -208,11 +211,16 @@ async def code(
     return compute_node
 
 
-async def launch_vscode_loop(code_command: str, compute_node: ComputeNode, path: str):
+async def launch_vscode_loop(
+    code_command: str,
+    compute_node: ComputeNode,
+    path: str,
+    reuse_window: bool = False,
+):
     while True:
         code_command_to_run = (
             code_command,
-            "--new-window",
+            "--reuse-window" if reuse_window else "--new-window",
             "--wait",
             "--remote",
             f"ssh-remote+{compute_node.hostname}",
