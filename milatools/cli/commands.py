@@ -232,12 +232,19 @@ def add_arguments(parser: argparse.ArgumentParser):
     )
     code_parser.add_argument(
         "--command",
-        default=get_code_command(),
+        default=None,
         help=(
             "Command to use to start vscode\n"
-            '(defaults to "code" or the value of $MILATOOLS_CODE_COMMAND)'
+            '(defaults to "code" or "zed" depending on the editor or the value of $MILATOOLS_CODE_COMMAND)'
         ),
         metavar="VALUE",
+    )
+    code_parser.add_argument(
+        "--editor-type",
+        dest="editor_type",
+        default="vscode",
+        help=('Type of editor ("vscode" or "zed"), (defaults to "vscode")'),
+        metavar="TYPE",
     )
     code_parser.add_argument(
         "--job",
@@ -448,6 +455,16 @@ def parse_args(parser: argparse.ArgumentParser) -> tuple[int, Callable, dict[str
     # replace SEARCH -> "search", REMOTE -> "remote", etc.
     args_dict = _convert_uppercase_keys_to_lowercase(args_dict)
 
+    # Set the default value for command if not set
+    if "command" in args_dict and args_dict["command"] is None:
+        editor_type = args_dict["editor_type"]
+        if editor_type == "zed":
+            args_dict["command"] = "zed"
+        elif editor_type == "vscode":
+            args_dict["command"] = get_code_command()
+        else:
+            raise NotImplementedError(f"editor_type: {editor_type}")
+
     assert callable(function)
     return verbose, function, args_dict
 
@@ -545,6 +562,7 @@ def code_v1(
     node: str | None,
     alloc: list[str],
     cluster: str = "mila",
+    editor_type: str = "vscode",
 ):
     """Open a remote VSCode session on a compute node.
 
@@ -557,6 +575,10 @@ def code_v1(
         node: Node to connect to
         alloc: Extra options to pass to slurm
     """
+    if editor_type != "vscode":
+        raise MilatoolsUserError(
+            "The only supported editor type on windows is 'vscode'"
+        )
     if command is None:
         command = get_code_command()
     command_path = shutil.which(command)

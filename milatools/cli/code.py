@@ -8,10 +8,14 @@ going to go through 2FA once.
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 from collections.abc import Awaitable
 from logging import getLogger as get_logger
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+from typing import Literal
+
+import pyjson5 as json5
 
 from milatools.cli import console
 from milatools.cli.init_command import (
@@ -48,17 +52,18 @@ async def code(
     node: str | None,
     alloc: list[str],
     cluster: str = "mila",
+    editor_type: Literal["vscode", "zed"] = "vscode",
 ) -> ComputeNode | int:
     """Open a remote VSCode session on a compute node.
 
     Arguments:
         path: Path to open on the remote machine
-        command: Command to use to start vscode (defaults to "code" or the value of \
-            $MILATOOLS_CODE_COMMAND)
+        command: Command to use to start the editor
         persist: Whether the server should persist or not after exiting the terminal.
         job: ID of the job to connect to
         node: Name of the node to connect to
         alloc: Extra options to pass to slurm
+        editor_type: Type of editor ("vscode" or "zed").
     """
     # Check that the `code` command is in the $PATH so that we can use just `code` as
     # the command.
@@ -111,7 +116,7 @@ async def code(
     # NOTE: Perhaps we could eventually do this check dynamically, if the cluster is an
     # unknown cluster?
     sync_vscode_extensions_task = None
-    if not internet_on_compute_nodes(cluster):
+    if not internet_on_compute_nodes(cluster) and editor_type == "vscode":
         # Sync the VsCode extensions from the local machine over to the target cluster.
         console.log(
             f"Installing VSCode extensions that are on the local machine on {cluster}.",
@@ -186,7 +191,12 @@ async def code(
     else:
         compute_node = await compute_node_task
 
-    await launch_vscode_loop(command, compute_node, path)
+    if editor_type == "zed" and not internet_on_compute_nodes(cluster):
+        # todo: add a block for hostname 'compute_node.hostname' in the zed config with
+        # Only append this if the compute_node.hostname isn't already present in the
+        # list.
+        update_zed_settings(compute_node.hostname)
+    await launch_editor_loop(command, editor_type, compute_node, path)
 
     if not persist and not (job or node):
         # Cancel the job if it was not persistent.
@@ -208,16 +218,28 @@ async def code(
     return compute_node
 
 
-async def launch_vscode_loop(code_command: str, compute_node: ComputeNode, path: str):
+async def launch_editor_loop(
+    editor_command: str, editor_type: str, compute_node: ComputeNode, path: str
+):
     while True:
-        code_command_to_run = (
-            code_command,
-            "--new-window",
-            "--wait",
-            "--remote",
-            f"ssh-remote+{compute_node.hostname}",
-            path,
-        )
+        if editor_type == "vscode":
+            code_command_to_run = (
+                editor_command,
+                "--new-window",
+                "--wait",
+                "--remote",
+                f"ssh-remote+{compute_node.hostname}",
+                path,
+            )
+        elif editor_type == "zed":
+            code_command_to_run = (
+                editor_command,
+                "--new",
+                "--wait",
+                f"ssh://{compute_node.hostname}/{path}",
+            )
+        else:
+            raise MilatoolsUserError(f"Unknown editor type: {editor_type}")
         if running_inside_WSL():
             code_command_to_run = ("powershell.exe", *code_command_to_run)
 
@@ -239,3 +261,37 @@ async def launch_vscode_loop(code_command: str, compute_node: ComputeNode, path:
         except Exception as exc:
             logger.error(f"Error while waiting for user input: {exc}")
             break
+
+
+def update_zed_settings(hostname: str):
+    config_file_path = Path.home() / ".config/zed/settings.json"
+    if not config_file_path.exists():
+        # Create the file and write the settings.
+        config_file_path.parent.mkdir(parents=True, exist_ok=True)
+        setting = {
+            "ssh_connections": [
+                {
+                    "host": hostname,
+                    "upload_binary_over_ssh": True,
+                }
+            ]
+        }
+        with open(config_file_path, "w") as f:
+            json.dump(setting, f, indent=4)
+        return
+    # TODO: Need to handle this file the same way as vscode settings.
+    with open(config_file_path) as f:
+        existing_settings = json5.load(f)
+    # Check if the host is already in the settings.
+    if not any(
+        conn.get("host") == hostname
+        for conn in existing_settings.get("ssh_connections", [])
+    ):
+        existing_settings.setdefault("ssh_connections", []).append(
+            {
+                "host": hostname,
+                "upload_binary_over_ssh": True,
+            }
+        )
+        with open(config_file_path, "w") as f:
+            json5.dump(existing_settings, f, indent=4)
