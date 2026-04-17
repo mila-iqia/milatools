@@ -124,6 +124,7 @@ async def code(
         sync_vscode_extensions_task = sync_vscode_extensions(
             LocalV2(),
             [login_node],
+            code_command=command,
         )
 
     compute_node_task: Awaitable[ComputeNode]
