@@ -162,6 +162,13 @@ async def code(
         job_name = "mila-code"
         alloc = alloc + [f"--job-name={job_name}"]
 
+        if not any(
+            flag == f or flag.startswith(f + "=")
+            for flag in alloc
+            for f in ("--mem", "--mem-per-cpu", "--mem-per-gpu")
+        ):
+            alloc = alloc + ["--mem=8G"]
+
         if persist:
             compute_node_task = sbatch(
                 login_node, sbatch_flags=alloc, job_name=job_name
