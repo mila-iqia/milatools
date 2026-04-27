@@ -307,12 +307,14 @@ doesnt_create_new_jobs = pytest.mark.usefixtures(
         (["--gres=gpu:1", "--time=1:00:00"], True),
         # Flag with --mem=: should NOT add --mem=8G
         (["--mem=4G"], False),
+        # Flag with standalone --mem (space-separated value): should NOT add --mem=8G
+        (["--mem", "4G"], False),
         # Flag with --mem-per-cpu=: should NOT add --mem=8G
         (["--mem-per-cpu=2G"], False),
         # Flag with --mem-per-gpu=: should NOT add --mem=8G
         (["--mem-per-gpu=2G"], False),
     ],
-    ids=["no_flags", "flags_without_mem", "mem_flag", "mem_per_cpu_flag", "mem_per_gpu_flag"],
+    ids=["no_flags", "flags_without_mem", "mem_flag", "mem_standalone", "mem_per_cpu_flag", "mem_per_gpu_flag"],
 )
 async def test_code_default_mem_flag(
     monkeypatch: pytest.MonkeyPatch,
