@@ -162,7 +162,7 @@ async def code(
         job_name = "mila-code"
         alloc = alloc + [f"--job-name={job_name}"]
 
-        if not any("mem" in flag for flag in alloc):
+        if not any(flag.split("=")[0] in ("--mem", "--mem-per-cpu", "--mem-per-gpu") for flag in alloc):
             alloc = alloc + ["--mem=8G"]
 
         if persist:
