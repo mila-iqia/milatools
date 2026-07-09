@@ -12,6 +12,11 @@ environment of a 1-task job step, which would have the wrong task geometry) is
 dumped to a per-job file on the shared filesystem. A guarded block installed
 in the user's shell rc file then sources that file in sessions that have
 `SLURM_JOB_ID` but not the rest of the job environment.
+
+In those sessions the block also wraps `sbatch` in a shell function that
+strips the restored variables for the submission only, so that jobs submitted
+from a VS Code terminal don't inherit the surrounding job's `SLURM_*` state
+(the classic nested-submission leak with sbatch's default `--export=ALL`).
 """
 
 from __future__ import annotations
@@ -65,6 +70,10 @@ RC_BLOCK_END = "# <<< milatools slurm-env <<<"
 #   user's own job scripts already have the full environment and are never
 #   clobbered;
 # - the per-job env file exists: only jobs created by `mila code` have one.
+# When the env file is sourced, the block also defines an `sbatch` wrapper
+# function that unsets the injected variables (in a subshell) before
+# submitting, so nested jobs get a clean environment; see the .sh file for the
+# bash/zsh portability constraints its exact form is built around.
 RC_BLOCK = (_RESOURCES / "slurm_env_rc_block.sh").read_text(encoding="utf-8")
 # NOTE: The file content already ends with a newline.
 RC_BLOCK = f"""{RC_BLOCK_START}

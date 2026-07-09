@@ -9,6 +9,10 @@
 # running this script, not the allocation, and sourcing them in a terminal
 # would break `srun` commands run from it (e.g. SLURM_NTASKS=1 instead of
 # the job's real task count).
+# SLURM_EXPORT_ENV is excluded because `sbatch`/`srun` honor it as their
+# `--export` default, which would silently change the behavior of commands
+# run from the terminal. SLURM_CONF is cluster configuration, not job state
+# (and must never be unset by the sbatch wrapper in the rc block).
 #
 # The sed pipeline turns `VAR=va'lue` into `export VAR='va'\''lue'`: values
 # are single-quoted, with embedded single quotes escaped. (Limitation:
@@ -23,6 +27,6 @@ file="$dir/$SLURM_JOB_ID.env"
 tmp="$file.tmp.$$"
 printenv \
   | grep '^SLURM_' \
-  | grep -Ev '^SLURM_(STEP|PROCID=|LOCALID=|NODEID=|GTIDS=|TASK_PID=|LAUNCH_NODE_IPADDR=|SRUN_COMM_|CPU_BIND|CPU_FREQ|DISTRIBUTION=|PTY_|TOPOLOGY_|UMASK=)' \
+  | grep -Ev '^SLURM_(STEP|PROCID=|LOCALID=|NODEID=|GTIDS=|TASK_PID=|LAUNCH_NODE_IPADDR=|SRUN_COMM_|CPU_BIND|CPU_FREQ|DISTRIBUTION=|PTY_|TOPOLOGY_|UMASK=|EXPORT_ENV=|CONF=)' \
   | sed -e "s/'/'\\\\''/g" -e "s/=/='/" -e "s/\$/'/" -e 's/^/export /' \
   > "$tmp" && mv "$tmp" "$file"

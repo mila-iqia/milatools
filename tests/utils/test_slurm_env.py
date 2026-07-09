@@ -37,6 +37,13 @@ ALLOCATION_ENV = {
     # A value with spaces and single quotes, to test the quoting.
     "SLURM_JOB_NAME": "it's a 'test' job",
 }
+# Not step-specific, but still excluded from the dump: SLURM_EXPORT_ENV is
+# honored by sbatch/srun as their --export default, and SLURM_CONF is cluster
+# configuration, not job state.
+EXCLUDED_ENV = {
+    "SLURM_EXPORT_ENV": "ALL",
+    "SLURM_CONF": "/etc/slurm/slurm.conf",
+}
 STEP_ENV = {
     "SLURM_STEP_ID": "0",
     "SLURM_STEPID": "0",
@@ -70,7 +77,7 @@ def _local_env_file(home: Path, job_id: int = JOB_ID) -> Path:
 
 
 def test_dump_script_writes_the_allocation_env(tmp_path: Path):
-    result = _run_dump_script(tmp_path, {**ALLOCATION_ENV, **STEP_ENV})
+    result = _run_dump_script(tmp_path, {**ALLOCATION_ENV, **STEP_ENV, **EXCLUDED_ENV})
     assert result.returncode == 0, result.stderr
 
     env_file = _local_env_file(tmp_path)
@@ -146,6 +153,143 @@ def test_rc_block_guards(
     )
     assert output.returncode == 0, output.stderr
     assert output.stdout.strip() == expected_ntasks
+
+
+def _setup_terminal(tmp_path: Path, sbatch_exit_code: int = 0) -> Path:
+    """Sets up what an adopted VS Code terminal session needs: the per-job env
+    file (via the dump script), an rc file with the block, and a fake `sbatch`
+    on PATH that prints the SLURM_*/MY_VAR variables of its environment and
+    its arguments. Returns the fake bin directory."""
+    result = _run_dump_script(tmp_path, ALLOCATION_ENV)
+    assert result.returncode == 0, result.stderr
+    (tmp_path / "rcfile").write_text(RC_BLOCK)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_sbatch = bin_dir / "sbatch"
+    fake_sbatch.write_text(
+        "#!/bin/sh\n"
+        "printenv | grep -e '^SLURM_' -e '^MY_VAR'\n"
+        'echo "args: $@"\n'
+        f"exit {sbatch_exit_code}\n"
+    )
+    fake_sbatch.chmod(0o755)
+    return bin_dir
+
+
+def _run_terminal_command(
+    shell: str,
+    tmp_path: Path,
+    bin_dir: Path,
+    command: str,
+    session_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
+    if session_env is None:
+        session_env = {"SLURM_JOB_ID": str(JOB_ID)}
+    return subprocess.run(
+        [shell, "-c", f". '{tmp_path / 'rcfile'}'; {command}"],
+        env={
+            "HOME": str(tmp_path),
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            **session_env,
+        },
+        capture_output=True,
+        text=True,
+    )
+
+
+def _slurm_vars_in(output: str) -> list[str]:
+    return [line for line in output.splitlines() if line.startswith("SLURM_")]
+
+
+@pytest.mark.parametrize("shell", shells)
+def test_sbatch_wrapper_submits_with_a_clean_env(tmp_path: Path, shell: str):
+    """`sbatch` from an adopted session must not leak the restored job env into
+    the submitted job, while the user's own environment and arguments pass
+    through, and the terminal keeps the job env afterwards."""
+    bin_dir = _setup_terminal(tmp_path)
+    output = _run_terminal_command(
+        shell,
+        tmp_path,
+        bin_dir,
+        "export MY_VAR=hello; sbatch --ntasks=2 job.sh;"
+        ' echo "after: ${SLURM_NTASKS:-unset}"',
+    )
+    assert output.returncode == 0, output.stderr
+    assert _slurm_vars_in(output.stdout) == []
+    assert "MY_VAR=hello" in output.stdout
+    assert "args: --ntasks=2 job.sh" in output.stdout
+    # The wrapper's unsets are contained in a subshell: the terminal itself
+    # keeps the job's environment (needed by `srun`, user scripts, ...).
+    assert "after: 4" in output.stdout
+
+
+@pytest.mark.parametrize("shell", shells)
+def test_sbatch_wrapper_propagates_the_exit_code(tmp_path: Path, shell: str):
+    bin_dir = _setup_terminal(tmp_path, sbatch_exit_code=3)
+    output = _run_terminal_command(shell, tmp_path, bin_dir, "sbatch job.sh")
+    assert output.returncode == 3, output.stderr
+
+
+@pytest.mark.parametrize("shell", shells)
+def test_sbatch_wrapper_with_hostile_ifs(tmp_path: Path, shell: str):
+    """A custom IFS in the terminal must not defeat the cleanup (word
+    splitting of the variable-name list depends on IFS)."""
+    bin_dir = _setup_terminal(tmp_path)
+    output = _run_terminal_command(shell, tmp_path, bin_dir, "IFS=:; sbatch job.sh")
+    assert output.returncode == 0, output.stderr
+    assert _slurm_vars_in(output.stdout) == []
+
+
+@pytest.mark.parametrize("shell", shells)
+def test_sbatch_wrapper_under_set_u(tmp_path: Path, shell: str):
+    bin_dir = _setup_terminal(tmp_path)
+    output = _run_terminal_command(shell, tmp_path, bin_dir, "set -u; sbatch job.sh")
+    assert output.returncode == 0, output.stderr
+    assert _slurm_vars_in(output.stdout) == []
+
+
+@pytest.mark.parametrize("shell", shells)
+def test_sbatch_wrapper_preserves_slurm_conf(tmp_path: Path, shell: str):
+    """Env files dumped by older milatools versions may contain SLURM_CONF
+    (cluster configuration): the wrapper must never unset it, or sbatch
+    couldn't find the cluster config at all."""
+    bin_dir = _setup_terminal(tmp_path)
+    with _local_env_file(tmp_path).open("a") as f:
+        f.write("export SLURM_CONF='/etc/slurm/slurm.conf'\n")
+    output = _run_terminal_command(shell, tmp_path, bin_dir, "sbatch job.sh")
+    assert output.returncode == 0, output.stderr
+    assert _slurm_vars_in(output.stdout) == ["SLURM_CONF=/etc/slurm/slurm.conf"]
+
+
+@pytest.mark.parametrize("shell", shells)
+def test_rc_block_parses_with_a_preexisting_sbatch_alias(tmp_path: Path, shell: str):
+    """A user-defined `sbatch` alias earlier in the rc file must not break
+    sourcing the block (in zsh, aliases expand while *parsing* a function
+    definition, so the POSIX `sbatch() {...}` form would be a parse error that
+    aborts the rest of the rc file)."""
+    bin_dir = _setup_terminal(tmp_path)
+    rc_file = tmp_path / "rcfile"
+    rc_file.write_text("alias sbatch='sbatch --partition=main'\n" + RC_BLOCK)
+    output = _run_terminal_command(shell, tmp_path, bin_dir, "echo sourced-ok")
+    assert output.returncode == 0, output.stderr
+    assert "sourced-ok" in output.stdout
+    assert "parse error" not in output.stderr
+
+
+@pytest.mark.parametrize("shell", shells)
+def test_sbatch_is_not_wrapped_in_real_job_shells(tmp_path: Path, shell: str):
+    """In a real salloc/srun shell the block never sources the env file, so
+    `sbatch` must behave exactly as it normally does there (env untouched)."""
+    bin_dir = _setup_terminal(tmp_path)
+    output = _run_terminal_command(
+        shell,
+        tmp_path,
+        bin_dir,
+        "sbatch job.sh",
+        session_env={"SLURM_JOB_ID": str(JOB_ID), "SLURM_NTASKS": "1"},
+    )
+    assert output.returncode == 0, output.stderr
+    assert "SLURM_NTASKS=1" in output.stdout
 
 
 class TestContentWithBlockInstalled:
