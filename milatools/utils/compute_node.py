@@ -17,6 +17,12 @@ from milatools.cli.utils import (
 from milatools.utils.remote_v1 import Hide
 from milatools.utils.remote_v2 import RemoteV2, logger, ssh_command
 from milatools.utils.runner import Runner
+from milatools.utils.slurm_env import (
+    DUMP_COMMAND,
+    remove_env_file,
+    remove_env_file_sync,
+    wait_for_env_file,
+)
 
 
 class JobNotRunningError(RuntimeError):
@@ -166,6 +172,7 @@ class ComputeNode(Runner):
             self.salloc_subprocess.terminate()
         else:
             self.login_node.run(f"scancel {self.job_id}")
+        remove_env_file_sync(self.login_node, self.job_id)
         self._closed = True
 
     async def close_async(self):
@@ -188,6 +195,7 @@ class ComputeNode(Runner):
                 hide=False,
                 warn=True,
             )
+        await remove_env_file(self.login_node, self.job_id)
         self._closed = True
 
 
@@ -326,6 +334,20 @@ async def salloc(
     # if it isn't true, an informative error will most probably be given to the user by
     # the first `ssh <cluster> srun --job-id <job_id>` command.
 
+    # Dump the SLURM env vars of the allocation to a per-job file by running the dump
+    # script from within the salloc shell (whose environment has the job's real task
+    # geometry, unlike a 1-task job step). VS Code terminals, whose SSH sessions are
+    # outside the job, source that file to recover the job's environment.
+    try:
+        assert salloc_subprocess.stdin is not None
+        salloc_subprocess.stdin.write(f"{DUMP_COMMAND}\n".encode())
+        await salloc_subprocess.stdin.drain()
+        await wait_for_env_file(login_node, job_id)
+    except Exception as err:
+        logger.warning(
+            f"Unable to save the SLURM environment variables of job {job_id}: {err}"
+        )
+
     # NOTE: passing the process handle to this ComputeNodeRemote so it doesn't go out of
     # scope and die (which would kill the interactive job).
     return ComputeNode(
@@ -351,10 +373,16 @@ async def sbatch(
     # home directory, so no harm done.
     # Also, should we use --ntasks=1 --overlap in the wrapped `srun`, so that only one
     # task sleeps? Does that change anything?
+    # The wrapped script first dumps the job's SLURM env vars to a per-job file (used
+    # by VS Code terminals to recover the job's environment, since their SSH sessions
+    # are outside the job). `;` instead of `&&` so that a dump failure can't prevent
+    # the job from running.
+    wrap = f"{DUMP_COMMAND}; srun sleep 7d"
     sbatch_command = (
         "cd $SCRATCH && sbatch --parsable "
         + shlex.join(sbatch_flags)
-        + " --wrap 'srun sleep 7d'"
+        + " --wrap "
+        + shlex.quote(wrap)
     )
 
     job_id = None
@@ -370,6 +398,9 @@ async def sbatch(
         console.log(f"Received KeyboardInterrupt, cancelling job {job_id}")
         login_node.run(f"scancel {job_id}", display=True, hide=False)
         raise
+
+    # The batch script dumps the job's SLURM env vars right when it starts (see above).
+    await wait_for_env_file(login_node, job_id)
 
     return ComputeNode(job_id=job_id, login_node=login_node)
 

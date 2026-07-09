@@ -1,0 +1,18 @@
+# before the block
+
+# >>> milatools slurm-env v1 >>>
+# Managed by milatools (`mila code`) -- do not edit this block.
+# In SSH sessions adopted into a SLURM job by pam_slurm_adopt (e.g. VS Code
+# Remote-SSH), only SLURM_JOB_ID is set. This restores the rest of the job's
+# allocation environment, dumped by milatools when the job was created.
+if [ -n "${SLURM_JOB_ID:-}${SLURM_JOBID:-}" ] \
+   && [ -z "${SLURM_NTASKS:-}" ] && [ -z "${SLURM_STEP_ID:-}" ]; then
+    _milatools_slurm_env="$HOME/.cache/milatools/slurm_env/${SLURM_JOB_ID:-${SLURM_JOBID:-}}.env"
+    if [ -f "$_milatools_slurm_env" ]; then
+        . "$_milatools_slurm_env"
+    fi
+    unset _milatools_slurm_env
+fi
+# <<< milatools slurm-env <<<
+
+# after the block

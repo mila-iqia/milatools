@@ -35,6 +35,7 @@ from milatools.utils.compute_node import ComputeNode, salloc, sbatch
 from milatools.utils.disk_quota import check_disk_quota
 from milatools.utils.local_v2 import LocalV2
 from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.slurm_env import setup_slurm_env_hook
 from milatools.utils.vscode_utils import sync_vscode_extensions
 
 logger = get_logger(__name__)
@@ -161,6 +162,11 @@ async def code(
             )
         job_name = "mila-code"
         alloc = alloc + [f"--job-name={job_name}"]
+
+        # Set up what's needed for VS Code terminals to get the SLURM env vars of the
+        # job. Done before creating the job, since the env dump script needs to be on
+        # the cluster when the job starts.
+        await setup_slurm_env_hook(login_node)
 
         if persist:
             compute_node_task = sbatch(

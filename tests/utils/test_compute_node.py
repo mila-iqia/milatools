@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import logging
 import re
+import shlex
 import subprocess
 from logging import getLogger as get_logger
 from pathlib import Path
@@ -13,6 +14,7 @@ import pytest
 import pytest_asyncio
 
 import milatools.cli.utils
+import milatools.utils.compute_node
 from milatools.utils.compute_node import (
     ComputeNode,
     JobNotRunningError,
@@ -22,6 +24,11 @@ from milatools.utils.compute_node import (
     sbatch,
 )
 from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.slurm_env import (
+    DUMP_COMMAND,
+    env_file_path,
+    setup_slurm_env_hook,
+)
 
 from ..conftest import launches_jobs
 from .runner_tests import RunnerTests
@@ -31,6 +38,59 @@ logger = get_logger(__name__)
 pytestmark = [uses_remote_v2]
 
 
+@pytest_asyncio.fixture
+async def cluster_rc_files_backup(login_node_v2: RemoteV2):
+    """Snapshots ~/.bashrc and ~/.zshrc on the cluster and restores them after.
+
+    Used by tests that call `setup_slurm_env_hook`, which installs a block in
+    those files.
+    """
+    backups: dict[str, str | None] = {}
+    for rc_file in ("~/.bashrc", "~/.zshrc"):
+        result = await login_node_v2.run_async(
+            f"cat {rc_file}", display=False, warn=True, hide=True
+        )
+        backups[rc_file] = result.stdout if result.returncode == 0 else None
+    yield
+    for rc_file, content in backups.items():
+        if content is None:
+            await login_node_v2.run_async(
+                f"rm -f {rc_file}", display=False, warn=True, hide=True
+            )
+        else:
+            await login_node_v2.run_async(
+                f"cat > {rc_file}.milatools.bak && mv {rc_file}.milatools.bak {rc_file}",
+                input=content,
+                display=False,
+                warn=True,
+                hide=True,
+            )
+
+
+async def _check_env_file_lifecycle(login_node: RemoteV2, compute_node: ComputeNode):
+    """Checks that the job's env file exists with the allocation env vars in it, and
+    that it is removed when the job is closed."""
+    env_file = env_file_path(compute_node.job_id)
+    env_file_content = await login_node.get_output_async(
+        f'cat "{env_file}"', display=False, hide=True
+    )
+    assert f"export SLURM_JOB_ID='{compute_node.job_id}'" in env_file_content
+    assert "export SLURM_NTASKS=" in env_file_content
+    assert "export SLURM_TASKS_PER_NODE=" in env_file_content
+    # Step-specific variables must not be saved (they would break `srun` commands
+    # run from VS Code terminals that source this file).
+    assert "SLURM_STEP_ID" not in env_file_content
+    assert "SLURM_PROCID" not in env_file_content
+
+    await compute_node.close_async()
+
+    # The env file is removed when the job is closed.
+    result = await login_node.run_async(
+        f'test -f "{env_file}"', display=False, warn=True, hide=True
+    )
+    assert result.returncode != 0
+
+
 @launches_jobs
 @pytest.mark.slow
 @pytest.mark.asyncio
@@ -38,6 +98,7 @@ async def test_salloc(
     login_node_v2: RemoteV2,
     allocation_flags: list[str],
     job_name: str,
+    cluster_rc_files_backup: None,
 ):
     if login_node_v2.hostname == "localhost":
         # todo: Check why this (and other tests in this file) don't work on the mock
@@ -46,6 +107,7 @@ async def test_salloc(
         #   are actually running more than one job, so blocking each other?
         pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
 
+    await setup_slurm_env_hook(login_node_v2)
     compute_node = await salloc(login_node_v2, allocation_flags, job_name=job_name)
 
     assert isinstance(compute_node, ComputeNode)
@@ -64,7 +126,8 @@ async def test_salloc(
     # using `srun` with the job id on the login node to run our jobs.
     assert all_slurm_env_vars["SLURM_JOB_ID"] == str(compute_node.job_id)
     assert len(all_slurm_env_vars) > 1
-    await compute_node.close_async()
+
+    await _check_env_file_lifecycle(login_node_v2, compute_node)
 
 
 @launches_jobs
@@ -74,10 +137,12 @@ async def test_sbatch(
     login_node_v2: RemoteV2,
     allocation_flags: list[str],
     job_name: str,
+    cluster_rc_files_backup: None,
 ):
     if login_node_v2.hostname == "localhost":
         pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
 
+    await setup_slurm_env_hook(login_node_v2)
     compute_node = await sbatch(login_node_v2, allocation_flags, job_name=job_name)
     assert isinstance(compute_node, ComputeNode)
 
@@ -90,7 +155,49 @@ async def test_sbatch(
     }
     assert all_slurm_env_vars["SLURM_JOB_ID"] == str(compute_node.job_id)
     assert len(all_slurm_env_vars) > 1
-    await compute_node.close_async()
+
+    await _check_env_file_lifecycle(login_node_v2, compute_node)
+
+
+@pytest.mark.asyncio
+async def test_sbatch_wrap_script_dumps_the_slurm_env(monkeypatch: pytest.MonkeyPatch):
+    """The sbatch --wrap script dumps the job's SLURM env before sleeping."""
+    fake_job_id = 5678
+    sbatch_command: str | None = None
+
+    async def _mock_get_output_async(command: str, *args, **kwargs):
+        if command.startswith("squeue"):
+            # `cancel_new_jobs_on_interrupt` checking for existing jobs.
+            return ""
+        assert command.startswith("cd $SCRATCH && sbatch")
+        nonlocal sbatch_command
+        sbatch_command = command
+        return str(fake_job_id)
+
+    mock_login_node = Mock(spec=RemoteV2, hostname="mila")
+    mock_login_node.configure_mock(
+        get_output_async=AsyncMock(
+            spec=RemoteV2.get_output_async, side_effect=_mock_get_output_async
+        ),
+    )
+    monkeypatch.setattr(
+        milatools.utils.compute_node, "wait_while_job_is_pending", AsyncMock()
+    )
+    monkeypatch.setattr(
+        milatools.utils.compute_node, "wait_for_env_file", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(ComputeNode, "__post_init__", lambda self: None)
+
+    compute_node = await sbatch(
+        mock_login_node, sbatch_flags=["--time=01:00:00"], job_name="mila-code"
+    )
+
+    assert compute_node.job_id == fake_job_id
+    assert sbatch_command is not None
+    # The whole wrapped script is a single (properly quoted) argument, and the
+    # dump command can't prevent the job from running (`;`, not `&&`).
+    *_, wrap_script = shlex.split(sbatch_command)
+    assert wrap_script == f"{DUMP_COMMAND}; srun sleep 7d"
 
 
 @pytest.fixture(scope="session", params=[True, False], ids=["sbatch", "salloc"])
@@ -360,11 +467,15 @@ async def mock_closed_compute_node(
             return subprocess.CompletedProcess(command, 0, "cn-a001", "")
         if command == f"scancel {fake_job_id}":
             return subprocess.CompletedProcess(command, 0, "", "")
+        if command == f'rm -f "{env_file_path(fake_job_id)}"':
+            return subprocess.CompletedProcess(command, 0, "", "")
         # Unexpected command.
         assert False, (command, input)
 
     async def _mock_run_async(command: str, *args, input: str | None = None, **kwargs):
         if command == f"scancel {fake_job_id}":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command == f'rm -f "{env_file_path(fake_job_id)}"':
             return subprocess.CompletedProcess(command, 0, "", "")
         # Unexpected command.
         assert False, (command, input)
@@ -387,14 +498,18 @@ async def mock_closed_compute_node(
 
     if close_async:
         await compute_node.close_async()
-        mock_run_async.assert_called_once()
+        # The job is cancelled and its SLURM env file is removed.
+        assert mock_run_async.call_count == 2
         assert mock_run_async.mock_calls[0].args[0] == f"scancel {fake_job_id}"
+        assert (
+            mock_run_async.mock_calls[1].args[0]
+            == f'rm -f "{env_file_path(fake_job_id)}"'
+        )
     else:
         compute_node.close()
-        # bug? this doesn't work but the output is identical?
-        # mock_run.assert_called_once_with(f"scancel {fake_job_id}")
-        mock_run.assert_called_once()
+        assert mock_run.call_count == 2
         assert mock_run.mock_calls[0].args[0] == f"scancel {fake_job_id}"
+        assert mock_run.mock_calls[1].args[0] == f'rm -f "{env_file_path(fake_job_id)}"'
     mock_run.reset_mock()
     mock_run_async.reset_mock()
     return compute_node

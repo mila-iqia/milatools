@@ -100,6 +100,14 @@ The `--alloc` option may be used to pass extra arguments to `salloc` when alloca
 
 If you already have an allocation on a compute node, you may use the `--node NODENAME` or `--job JOBID` options to connect to that node.
 
+#### SLURM environment variables in VS Code terminals
+
+VS Code connects to the compute node in its own SSH session, outside of the SLURM job, so its terminals would normally only have `SLURM_JOB_ID` set (injected by the cluster when the session is adopted into the job) and none of the other `SLURM_*` variables (`SLURM_NTASKS`, `SLURM_TMPDIR`, etc.).
+
+To fix this, `mila code` saves the job's SLURM environment variables to a file (under `~/.cache/milatools/slurm_env/` on the cluster) when it creates the job, and installs a clearly-marked block in your `~/.bashrc` (and `~/.zshrc`, if you have one) on the cluster that restores them in VS Code terminals. The block is inert everywhere else: it only runs in sessions that have `SLURM_JOB_ID` but are missing the rest of the job's environment, and never overwrites variables in regular `salloc`/`srun` shells or job scripts.
+
+Known limitations: `fish` shells don't get the variables (the block is only installed for bash/zsh), and they are only available in the integrated terminals, not in the VS Code server process itself. Jobs connected to with `--job`/`--node` that weren't created by `mila code` don't have a saved environment.
+
 
 ### mila serve
 
