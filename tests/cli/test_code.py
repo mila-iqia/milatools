@@ -4,6 +4,8 @@ TODO: There are quite a few tests in `tests/integration/test_code.py` that could
 moved here, since some of them aren't exactly "integration" tests.
 """
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, Mock
 
 import pytest
