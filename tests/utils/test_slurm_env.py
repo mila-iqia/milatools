@@ -37,12 +37,20 @@ ALLOCATION_ENV = {
     # A value with spaces and single quotes, to test the quoting.
     "SLURM_JOB_NAME": "it's a 'test' job",
 }
-# Not step-specific, but still excluded from the dump: SLURM_EXPORT_ENV is
-# honored by sbatch/srun as their --export default, and SLURM_CONF is cluster
-# configuration, not job state.
+# Not step-specific, but still excluded from the dump: these are documented
+# `sbatch`/`salloc` "Input Environment Variables" (see
+# https://slurm.schedmd.com/sbatch.html#SECTION_INPUT-ENVIRONMENT-VARIABLES
+# and https://slurm.schedmd.com/salloc.html#SECTION_INPUT-ENVIRONMENT-VARIABLES),
+# not job state, and would silently change the behavior of sbatch/salloc/srun
+# run from the terminal if they leaked into it.
 EXCLUDED_ENV = {
     "SLURM_EXPORT_ENV": "ALL",
     "SLURM_CONF": "/etc/slurm/slurm.conf",
+    "SLURM_CLUSTERS": "some-other-cluster",
+    "SLURM_HINT": "compute_bound",
+    "SLURM_DEBUG_FLAGS": "Steps",
+    "SLURM_EXIT_ERROR": "63",
+    "SLURM_EXIT_IMMEDIATE": "64",
 }
 STEP_ENV = {
     "SLURM_STEP_ID": "0",
@@ -317,7 +325,7 @@ class TestContentWithBlockInstalled:
     def test_outdated_block_is_replaced_in_place(
         self, file_regression: FileRegressionFixture
     ):
-        outdated_block = RC_BLOCK.replace("v1", "v0").replace(
+        outdated_block = RC_BLOCK.replace("v2", "v1").replace(
             "This restores", "(old text) This restores"
         )
         existing = f"# before the block\n\n{outdated_block}\n# after the block\n"
@@ -326,7 +334,7 @@ class TestContentWithBlockInstalled:
         assert new_content.startswith("# before the block\n")
         assert new_content.endswith("# after the block\n")
         assert RC_BLOCK in new_content
-        assert "v0" not in new_content
+        assert "v1" not in new_content
         file_regression.check(new_content)
 
     def test_result_is_idempotent(self):

@@ -1,6 +1,6 @@
 # before the block
 
-# >>> milatools slurm-env v1 >>>
+# >>> milatools slurm-env v2 >>>
 # Managed by milatools (`mila code`) -- do not edit this block.
 # In SSH sessions adopted into a SLURM job by pam_slurm_adopt (e.g. VS Code
 # Remote-SSH), only SLURM_JOB_ID is set. This restores the rest of the job's

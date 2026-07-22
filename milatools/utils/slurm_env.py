@@ -53,7 +53,7 @@ DUMP_COMMAND = f'test -f "{DUMP_SCRIPT_PATH}" && sh "{DUMP_SCRIPT_PATH}"'
 # only; see the comments in the script itself).
 DUMP_SCRIPT_CONTENT = (_RESOURCES / "slurm_env_dump.sh").read_text(encoding="utf-8")
 
-_RC_BLOCK_VERSION = 1
+_RC_BLOCK_VERSION = 2
 RC_BLOCK_PREFIX = "# >>> milatools slurm-env"
 RC_BLOCK_START = f"{RC_BLOCK_PREFIX} v{_RC_BLOCK_VERSION} >>>"
 RC_BLOCK_END = "# <<< milatools slurm-env <<<"
