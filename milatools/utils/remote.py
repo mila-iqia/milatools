@@ -18,9 +18,8 @@ from milatools.cli.utils import (
     SSH_CONFIG_FILE,
     MilatoolsUserError,
 )
-from milatools.utils.local_v2 import LocalV2, run, run_async
-from milatools.utils.remote_v1 import Hide
-from milatools.utils.runner import Runner
+from milatools.utils.local import Local, run, run_async
+from milatools.utils.runner import Hide, Runner
 
 logger = get_logger(__name__)
 
@@ -29,7 +28,7 @@ class UnsupportedPlatformError(MilatoolsUserError): ...
 
 
 @dataclasses.dataclass(init=False)
-class RemoteV2(Runner):
+class Remote(Runner):
     """Simpler Remote where commands are run in subprocesses sharing an SSH connection.
 
     This doesn't work on Windows, as it assumes that the SSH client has SSH multiplexing
@@ -64,7 +63,7 @@ class RemoteV2(Runner):
             hostname, ssh_config_path=self.ssh_config_path
         )
         self.control_path = self.control_path.expanduser()
-        self.local_runner = LocalV2()
+        self.local_runner = Local()
         self._started = False
         if _start_control_socket:
             # Run an ssh command to start the control socket (synchronously), if needed.
@@ -76,7 +75,7 @@ class RemoteV2(Runner):
         *,
         control_path: Path | None = None,
         ssh_config_path: Path = SSH_CONFIG_FILE,
-    ) -> RemoteV2:
+    ) -> Remote:
         """Async constructor.
 
         Having an async constructor makes it possible to connect to multiple hosts
@@ -84,7 +83,7 @@ class RemoteV2(Runner):
         password prompt, in which case it is done sequentially).
         """
         logger.debug(f"Connecting to {hostname}...")
-        remote = RemoteV2(
+        remote = Remote(
             hostname=hostname,
             control_path=control_path,
             ssh_config_path=ssh_config_path,
@@ -429,7 +428,7 @@ def setup_connection_with_controlpath(
         cluster=cluster, control_path=control_path, ssh_config_path=ssh_config_path
     )
     with _catch_setup_ssh_control_socket_errors(cluster=cluster):
-        first_connection_output = LocalV2().get_output(
+        first_connection_output = Local().get_output(
             command=setup_ssh_control_socket_command,
             display=False,
             hide="out",
@@ -454,7 +453,7 @@ async def setup_connection_with_controlpath_async(
         cluster=cluster, control_path=control_path, ssh_config_path=ssh_config_path
     )
     with _catch_setup_ssh_control_socket_errors(cluster=cluster):
-        first_connection_output = await LocalV2().get_output_async(  # only change
+        first_connection_output = await Local().get_output_async(  # only change
             command=setup_ssh_control_socket_command,
             display=False,
             hide="out",

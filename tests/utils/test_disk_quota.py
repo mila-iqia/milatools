@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import subprocess
 import textwrap
-from typing import Callable
 
 import pytest
 
@@ -12,12 +10,9 @@ from milatools.utils.disk_quota import (
     _parse_diskusage_report_output,
     _parse_lfs_quota_output,
     check_disk_quota,
-    check_disk_quota_v1,
 )
-from milatools.utils.local_v2 import LocalV2
-from milatools.utils.remote_v1 import RemoteV1
-from milatools.utils.remote_v2 import RemoteV2
-from milatools.utils.runner import Runner
+from milatools.utils.local import Local
+from milatools.utils.remote import Remote
 
 from ..integration.conftest import skip_if_not_already_logged_in
 
@@ -43,33 +38,25 @@ from ..integration.conftest import skip_if_not_already_logged_in
     ],
     indirect=True,
 )
-@pytest.mark.parametrize("check_disk_quota_fn", [check_disk_quota, check_disk_quota_v1])
 async def test_check_disk_quota(
-    login_node_v2: RemoteV2,
+    login_node_v2: Remote,
     caplog: pytest.LogCaptureFixture,
-    check_disk_quota_fn: Callable[[RemoteV1 | RemoteV2], None],
 ):
     # TODO: Figure out a way to actually test this, (not just by running it and
     # expecting no errors).
     # Check that it doesn't raise any errors.
     # IF the quota is nearly met, then a warning is logged.
     # IF the quota is met, then a `MilatoolsUserError` is logged.
-    async def _check_disk_quota():
-        if inspect.iscoroutinefunction(check_disk_quota_fn):
-            await check_disk_quota_fn(login_node_v2)
-        else:
-            check_disk_quota_fn(login_node_v2)
-
     if (
         login_node_v2.hostname.startswith("graham")
         or login_node_v2.hostname == "localhost"
     ):
         with pytest.raises(subprocess.CalledProcessError):
-            await _check_disk_quota()
+            await check_disk_quota(login_node_v2)
 
     else:
         with caplog.at_level(logging.DEBUG):
-            await _check_disk_quota()
+            await check_disk_quota(login_node_v2)
 
 
 def _kb_to_gb(kb: int) -> float:
@@ -146,10 +133,8 @@ def test_parse_diskusage_report_output(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("check_disk_quota_fn", [check_disk_quota, check_disk_quota_v1])
 async def test_check_disk_quota_fails_correctly(
     caplog: pytest.LogCaptureFixture,
-    check_disk_quota_fn: Callable[[RemoteV1 | Runner], None],
 ):
     """Should fail appropriately when run on a system with no disk-quota or
     diskusage_report commands."""
@@ -161,11 +146,5 @@ async def test_check_disk_quota_fails_correctly(
             "disk-quota or diskusage_report command is available locally, cannot test failure case."
         )
 
-    async def _check_disk_quota():
-        if inspect.iscoroutinefunction(check_disk_quota_fn):
-            await check_disk_quota_fn(LocalV2())
-        else:
-            check_disk_quota_fn(LocalV2())
-
     with pytest.raises(subprocess.CalledProcessError), caplog.at_level(logging.DEBUG):
-        await _check_disk_quota()
+        await check_disk_quota(Local())

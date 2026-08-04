@@ -21,21 +21,21 @@ from milatools.utils.compute_node import (
     salloc,
     sbatch,
 )
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.remote import Remote
 
 from ..conftest import launches_jobs
 from .runner_tests import RunnerTests
-from .test_remote_v2 import uses_remote_v2
+from .test_remote import uses_remote
 
 logger = get_logger(__name__)
-pytestmark = [uses_remote_v2]
+pytestmark = [uses_remote]
 
 
 @launches_jobs
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_salloc(
-    login_node_v2: RemoteV2,
+    login_node_v2: Remote,
     allocation_flags: list[str],
     job_name: str,
 ):
@@ -71,7 +71,7 @@ async def test_salloc(
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_sbatch(
-    login_node_v2: RemoteV2,
+    login_node_v2: Remote,
     allocation_flags: list[str],
     job_name: str,
 ):
@@ -102,7 +102,7 @@ def persist(request: pytest.FixtureRequest):
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_interrupt_allocation(
-    login_node_v2: RemoteV2,
+    login_node_v2: Remote,
     allocation_flags: list[str],
     job_name: str,
     persist: bool,
@@ -174,7 +174,7 @@ async def test_interrupt_allocation(
 class TestComputeNode(RunnerTests):
     @pytest_asyncio.fixture(scope="class")
     async def runner(
-        self, login_node_v2: RemoteV2, persist: bool, allocation_flags: list[str]
+        self, login_node_v2: Remote, persist: bool, allocation_flags: list[str]
     ):
         if login_node_v2.hostname == "localhost":
             pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
@@ -272,7 +272,7 @@ class TestComputeNode(RunnerTests):
     @pytest.mark.asyncio
     async def test_close(
         self,
-        login_node_v2: RemoteV2,
+        login_node_v2: Remote,
         persist: bool,
         allocation_flags: list[str],
         job_name: str,
@@ -313,7 +313,7 @@ class TestComputeNode(RunnerTests):
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_del_computenode(
-    login_node_v2: RemoteV2, persist: bool, allocation_flags: list[str], job_name: str
+    login_node_v2: Remote, persist: bool, allocation_flags: list[str], job_name: str
 ):
     """Test what happens when we delete a ComputeNode instance (persistent vs non-
     persistent).
@@ -369,10 +369,10 @@ async def mock_closed_compute_node(
         # Unexpected command.
         assert False, (command, input)
 
-    mock_run = Mock(spec=RemoteV2.run, side_effect=_mock_run)
-    mock_run_async = AsyncMock(spec=RemoteV2.run_async, side_effect=_mock_run_async)
+    mock_run = Mock(spec=Remote.run, side_effect=_mock_run)
+    mock_run_async = AsyncMock(spec=Remote.run_async, side_effect=_mock_run_async)
     mock_login_node = Mock(
-        spec=RemoteV2,
+        spec=Remote,
         hostname="mila",
         ssh_config_path=ssh_config_file,
     )
@@ -486,7 +486,7 @@ async def test_cancel_new_jobs_on_interrupt(
         stderr = ""
         return subprocess.CompletedProcess(command, 0, output, stderr)
 
-    mock_run = Mock(spec=RemoteV2.run, side_effect=_run)
+    mock_run = Mock(spec=Remote.run, side_effect=_run)
 
     async def _run_async(command: str, input: str | None = None, *args, **kwargs):
         # Just call `run`, doesn't matter.
@@ -497,10 +497,10 @@ async def test_cancel_new_jobs_on_interrupt(
     async def _get_output_async(*args, **kwargs) -> str:
         return (await _run_async(*args, **kwargs)).stdout.strip()
 
-    mock_run_async = AsyncMock(spec=RemoteV2.run_async, side_effect=_run_async)
+    mock_run_async = AsyncMock(spec=Remote.run_async, side_effect=_run_async)
 
     mock_login_node = Mock(
-        spec=RemoteV2,
+        spec=Remote,
         hostname="some_cluster",
     )
     mock_login_node.configure_mock(

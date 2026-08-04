@@ -6,11 +6,11 @@ from unittest.mock import Mock
 import pytest
 import pytest_asyncio
 
-import milatools.utils.remote_v2
+import milatools.utils.remote
 from milatools.cli.utils import SSH_CONFIG_FILE
-from milatools.utils.local_v2 import LocalV2
-from milatools.utils.remote_v2 import (
-    RemoteV2,
+from milatools.utils.local import Local
+from milatools.utils.remote import (
+    Remote,
     UnsupportedPlatformError,
     control_socket_is_running,
     control_socket_is_running_async,
@@ -24,22 +24,22 @@ from ..cli.common import (
 )
 from .runner_tests import RunnerTests
 
-uses_remote_v2 = xfails_on_windows(
-    raises=UnsupportedPlatformError, reason="Uses RemoteV2", strict=False
+uses_remote = xfails_on_windows(
+    raises=UnsupportedPlatformError, reason="Uses Remote", strict=False
 )
 
-pytestmark = [uses_remote_v2]
+pytestmark = [uses_remote]
 
 
 @pytest_asyncio.fixture(scope="function")
 async def control_path_for_localhost(tmp_path: Path):
-    """The `control_path` parameter of `RemoteV2` for connecting to localhost."""
+    """The `control_path` parameter of `Remote` for connecting to localhost."""
     control_path = tmp_path / "socketfile"
     try:
         yield control_path
     finally:
         if control_path.exists():
-            await LocalV2.run_async(
+            await Local.run_async(
                 (
                     "ssh",
                     f"-oControlPath={control_path}",
@@ -60,7 +60,7 @@ def mock_get_controlpath_for(
         wraps=get_controlpath_for, return_value=control_path_for_localhost
     )
     monkeypatch.setattr(
-        milatools.utils.remote_v2,
+        milatools.utils.remote,
         get_controlpath_for.__name__,
         mock_get_controlpath_for,
     )
@@ -79,7 +79,7 @@ def already_logged_in_to_localhost(
 
     if expected_to_be_logged_in:
         # manually setup the control socket to `localhost`.
-        LocalV2.run(
+        Local.run(
             (
                 "ssh",
                 f"-oControlPath={control_path_for_localhost}",
@@ -93,8 +93,8 @@ def already_logged_in_to_localhost(
     yield expected_to_be_logged_in
 
 
-class TestRemoteV2(RunnerTests):
-    """Tests for RemoteV2.
+class TestRemote(RunnerTests):
+    """Tests for Remote.
 
     The tests for the `run`/`run_async`/etc. methods are in the base class, we just
     supply the necessary fixtures here.
@@ -104,7 +104,7 @@ class TestRemoteV2(RunnerTests):
     def runner(self, cluster: str):
         # Fixture that creates the runner used in the tests for run/run_async in the
         # base class.
-        return RemoteV2(cluster)
+        return Remote(cluster)
 
     @requires_ssh_to_localhost
     @pytest.mark.parametrize("use_async_init", [False, True], ids=["sync", "async"])
@@ -118,14 +118,14 @@ class TestRemoteV2(RunnerTests):
         hostname = "localhost"
         remote = (
             (
-                await RemoteV2.connect(
+                await Remote.connect(
                     hostname,
                     control_path=control_path_for_localhost,
                     ssh_config_path=ssh_config_file,
                 )
             )
             if use_async_init
-            else RemoteV2(
+            else Remote(
                 hostname,
                 control_path=control_path_for_localhost,
                 ssh_config_path=ssh_config_file,
@@ -144,17 +144,17 @@ class TestRemoteV2(RunnerTests):
         ssh_config_file: Path,
         mock_get_controlpath_for: Mock,
     ):
-        """Checks that creating a `RemoteV2` with `control_path=None` calls
+        """Checks that creating a `Remote` with `control_path=None` calls
         `get_controlpath_for`."""
         hostname = "localhost"
         remote = (
             (
-                await RemoteV2.connect(
+                await Remote.connect(
                     hostname, control_path=None, ssh_config_path=ssh_config_file
                 )
             )
             if use_async_init
-            else RemoteV2(hostname, control_path=None, ssh_config_path=ssh_config_file)
+            else Remote(hostname, control_path=None, ssh_config_path=ssh_config_file)
         )
         mock_get_controlpath_for.assert_called_once()
         assert remote.control_path == control_path_for_localhost

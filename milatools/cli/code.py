@@ -33,8 +33,8 @@ from milatools.cli.utils import (
 )
 from milatools.utils.compute_node import ComputeNode, salloc, sbatch
 from milatools.utils.disk_quota import check_disk_quota
-from milatools.utils.local_v2 import LocalV2
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.local import Local
+from milatools.utils.remote import Remote
 from milatools.utils.vscode_utils import sync_vscode_extensions
 
 logger = get_logger(__name__)
@@ -70,7 +70,7 @@ async def code(
         persist = True
 
     # Connect to the cluster's login node.
-    login_node = await RemoteV2.connect(cluster)
+    login_node = await Remote.connect(cluster)
 
     relative_path: PurePosixPath | None = None
     # Get $HOME because we have to give the full path to the folder to the code command.
@@ -122,7 +122,7 @@ async def code(
         # TODO: If the remote is a cluster that doesn't yet have `vscode-server`, we
         # could launch vscode at the same time (or before) syncing the vscode extensions?
         sync_vscode_extensions_task = sync_vscode_extensions(
-            LocalV2(),
+            Local(),
             [login_node],
         )
 
@@ -221,7 +221,7 @@ async def launch_vscode_loop(code_command: str, compute_node: ComputeNode, path:
         if running_inside_WSL():
             code_command_to_run = ("powershell.exe", *code_command_to_run)
 
-        await LocalV2.run_async(code_command_to_run, display=True)
+        await Local.run_async(code_command_to_run, display=True)
         # TODO: BUG: This now requires two Ctrl+C's instead of one!
         console.print(
             "The editor was closed. Reopen it with <Enter> or terminate the "

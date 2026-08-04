@@ -15,7 +15,6 @@ import pytest_asyncio
 from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli.code import code
-from milatools.cli.commands import code_v1
 from milatools.cli.utils import (
     CommandNotFoundError,
     MilatoolsUserError,
@@ -27,20 +26,18 @@ from milatools.utils.compute_node import (
     get_queued_milatools_job_ids,
     salloc,
 )
-from milatools.utils.disk_quota import check_disk_quota, check_disk_quota_v1
-from milatools.utils.remote_v1 import RemoteV1
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.disk_quota import check_disk_quota
+from milatools.utils.remote import Remote
 
-from ..cli.common import in_github_CI
 from ..conftest import job_name, launches_jobs
-from .test_slurm_remote import get_recent_jobs_info_dicts
+from .conftest import get_recent_jobs_info_dicts
 
 logger = get_logger(__name__)
 
 
 async def _get_job_info(
     job_id: int,
-    login_node: RemoteV2,
+    login_node: Remote,
     fields: tuple[str, ...] = ("JobID", "JobName", "Node", "WorkDir", "State"),
 ) -> dict:
     return dict(
@@ -73,7 +70,7 @@ async def _get_job_info(
     indirect=True,
 )
 async def test_code(
-    login_node_v2: RemoteV2,
+    login_node_v2: Remote,
     persist: bool,
     capsys: pytest.CaptureFixture,
     allocation_flags: list[str],
@@ -200,11 +197,8 @@ async def test_code(
     file_regression.check(filter_captured_output(captured_output))
 
 
-@pytest.mark.parametrize("use_v1", [False, True], ids=["code", "code_v1"])
 @pytest.mark.asyncio
-async def test_code_without_code_command_in_path(
-    monkeypatch: pytest.MonkeyPatch, use_v1: bool
-):
+async def test_code_without_code_command_in_path(monkeypatch: pytest.MonkeyPatch):
     """Test the case where `mila code` is run without having vscode installed."""
 
     def mock_which(command: str) -> str | None:
@@ -212,34 +206,22 @@ async def test_code_without_code_command_in_path(
         return None
 
     monkeypatch.setattr(shutil, shutil.which.__name__, Mock(side_effect=mock_which))
-    if use_v1:
-        with pytest.raises(CommandNotFoundError):
-            code_v1(
-                path="bob",
-                command="code",
-                persist=False,
-                job=None,
-                node=None,
-                alloc=[],
-                cluster="bob",
-            )
-    else:
-        with pytest.raises(CommandNotFoundError):
-            await code(
-                path="bob",
-                command="code",
-                persist=False,
-                job=None,
-                node=None,
-                alloc=[],
-                cluster="bob",
-            )
+    with pytest.raises(CommandNotFoundError):
+        await code(
+            path="bob",
+            command="code",
+            persist=False,
+            job=None,
+            node=None,
+            alloc=[],
+            cluster="bob",
+        )
 
 
 @pytest_asyncio.fixture(scope="session")
 async def existing_job(
     cluster: str,
-    login_node_v2: RemoteV2,
+    login_node_v2: Remote,
     allocation_flags: list[str],
     job_name: str,
 ) -> ComputeNode:
@@ -298,20 +280,6 @@ doesnt_create_new_jobs = pytest.mark.usefixtures(
 
 @doesnt_create_new_jobs
 @pytest.mark.parametrize(
-    "use_v1",
-    [
-        False,
-        pytest.param(
-            True,
-            marks=pytest.mark.skipif(
-                in_github_CI,
-                reason="Misbehaving since the 2FA changes on the Mila cluster.",
-            ),
-        ),
-    ],
-    ids=["code", "code_v1"],
-)
-@pytest.mark.parametrize(
     ("use_node_name", "use_job_id"),
     [(True, False), (False, True), (True, True)],
     ids=["node", "job", "both"],
@@ -322,8 +290,6 @@ async def test_code_with_existing_job(
     existing_job: ComputeNode,
     use_job_id: bool,
     use_node_name: bool,
-    use_v1: bool,
-    capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Test using `mila code <path> --job <job_id>`"""
@@ -339,130 +305,69 @@ async def test_code_with_existing_job(
         # hostname!
         node = hostname.removesuffix(".server.mila.quebec")
 
-    if not use_v1:
+    async def _mock_close_async():
+        return
 
-        async def _mock_close_async():
-            return
+    monkeypatch.setattr(
+        ComputeNode,
+        ComputeNode.close_async.__name__,
+        mock_close_async := AsyncMock(
+            spec=ComputeNode.close_async, side_effect=_mock_close_async
+        ),
+    )
 
-        monkeypatch.setattr(
-            ComputeNode,
-            ComputeNode.close_async.__name__,
-            mock_close_async := AsyncMock(
-                spec=ComputeNode.close_async, side_effect=_mock_close_async
-            ),
-        )
+    def _mock_close():
+        return
 
-        def _mock_close():
-            return
+    monkeypatch.setattr(
+        ComputeNode,
+        ComputeNode.close.__name__,
+        mock_close := Mock(spec=ComputeNode.close, side_effect=_mock_close),
+    )
 
-        monkeypatch.setattr(
-            ComputeNode,
-            ComputeNode.close.__name__,
-            mock_close := Mock(spec=ComputeNode.close, side_effect=_mock_close),
-        )
-
-        compute_node_or_job_id = await code(
-            path=path,
-            command="echo",  # replace the usual `code` with `echo` for testing.
-            persist=True,  # todo: Doesn't really make sense to pass --persist when using --job or --node!
-            job=job,
-            node=node,
-            alloc=[],
-            cluster=cluster,
-        )
-        assert isinstance(compute_node_or_job_id, ComputeNode)
-        assert compute_node_or_job_id.job_id == existing_job.job_id
-        assert compute_node_or_job_id.hostname == existing_job.hostname
-        mock_close_async.assert_not_called()
-        mock_close.assert_not_called()
-    else:
-        node: str | None = None
-        if use_node_name:
-            hostname = existing_job.hostname
-            # We actually need to pass `cn-a001` (node name) as --node, not the entire
-            # hostname!
-            node = hostname.removesuffix(".server.mila.quebec")
-
-        code_v1(
-            path=path,
-            command="echo",  # replace the usual `code` with `echo` for testing.
-            persist=True,  # so this doesn't try to cancel the running job on exit.
-            job=job,
-            node=node,
-            alloc=[],
-            cluster=cluster,
-        )
-        # BUG: here it prints that it ends the session, but it *doesn't* end the job.
-        # This is correct, but misleading. We should probably print something else.
-        ended_session_string = f"Ended session on {existing_job.hostname!r}"
-        output = capsys.readouterr().out
-        assert ended_session_string not in output
+    compute_node_or_job_id = await code(
+        path=path,
+        command="echo",  # replace the usual `code` with `echo` for testing.
+        persist=True,  # todo: Doesn't really make sense to pass --persist when using --job or --node!
+        job=job,
+        node=node,
+        alloc=[],
+        cluster=cluster,
+    )
+    assert isinstance(compute_node_or_job_id, ComputeNode)
+    assert compute_node_or_job_id.job_id == existing_job.job_id
+    assert compute_node_or_job_id.hostname == existing_job.hostname
+    mock_close_async.assert_not_called()
+    mock_close.assert_not_called()
 
 
 @doesnt_create_new_jobs
 @pytest.mark.asyncio
-@pytest.mark.parametrize("use_v1", [False, True], ids=["v2", "v1"])
-async def test_code_with_disk_quota_reached(
-    monkeypatch: pytest.MonkeyPatch, use_v1: bool
-):
-    if use_v1:
-        from milatools.cli import commands
+async def test_code_with_disk_quota_reached(monkeypatch: pytest.MonkeyPatch):
+    from milatools.cli import code
 
-        # Makes the test slightly quicker to run.
-        monkeypatch.setattr(commands, RemoteV1.__name__, Mock(spec=RemoteV1))
+    # Makes the test quicker to run by avoiding connecting to the cluster.
+    monkeypatch.setattr(code, Remote.__name__, Mock(spec=Remote))
 
-        def _mock_check_disk_quota_v1(remote: RemoteV1 | RemoteV2):
-            raise MilatoolsUserError(
-                "ERROR: Your disk quota on the $HOME filesystem is exceeded! "
-            )
-
-        mock_check_disk_quota = Mock(
-            spec=check_disk_quota_v1, side_effect=_mock_check_disk_quota_v1
-        )
-        monkeypatch.setattr(
-            disk_quota, check_disk_quota_v1.__name__, mock_check_disk_quota
-        )
-        monkeypatch.setattr(
-            commands, check_disk_quota_v1.__name__, mock_check_disk_quota
-        )
-        with pytest.raises(MilatoolsUserError):
-            code_v1(
-                path="bob",
-                command="echo",  # replace the usual `code` with `echo` for testing.
-                persist=False,
-                job=None,
-                node="bobobo",  # to avoid accidental sallocs.
-                alloc=[],
-                cluster="bob",
-            )
-        mock_check_disk_quota.assert_called_once()
-    else:
-        from milatools.cli import code
-
-        # Makes the test quicker to run by avoiding connecting to the cluster.
-        monkeypatch.setattr(code, RemoteV2.__name__, Mock(spec=RemoteV2))
-
-        async def _mock_check_disk_quota(remote: RemoteV1 | RemoteV2):
-            raise MilatoolsUserError(
-                "ERROR: Your disk quota on the $HOME filesystem is exceeded! "
-            )
-
-        mock_check_disk_quota = AsyncMock(
-            spec=check_disk_quota, side_effect=_mock_check_disk_quota
-        )
-        monkeypatch.setattr(
-            disk_quota, check_disk_quota.__name__, mock_check_disk_quota
+    async def _mock_check_disk_quota(remote: Remote):
+        raise MilatoolsUserError(
+            "ERROR: Your disk quota on the $HOME filesystem is exceeded! "
         )
 
-        monkeypatch.setattr(code, check_disk_quota.__name__, mock_check_disk_quota)
-        with pytest.raises(MilatoolsUserError):
-            await code.code(
-                path="bob",
-                command="echo",  # replace the usual `code` with `echo` for testing.
-                persist=False,
-                job=None,
-                node="bobobo",  # to avoid accidental sallocs.
-                alloc=[],
-                cluster="bob",
-            )
-        mock_check_disk_quota.assert_called_once()
+    mock_check_disk_quota = AsyncMock(
+        spec=check_disk_quota, side_effect=_mock_check_disk_quota
+    )
+    monkeypatch.setattr(disk_quota, check_disk_quota.__name__, mock_check_disk_quota)
+
+    monkeypatch.setattr(code, check_disk_quota.__name__, mock_check_disk_quota)
+    with pytest.raises(MilatoolsUserError):
+        await code.code(
+            path="bob",
+            command="echo",  # replace the usual `code` with `echo` for testing.
+            persist=False,
+            job=None,
+            node="bobobo",  # to avoid accidental sallocs.
+            alloc=[],
+            cluster="bob",
+        )
+    mock_check_disk_quota.assert_called_once()

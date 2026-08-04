@@ -14,9 +14,8 @@ from milatools.cli.utils import (
     get_hostname_to_use_for_compute_node,
     stripped_lines_of,
 )
-from milatools.utils.remote_v1 import Hide
-from milatools.utils.remote_v2 import RemoteV2, logger, ssh_command
-from milatools.utils.runner import Runner
+from milatools.utils.remote import Remote, logger, ssh_command
+from milatools.utils.runner import Hide, Runner
 
 
 class JobNotRunningError(RuntimeError):
@@ -43,7 +42,7 @@ class ComputeNode(Runner):
     NOTE: Found out about this trick from https://hpc.fau.de/faq/how-can-i-attach-to-a-running-slurm-job/
     """
 
-    login_node: RemoteV2
+    login_node: Remote
     """The login node of the SLURM cluster."""
 
     job_id: int
@@ -72,7 +71,7 @@ class ComputeNode(Runner):
 
     @staticmethod
     async def connect(
-        login_node: RemoteV2,
+        login_node: Remote,
         job_id_or_node_name: int | str,
     ) -> ComputeNode:
         return await _connect_to_running_job(
@@ -192,7 +191,7 @@ class ComputeNode(Runner):
 
 
 async def get_queued_milatools_job_ids(
-    login_node: RemoteV2, job_name: str | None = "mila-code"
+    login_node: Remote, job_name: str | None = "mila-code"
 ) -> set[int]:
     jobs = await login_node.get_output_async(
         "squeue --noheader --me --format=%A"
@@ -202,7 +201,7 @@ async def get_queued_milatools_job_ids(
 
 
 @contextlib.asynccontextmanager
-async def cancel_new_jobs_on_interrupt(login_node: RemoteV2, job_name: str):
+async def cancel_new_jobs_on_interrupt(login_node: Remote, job_name: str):
     """ContextManager that handles interruptions while creating a new allocation.
 
     This handles the case where an interrupt is raised while running a command over SSH
@@ -265,7 +264,7 @@ async def cancel_new_jobs_on_interrupt(login_node: RemoteV2, job_name: str):
 
 
 async def salloc(
-    login_node: RemoteV2, salloc_flags: list[str], job_name: str
+    login_node: Remote, salloc_flags: list[str], job_name: str
 ) -> ComputeNode:
     """Runs `salloc` and returns a remote connected to the compute node."""
     # NOTE: Some SLURM clusters prevent submitting jobs from $HOME.
@@ -336,7 +335,7 @@ async def salloc(
 
 
 async def sbatch(
-    login_node: RemoteV2, sbatch_flags: list[str], job_name: str
+    login_node: Remote, sbatch_flags: list[str], job_name: str
 ) -> ComputeNode:
     """Runs `sbatch` and returns a remote connected to the compute node.
 
@@ -374,7 +373,7 @@ async def sbatch(
     return ComputeNode(job_id=job_id, login_node=login_node)
 
 
-async def _wait_while_job_is_in_state(login_node: RemoteV2, job_id: int, state: str):
+async def _wait_while_job_is_in_state(login_node: Remote, job_id: int, state: str):
     nodes: str | None = None
     current_state: str | None = None
     wait_time_seconds = 1
@@ -437,7 +436,7 @@ async def _wait_while_job_is_in_state(login_node: RemoteV2, job_id: int, state: 
         attempt += 1
 
 
-async def wait_while_job_is_pending(login_node: RemoteV2, job_id: int) -> str:
+async def wait_while_job_is_pending(login_node: Remote, job_id: int) -> str:
     """Waits until a job show up in `sacct` then waits until its state is not PENDING.
 
     Returns the `State` from `sacct` after the job is no longer pending.
@@ -447,7 +446,7 @@ async def wait_while_job_is_pending(login_node: RemoteV2, job_id: int) -> str:
 
 async def _connect_to_running_job(
     jobid_or_nodename: int | str,
-    login_node: RemoteV2,
+    login_node: Remote,
 ) -> ComputeNode:
     # The `--job` flag used to be a string, might still be for some commands, so convert
     # an int string to int here just to be safe.

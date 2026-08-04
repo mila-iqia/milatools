@@ -22,10 +22,8 @@ from rich.prompt import Confirm
 from rich.table import Table
 
 from milatools.cli.utils import SSH_CONFIG_FILE, SSHConfig, T, running_inside_WSL, yn
-from milatools.utils.local_v1 import display
-from milatools.utils.local_v2 import LocalV2
-from milatools.utils.remote_v1 import RemoteV1
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.local import Local, display
+from milatools.utils.remote import Remote
 from milatools.utils.vscode_utils import (
     get_expected_vscode_settings_json_path,
     vscode_installed,
@@ -284,7 +282,7 @@ def init(ssh_dir: Path = SSH_CONFIG_FILE.parent):
 def setup_mila_ssh_access(
     ssh_dir: Path,
     ssh_config: SSHConfig,
-) -> RemoteV2 | RemoteV1 | None:
+) -> Remote | None:
     rprint(
         Panel(
             rich.text.Text("MILA SETUP", justify="center"),
@@ -547,7 +545,7 @@ def setup_drac_ssh_access(
     ssh_dir: Path, ssh_config: SSHConfig, drac_clusters_in_config: list[str]
 ):
     assert not ON_WINDOWS
-    drac_login_nodes: list[RemoteV2] = []
+    drac_login_nodes: list[Remote] = []
     rprint(
         Panel(
             rich.text.Text("DRAC SETUP", justify="center"),
@@ -618,7 +616,6 @@ def setup_drac_ssh_access(
             )
             continue
 
-        assert isinstance(login_node, RemoteV2)  # since we're not on windows.
         drac_login_nodes.append(login_node)
         cluster = drac_cluster
 
@@ -707,16 +704,14 @@ def display_public_key(
     return
 
 
-def try_to_login(cluster: str) -> RemoteV2 | RemoteV1 | None:
+def try_to_login(cluster: str) -> Remote | None:
     try:
-        return RemoteV2(cluster) if not ON_WINDOWS else RemoteV1(cluster)
+        return Remote(cluster)
     except Exception:
         return None
 
 
-def can_access_compute_nodes(
-    login_node: RemoteV2 | RemoteV1, public_key_path: Path
-) -> bool:
+def can_access_compute_nodes(login_node: Remote, public_key_path: Path) -> bool:
     if not public_key_path.exists():
         return False
     public_key = public_key_path.read_text().strip()
@@ -996,7 +991,7 @@ def run_ssh_copy_id(cluster: str, ssh_private_key_path: Path) -> bool:
 
     Returns whether the operation completed successfully or not.
     """
-    here = LocalV2()
+    here = Local()
     ssh_public_key_path = ssh_private_key_path.with_suffix(".pub")
     assert ssh_public_key_path.exists()
 
@@ -1054,9 +1049,7 @@ def run_ssh_copy_id(cluster: str, ssh_private_key_path: Path) -> bool:
     return True
 
 
-def setup_access_to_compute_nodes(
-    cluster: str, remote: RemoteV1 | RemoteV2, public_key_path: Path
-):
+def setup_access_to_compute_nodes(cluster: str, remote: Remote, public_key_path: Path):
     #####################################
     # Step 3: Set up keys on login node #
     #####################################
@@ -1146,7 +1139,7 @@ def get_windows_home_path_in_wsl() -> Path:
 
 def create_ssh_keypair(
     ssh_private_key_path: Path | None,
-    local: LocalV2 | None = None,
+    local: Local | None = None,
     passphrase: str | None = "",
 ) -> Path:
     """Creates a public/private key pair at the given path using ssh-keygen.
@@ -1155,7 +1148,7 @@ def create_ssh_keypair(
     Otherwise, if passphrase is an empty string, no passphrase will be used (default).
     If a string is passed, it is passed to ssh-keygen and used as the passphrase.
     """
-    local = local or LocalV2()
+    local = local or Local()
     command = [
         "ssh-keygen",
         "-t",
