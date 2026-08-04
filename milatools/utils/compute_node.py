@@ -309,7 +309,10 @@ async def salloc(
                 break
 
     if job_id is None:
-        raise RuntimeError("Unable to parse the job ID from the output of salloc!")
+        raise RuntimeError(
+            "Unable to parse the job ID from the output of salloc! "
+            "(Check the error output above for more information)."
+        )
 
     try:
         console.log(f"Waiting for job {job_id} to start.", style="green")
