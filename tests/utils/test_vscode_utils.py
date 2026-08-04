@@ -326,17 +326,17 @@ def test_extensions_to_install(
     ],
 )
 async def test_find_code_server_executable(
-    login_node_v2: Remote, remote_vscode_server_dir: str, should_exist: bool
+    login_node_session: Remote, remote_vscode_server_dir: str, should_exist: bool
 ):
     # NOTE: The `find` command in $HOME takes a very long time to run!
     code_server_exe_path = await _find_code_server_executable(
-        login_node_v2,
+        login_node_session,
         remote_vscode_server_dir=remote_vscode_server_dir,
     )
     if not should_exist:
         assert code_server_exe_path is None
     else:
         assert code_server_exe_path
-        remote_home = await login_node_v2.get_output_async("echo $HOME")
+        remote_home = await login_node_session.get_output_async("echo $HOME")
         expected_dir = remote_vscode_server_dir.replace("~", remote_home)
         assert code_server_exe_path.startswith(expected_dir)

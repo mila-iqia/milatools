@@ -39,7 +39,7 @@ from ..integration.conftest import skip_if_not_already_logged_in
     indirect=True,
 )
 async def test_check_disk_quota(
-    login_node_v2: Remote,
+    login_node_session: Remote,
     caplog: pytest.LogCaptureFixture,
 ):
     # TODO: Figure out a way to actually test this, (not just by running it and
@@ -48,15 +48,15 @@ async def test_check_disk_quota(
     # IF the quota is nearly met, then a warning is logged.
     # IF the quota is met, then a `MilatoolsUserError` is logged.
     if (
-        login_node_v2.hostname.startswith("graham")
-        or login_node_v2.hostname == "localhost"
+        login_node_session.hostname.startswith("graham")
+        or login_node_session.hostname == "localhost"
     ):
         with pytest.raises(subprocess.CalledProcessError):
-            await check_disk_quota(login_node_v2)
+            await check_disk_quota(login_node_session)
 
     else:
         with caplog.at_level(logging.DEBUG):
-            await check_disk_quota(login_node_v2)
+            await check_disk_quota(login_node_session)
 
 
 def _kb_to_gb(kb: int) -> float:

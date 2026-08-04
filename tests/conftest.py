@@ -102,7 +102,7 @@ def login_node(cluster: str) -> Remote:
 
 
 @pytest.fixture(scope="session")
-def login_node_v2(cluster: str) -> Remote:
+def login_node_session(cluster: str) -> Remote:
     """Fixture that gives a Remote connected to the login node of a slurm cluster.
 
     This fixture is session-scoped, because Remote is pretty much stateless and can be
@@ -167,15 +167,15 @@ def get_job_name_for_tests(request: pytest.FixtureRequest) -> str | None:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def launches_job_fixture(login_node_v2: Remote, job_name: str):
-    jobs_before = await get_queued_milatools_job_ids(login_node_v2, job_name=job_name)
+async def launches_job_fixture(login_node_session: Remote, job_name: str):
+    jobs_before = await get_queued_milatools_job_ids(login_node_session, job_name=job_name)
     if jobs_before:
         logger.debug(f"Jobs in squeue before tests: {jobs_before}")
     try:
         yield
     finally:
         jobs_after = await get_queued_milatools_job_ids(
-            login_node_v2, job_name=job_name
+            login_node_session, job_name=job_name
         )
         if jobs_before:
             logger.debug(f"Jobs after tests: {jobs_before}")
@@ -183,7 +183,7 @@ async def launches_job_fixture(login_node_v2: Remote, job_name: str):
         new_jobs = jobs_after - jobs_before
         if new_jobs:
             console.log(f"Cancelling jobs {new_jobs} after running tests...")
-            login_node_v2.run(
+            login_node_session.run(
                 "scancel " + " ".join(str(job_id) for job_id in new_jobs), display=True
             )
         else:

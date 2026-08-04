@@ -53,7 +53,7 @@ async def test_sync_vscode_extensions(
     source: str,
     dest: str,
     cluster: str,
-    login_node_v2: Remote,
+    login_node_session: Remote,
     monkeypatch: pytest.MonkeyPatch,
 ):
     if source == "cluster":
@@ -102,13 +102,13 @@ async def test_sync_vscode_extensions(
 
     # Avoid actually installing this (possibly oudated?) extension.
     extensions_per_cluster = await sync_vscode_extensions(
-        source=Local() if source == "localhost" else login_node_v2,
+        source=Local() if source == "localhost" else login_node_session,
         destinations=[dest],
     )
     assert extensions_per_cluster == {dest: [f"{extension}@{version}"]}
 
     mock_install_extension.assert_called_once_with(
-        Local() if dest == "localhost" else login_node_v2,
+        Local() if dest == "localhost" else login_node_session,
         code_server_executable=ANY,
         extension=f"{extension}@{version}",
         verbose=ANY,

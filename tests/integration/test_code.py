@@ -70,24 +70,24 @@ async def _get_job_info(
     indirect=True,
 )
 async def test_code(
-    login_node_v2: Remote,
+    login_node_session: Remote,
     persist: bool,
     capsys: pytest.CaptureFixture,
     allocation_flags: list[str],
     file_regression: FileRegressionFixture,
     slurm_account_on_cluster: str,
 ):
-    if login_node_v2.hostname == "localhost":
+    if login_node_session.hostname == "localhost":
         pytest.skip(
             "TODO: This test doesn't yet work with the slurm cluster spun up in the GitHub CI."
         )
 
-    home = await login_node_v2.get_output_async("echo $HOME")
-    scratch = await login_node_v2.get_output_async("echo $SCRATCH")
+    home = await login_node_session.get_output_async("echo $HOME")
+    scratch = await login_node_session.get_output_async("echo $SCRATCH")
 
     start = datetime.datetime.now() - timedelta(minutes=5)
     jobs_before = get_recent_jobs_info_dicts(
-        login_node_v2, since=datetime.datetime.now() - start
+        login_node_session, since=datetime.datetime.now() - start
     )
     jobs_before = {
         int(job_info["JobID"]): job_info
@@ -107,7 +107,7 @@ async def test_code(
             job=None,
             node=None,
             alloc=allocation_flags,
-            cluster=login_node_v2.hostname,  # type: ignore
+            cluster=login_node_session.hostname,  # type: ignore
         )
 
     # Get the output that was printed while running that command.
@@ -129,12 +129,12 @@ async def test_code(
 
     job_info = await _get_job_info(
         job_id=job_id,
-        login_node=login_node_v2,
+        login_node=login_node_session,
         fields=("JobID", "JobName", "Node", "WorkDir", "State"),
     )
     if node_hostname is None:
         node_hostname = get_hostname_to_use_for_compute_node(
-            job_info["Node"], cluster=login_node_v2.hostname
+            job_info["Node"], cluster=login_node_session.hostname
         )
     assert node_hostname and node_hostname != "None"
 
@@ -155,7 +155,7 @@ async def test_code(
             # passing `exit\n` to the salloc subprocess.)
             assert job_info["State"] == "COMPLETED"
     finally:
-        login_node_v2.run(f"scancel {job_id}", display=True)
+        login_node_session.run(f"scancel {job_id}", display=True)
 
     def filter_captured_output(captured_output: str) -> str:
         # Remove information that may vary between runs from the regression test files.
@@ -221,7 +221,7 @@ async def test_code_without_code_command_in_path(monkeypatch: pytest.MonkeyPatch
 @pytest_asyncio.fixture(scope="session")
 async def existing_job(
     cluster: str,
-    login_node_v2: Remote,
+    login_node_session: Remote,
     allocation_flags: list[str],
     job_name: str,
 ) -> ComputeNode:
@@ -236,7 +236,7 @@ async def existing_job(
         )
 
     existing_test_jobs_on_cluster = await get_queued_milatools_job_ids(
-        login_node_v2, job_name=job_name
+        login_node_session, job_name=job_name
     )
     # todo: filter to use only the ones that are expected to be up for a little while
     # longer (e.g. 2-3 minutes)
@@ -244,7 +244,7 @@ async def existing_job(
         try:
             # Note: Connecting to a compute node runs a command with `srun`, so it will
             # raise an error if the job is no longer running.
-            compute_node = await ComputeNode.connect(login_node_v2, job_id)
+            compute_node = await ComputeNode.connect(login_node_session, job_id)
         except Exception as exc:
             logger.debug(f"Unable to reuse job {job_id}: {exc}")
         else:
@@ -256,7 +256,7 @@ async def existing_job(
         "Unable to find existing test jobs on the cluster. Allocating a new one."
     )
     compute_node = await salloc(
-        login_node_v2, salloc_flags=allocation_flags, job_name=job_name
+        login_node_session, salloc_flags=allocation_flags, job_name=job_name
     )
     return compute_node
 
