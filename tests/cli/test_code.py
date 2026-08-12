@@ -11,7 +11,7 @@ import pytest
 import milatools.cli.code
 import milatools.cli.utils
 from milatools.utils.compute_node import ComputeNode
-from milatools.utils.local_v2 import LocalV2
+from milatools.utils.local import Local
 
 
 @pytest.mark.parametrize("pretend_to_be_in_WSL", [True, False], indirect=True)
@@ -19,9 +19,9 @@ from milatools.utils.local_v2 import LocalV2
 async def test_code_from_WSL(
     monkeypatch: pytest.MonkeyPatch, pretend_to_be_in_WSL: bool
 ):
-    # Mock the LocalV2 class so that we can inspect the call to `LocalV2.run_async`.
-    mock_localv2 = Mock(spec=LocalV2)
-    monkeypatch.setattr(milatools.cli.code, LocalV2.__name__, mock_localv2)
+    # Mock the Local class so that we can inspect the call to `Local.run_async`.
+    mock_localv2 = Mock(spec=Local)
+    monkeypatch.setattr(milatools.cli.code, Local.__name__, mock_localv2)
 
     await milatools.cli.code.launch_vscode_loop(
         "code", Mock(spec=ComputeNode, hostname="foo"), "/bob/path"

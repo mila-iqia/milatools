@@ -9,14 +9,22 @@ from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 
 from milatools.cli import console
-from milatools.utils.remote_v1 import Hide
-from milatools.utils.runner import Runner
+from milatools.cli.utils import T
+from milatools.utils.runner import Hide, Runner
 
 logger = get_logger(__name__)
 
 
+def display(split_command: list[str] | tuple[str, ...] | str) -> None:
+    if isinstance(split_command, str):
+        command = split_command
+    else:
+        command = shlex.join(split_command)
+    print(T.bold_green("(local) $ ", command))
+
+
 @dataclasses.dataclass(init=False, frozen=True)
-class LocalV2(Runner):
+class Local(Runner):
     """A runner that runs commands in subprocesses on the local machine."""
 
     hostname = "localhost"
@@ -40,7 +48,7 @@ class LocalV2(Runner):
         warn: bool = False,
         hide: Hide = True,
     ) -> str:
-        return LocalV2.run(
+        return Local.run(
             command, display=display, warn=warn, hide=hide
         ).stdout.strip()
 
@@ -65,7 +73,7 @@ class LocalV2(Runner):
     ) -> str:
         """Runs the command asynchronously and returns the stripped output string."""
         return (
-            await LocalV2.run_async(command, display=display, warn=warn, hide=hide)
+            await Local.run_async(command, display=display, warn=warn, hide=hide)
         ).stdout.strip()
 
 

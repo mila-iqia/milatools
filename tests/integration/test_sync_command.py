@@ -11,8 +11,8 @@ import pytest
 from typing_extensions import ParamSpec
 
 from milatools.utils import vscode_utils
-from milatools.utils.local_v2 import LocalV2
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.local import Local
+from milatools.utils.remote import Remote
 from milatools.utils.vscode_utils import (
     _extensions_to_install,
     _find_code_server_executable,
@@ -53,7 +53,7 @@ async def test_sync_vscode_extensions(
     source: str,
     dest: str,
     cluster: str,
-    login_node_v2: RemoteV2,
+    login_node_session: Remote,
     monkeypatch: pytest.MonkeyPatch,
 ):
     if source == "cluster":
@@ -102,13 +102,13 @@ async def test_sync_vscode_extensions(
 
     # Avoid actually installing this (possibly oudated?) extension.
     extensions_per_cluster = await sync_vscode_extensions(
-        source=LocalV2() if source == "localhost" else login_node_v2,
+        source=Local() if source == "localhost" else login_node_session,
         destinations=[dest],
     )
     assert extensions_per_cluster == {dest: [f"{extension}@{version}"]}
 
     mock_install_extension.assert_called_once_with(
-        LocalV2() if dest == "localhost" else login_node_v2,
+        Local() if dest == "localhost" else login_node_session,
         code_server_executable=ANY,
         extension=f"{extension}@{version}",
         verbose=ANY,
@@ -118,17 +118,17 @@ async def test_sync_vscode_extensions(
     mock_extensions_to_install.assert_called_once()
     if source == "localhost":
         mock_find_code_server_executable.assert_called_once_with(
-            RemoteV2(dest), remote_vscode_server_dir="~/.vscode-server"
+            Remote(dest), remote_vscode_server_dir="~/.vscode-server"
         )
     elif dest == "localhost":
         mock_find_code_server_executable.assert_called_once_with(
-            RemoteV2(source), remote_vscode_server_dir="~/.vscode-server"
+            Remote(source), remote_vscode_server_dir="~/.vscode-server"
         )
     else:
         assert len(mock_find_code_server_executable.mock_calls) == 2
         mock_find_code_server_executable.assert_any_call(
-            RemoteV2(source), remote_vscode_server_dir="~/.vscode-server"
+            Remote(source), remote_vscode_server_dir="~/.vscode-server"
         )
         mock_find_code_server_executable.assert_any_call(
-            RemoteV2(dest), remote_vscode_server_dir="~/.vscode-server"
+            Remote(dest), remote_vscode_server_dir="~/.vscode-server"
         )

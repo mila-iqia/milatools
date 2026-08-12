@@ -9,7 +9,6 @@ import re
 import socket
 import sys
 import textwrap
-from collections.abc import Generator
 from logging import getLogger as get_logger
 from pathlib import Path
 from unittest.mock import Mock
@@ -17,7 +16,6 @@ from unittest.mock import Mock
 import pytest
 import pytest_asyncio
 import rich
-from fabric.connection import Connection
 from pytest_mock import MockerFixture
 
 import milatools.cli.code
@@ -26,9 +24,9 @@ import milatools.cli.init_command
 import milatools.cli.utils
 import milatools.utils.compute_node
 import milatools.utils.disk_quota
-import milatools.utils.local_v2
+import milatools.utils.local
 import milatools.utils.parallel_progress
-import milatools.utils.remote_v2
+import milatools.utils.remote
 from milatools.cli import console
 from milatools.cli.init_command import (
     create_ssh_keypair,
@@ -37,16 +35,14 @@ from milatools.cli.init_command import (
 )
 from milatools.cli.utils import SSH_CONFIG_FILE, running_inside_WSL
 from milatools.utils.compute_node import get_queued_milatools_job_ids
-from milatools.utils.remote_v1 import RemoteV1
-from milatools.utils.remote_v2 import (
-    RemoteV2,
+from milatools.utils.remote import (
+    Remote,
     UnsupportedPlatformError,
     is_already_logged_in,
 )
 
 from .cli.common import (
     in_self_hosted_github_CI,
-    passwordless_ssh_connection_to_localhost_is_setup,
     xfails_on_windows,
 )
 from .integration.conftest import JOB_NAME, MAX_JOB_DURATION, SLURM_CLUSTER, WCKEY
@@ -71,9 +67,9 @@ def use_wider_console_during_tests(monkeypatch: pytest.MonkeyPatch):
     for module in [
         milatools.cli.commands,
         milatools.utils.compute_node,
-        milatools.utils.local_v2,
+        milatools.utils.local,
         milatools.utils.parallel_progress,
-        milatools.utils.remote_v2,
+        milatools.utils.remote,
         milatools.utils.disk_quota,
         test_parallel_progress,
         milatools.cli.code,
@@ -92,95 +88,9 @@ unsupported_on_windows = xfails_on_windows(raises=UnsupportedPlatformError, stri
 pytest.register_assert_rewrite("tests.utils.runner_tests")
 
 
-@pytest.fixture(
-    scope="session",
-    params=[
-        pytest.param(
-            "localhost",
-            marks=pytest.mark.skipif(
-                not passwordless_ssh_connection_to_localhost_is_setup,
-                reason="Passwordless ssh access to localhost needs to be setup.",
-            ),
-        ),
-        # TODO: Think about a smart way to enable this. Some tests won't work as-is.
-        # pytest.param(
-        #     "mila",
-        #     marks=pytest.mark.skipif(
-        #         "-vvv" not in sys.argv, reason="Not testing using the Mila cluster."
-        #     ),
-        # ),
-    ],
-)
-def host(request: pytest.FixtureRequest) -> str:
-    return request.param
-
-
-@pytest.fixture(scope="session")
-def connection(host: str) -> Generator[Connection, None, None]:
-    """Fixture that gives a Connection object that is reused by all tests."""
-    with Connection(host) as connection:
-        yield connection
-
-
 @pytest.fixture(scope="function")
-def MockConnection(
-    monkeypatch: pytest.MonkeyPatch, connection: Connection, host: str
-) -> Mock:
-    """Returns a Mock wrapping the `fabric.connection.Connection` class,.
-
-    This is useful for tests that create a Remote without passing a connection, to make
-    sure that any `Connection` instance created during tests is using our mock
-    connection to `localhost` when possible.
-    """
-    # The return value of the constructor will always be the shared `Connection` object.
-    MockConnection = Mock(
-        name="MockConnection",
-        wraps=Connection,
-        return_value=Mock(
-            name="mock_connection",
-            # Modify the repr so they show up nicely in the regression files and with
-            # consistent/reproducible names.
-            wraps=connection,
-            host=host,
-            __repr__=lambda _: f"Connection({repr(host)})",
-        ),
-    )
-    import milatools.utils.remote_v1
-
-    monkeypatch.setattr(milatools.utils.remote_v1, Connection.__name__, MockConnection)
-    return MockConnection
-
-
-@pytest.fixture(scope="function")
-def mock_connection(
-    MockConnection: Mock,
-) -> Mock:
-    """Returns a Mock wrapping a real `Connection` instance.
-
-    This Mock is used to check how the connection is used by `Remote` and `SlurmRemote`.
-    """
-    mock_connection: Mock = MockConnection.return_value
-    return mock_connection
-
-
-@pytest.fixture(scope="function")
-def remote(mock_connection: Connection):
-    assert isinstance(mock_connection.host, str)
-    return RemoteV1(hostname=mock_connection.host, connection=mock_connection)
-
-
-@pytest.fixture(scope="function")
-def login_node(cluster: str) -> RemoteV1 | RemoteV2:
-    """Fixture that gives a Remote connected to the login node of a slurm cluster.
-
-    NOTE: Making this a function-scoped fixture because the Connection object of the
-    Remote seems to be passed (and reused?) when creating the `SlurmRemote` object.
-
-    We want to avoid that, because `SlurmRemote` creates jobs when it runs commands.
-    We also don't want to accidentally end up with `login_node` that runs commands on
-    compute nodes because a previous test kept the same connection object while doing
-    salloc (just in case that were to happen).
-    """
+def login_node(cluster: str) -> Remote:
+    """Fixture that gives a Remote connected to the login node of a slurm cluster."""
     if cluster not in ["mila", "localhost"] and not is_already_logged_in(
         cluster, ssh_config_path=SSH_CONFIG_FILE
     ):
@@ -188,20 +98,18 @@ def login_node(cluster: str) -> RemoteV1 | RemoteV2:
             f"Requires ssh access to the login node of the {cluster} cluster, and a "
             "prior connection to the cluster."
         )
-    if sys.platform == "win32":
-        return RemoteV1(cluster)
-    return RemoteV2(cluster)
+    return Remote(cluster)
 
 
 @pytest.fixture(scope="session")
-def login_node_v2(cluster: str) -> RemoteV2:
+def login_node_session(cluster: str) -> Remote:
     """Fixture that gives a Remote connected to the login node of a slurm cluster.
 
-    This fixture is session-scoped, because RemoteV2 is pretty much stateless and can be
+    This fixture is session-scoped, because Remote is pretty much stateless and can be
     safely reused.
     """
     if sys.platform == "win32":
-        pytest.skip("Test uses RemoteV2.")
+        pytest.skip("Test uses Remote.")
     if cluster not in ["mila", "localhost"] and not is_already_logged_in(
         cluster, ssh_config_path=SSH_CONFIG_FILE
     ):
@@ -209,7 +117,7 @@ def login_node_v2(cluster: str) -> RemoteV2:
             f"Requires ssh access to the login node of the {cluster} cluster, and a "
             "prior connection to the cluster."
         )
-    return RemoteV2(cluster)
+    return Remote(cluster)
 
 
 @pytest.fixture(scope="session", params=[SLURM_CLUSTER] if SLURM_CLUSTER else [])
@@ -259,15 +167,15 @@ def get_job_name_for_tests(request: pytest.FixtureRequest) -> str | None:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def launches_job_fixture(login_node_v2: RemoteV2, job_name: str):
-    jobs_before = await get_queued_milatools_job_ids(login_node_v2, job_name=job_name)
+async def launches_job_fixture(login_node_session: Remote, job_name: str):
+    jobs_before = await get_queued_milatools_job_ids(login_node_session, job_name=job_name)
     if jobs_before:
         logger.debug(f"Jobs in squeue before tests: {jobs_before}")
     try:
         yield
     finally:
         jobs_after = await get_queued_milatools_job_ids(
-            login_node_v2, job_name=job_name
+            login_node_session, job_name=job_name
         )
         if jobs_before:
             logger.debug(f"Jobs after tests: {jobs_before}")
@@ -275,7 +183,7 @@ async def launches_job_fixture(login_node_v2: RemoteV2, job_name: str):
         new_jobs = jobs_after - jobs_before
         if new_jobs:
             console.log(f"Cancelling jobs {new_jobs} after running tests...")
-            login_node_v2.run(
+            login_node_session.run(
                 "scancel " + " ".join(str(job_id) for job_id in new_jobs), display=True
             )
         else:
@@ -310,7 +218,7 @@ def get_slurm_account(cluster: str) -> str:
     assert cluster in ["mila", "localhost"] or is_already_logged_in(
         cluster, ssh_config_path=SSH_CONFIG_FILE
     )
-    result = RemoteV2(cluster).run(
+    result = Remote(cluster).run(
         "sacctmgr --noheader show associations where user=$USER format=Account%50"
     )
     accounts = [line.strip() for line in result.stdout.splitlines()]
