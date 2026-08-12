@@ -78,11 +78,19 @@ def vscode_installed() -> bool:
 async def sync_vscode_extensions(
     source: str | LocalV2 | RemoteV2,
     destinations: Sequence[str | LocalV2 | RemoteV2],
+    code_command: str | None = None,
 ) -> dict[str, list[str]]:
     """Syncs vscode extensions between `source` all all the clusters in `dest`.
 
     This creates an async task for each cluster in `dest` and displays a progress bar.
     Returns the extensions that were installed on each cluster.
+
+    Arguments:
+        source: The source machine to sync extensions from.
+        destinations: The destination machines to sync extensions to.
+        code_command: The VSCode executable to use on the local machine (e.g. "code" or
+            "code-insiders"). Defaults to the value of $MILATOOLS_CODE_COMMAND or
+            "code".
     """
     if isinstance(source, str):
         if source == "localhost":
@@ -96,7 +104,7 @@ async def sync_vscode_extensions(
         logger.info("No destinations to sync extensions to!")
         return {}
 
-    source_extensions = await _get_vscode_extensions(source)
+    source_extensions = await _get_vscode_extensions(source, code_command=code_command)
 
     tasks: list[AsyncTaskFn[list[str]]] = []
     task_descriptions: list[str] = []
@@ -111,6 +119,7 @@ async def sync_vscode_extensions(
                 source_extensions=source_extensions,
                 remote=dest_runner,
                 source_name=source.hostname,
+                code_command=code_command,
             )
         )
         task_descriptions.append(f"{source.hostname} -> {dest_hostname}")
@@ -141,9 +150,12 @@ def _remove_source_from_destinations(
 
 async def _get_vscode_extensions(
     source: LocalV2 | RemoteV2,
+    code_command: str | None = None,
 ) -> dict[str, str]:
     if isinstance(source, LocalV2):
-        code_server_executable = _get_local_vscode_executable_path(code_command=None)
+        code_server_executable = _get_local_vscode_executable_path(
+            code_command=code_command
+        )
     else:
         code_server_executable = await _find_code_server_executable(
             source, remote_vscode_server_dir="~/.vscode-server"
@@ -161,6 +173,7 @@ async def _install_vscode_extensions_task_function(
     remote: str | RemoteV2 | LocalV2,
     source_name: str,
     verbose: bool = False,
+    code_command: str | None = None,
 ) -> list[str]:
     """Installs vscode extensions on the remote cluster.
 
@@ -192,7 +205,9 @@ async def _install_vscode_extensions_task_function(
             remote = await RemoteV2.connect(remote)
 
     if isinstance(remote, LocalV2):
-        code_server_executable = _get_local_vscode_executable_path()
+        code_server_executable = _get_local_vscode_executable_path(
+            code_command=code_command
+        )
         _update_progress(0, status="fetching installed extensions...")
         extensions_on_dest = await _get_vscode_extensions_dict(
             remote, code_server_executable
