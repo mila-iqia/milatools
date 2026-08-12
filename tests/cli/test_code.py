@@ -15,23 +15,27 @@ from milatools.utils.local_v2 import LocalV2
 
 
 @pytest.mark.parametrize("pretend_to_be_in_WSL", [True, False], indirect=True)
+@pytest.mark.parametrize("reuse_window", [True, False])
 @pytest.mark.asyncio
 async def test_code_from_WSL(
-    monkeypatch: pytest.MonkeyPatch, pretend_to_be_in_WSL: bool
+    monkeypatch: pytest.MonkeyPatch, pretend_to_be_in_WSL: bool, reuse_window: bool
 ):
     # Mock the LocalV2 class so that we can inspect the call to `LocalV2.run_async`.
     mock_localv2 = Mock(spec=LocalV2)
     monkeypatch.setattr(milatools.cli.code, LocalV2.__name__, mock_localv2)
 
     await milatools.cli.code.launch_vscode_loop(
-        "code", Mock(spec=ComputeNode, hostname="foo"), "/bob/path"
+        "code",
+        Mock(spec=ComputeNode, hostname="foo"),
+        "/bob/path",
+        reuse_window=reuse_window,
     )
     assert isinstance(mock_localv2.run_async, AsyncMock)
     mock_localv2.run_async.assert_called_once_with(
         (
             *(("powershell.exe",) if pretend_to_be_in_WSL else ()),
             "code",
-            "--new-window",
+            "--reuse-window" if reuse_window else "--new-window",
             "--wait",
             "--remote",
             "ssh-remote+foo",
