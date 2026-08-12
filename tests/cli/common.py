@@ -101,7 +101,7 @@ requires_no_s_flag = pytest.mark.skipif(
 )
 on_windows = sys.platform == "win32"
 in_github_windows_ci = in_github_CI and on_windows
-
+skip_on_windows = pytest.mark.skipif(on_windows, reason="Not supported on Windows.")
 P = ParamSpec("P")
 
 
