@@ -5,6 +5,7 @@ Host mila
   HostName login.server.mila.quebec
   PreferredAuthentications publickey,keyboard-interactive
   Port 2222
+  ForwardAgent yes
   ServerAliveInterval 120
   ServerAliveCountMax 5
   ControlMaster auto
@@ -48,6 +49,7 @@ Host cn-????
 
 Host narval rorqual fir nibi trillium trillium-gpu tamia killarney vulcan
   HostName %h.alliancecan.ca
+  ForwardAgent yes
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes

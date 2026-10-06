@@ -24,6 +24,8 @@ from pytest_regressions.file_regression import FileRegressionFixture
 
 from milatools.cli import init_command
 from milatools.cli.init_command import (
+    DRAC_ENTRIES,
+    MILA_ENTRIES,
     ON_WINDOWS,
     _get_drac_username,
     _get_mila_username,
@@ -119,6 +121,11 @@ def test_can_mock_input(input_stream: io.StringIO):
 
 def test_creates_ssh_config_file(ssh_config_file: Path):
     assert ssh_config_file.exists()
+
+
+def test_forward_agent_enabled_for_mila_and_drac_login_entries():
+    assert MILA_ENTRIES["mila"]["ForwardAgent"] == "yes"
+    assert DRAC_ENTRIES[" ".join(init_command.DRAC_CLUSTERS)]["ForwardAgent"] == "yes"
 
 
 @pytest.mark.parametrize(
