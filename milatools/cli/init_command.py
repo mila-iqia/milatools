@@ -64,6 +64,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         # "User": mila_username,
         "PreferredAuthentications": "publickey,keyboard-interactive",
         "Port": 2222,
+        "ForwardAgent": "yes",
         "ServerAliveInterval": 120,
         "ServerAliveCountMax": 5,
         **ssh_multiplexing_config,
@@ -125,6 +126,7 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
     " ".join(DRAC_CLUSTERS): {
         "Hostname": "%h.alliancecan.ca",
         # User=drac_username,
+        "ForwardAgent": "yes",
         # SSH multiplexing is useful here to go through 2FA only once.
         **ssh_multiplexing_config,
     },
