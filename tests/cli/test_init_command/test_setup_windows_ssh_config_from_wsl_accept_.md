@@ -50,6 +50,8 @@ Host cn-????
 Host narval rorqual fir nibi trillium trillium-gpu tamia killarney vulcan
   HostName %h.alliancecan.ca
   ForwardAgent yes
+  ServerAliveInterval 120
+  ServerAliveCountMax 5
   ControlMaster auto
   ControlPath ~/.cache/ssh/%r@%h:%p
   ControlPersist yes
@@ -145,6 +147,8 @@ Host cn-????
 Host narval rorqual fir nibi trillium trillium-gpu tamia killarney vulcan
   HostName %h.alliancecan.ca
   ForwardAgent yes
+  ServerAliveInterval 120
+  ServerAliveCountMax 5
   User bob
   IdentityFile ~/.ssh/id_rsa_drac
 

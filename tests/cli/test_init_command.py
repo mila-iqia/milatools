@@ -123,9 +123,15 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
     assert ssh_config_file.exists()
 
 
-def test_forward_agent_enabled_for_mila_and_drac_login_entries():
-    assert MILA_ENTRIES["mila"]["ForwardAgent"] == "yes"
-    assert DRAC_ENTRIES[" ".join(init_command.DRAC_CLUSTERS)]["ForwardAgent"] == "yes"
+@pytest.mark.parametrize(
+    "login_entry",
+    [MILA_ENTRIES["mila"], DRAC_ENTRIES[" ".join(init_command.DRAC_CLUSTERS)]],
+    ids=["mila", "drac"],
+)
+def test_login_entry_options(login_entry: dict[str, int | str]):
+    assert login_entry["ForwardAgent"] == "yes"
+    assert login_entry["ServerAliveInterval"] == 120
+    assert login_entry["ServerAliveCountMax"] == 5
 
 
 @pytest.mark.parametrize(
