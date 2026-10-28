@@ -127,6 +127,10 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
         "Hostname": "%h.alliancecan.ca",
         # User=drac_username,
         "ForwardAgent": "yes",
+        # Send keepalives so idle connections aren't dropped and dead ones are
+        # detected (avoids a hung ControlMaster).
+        "ServerAliveInterval": 120,
+        "ServerAliveCountMax": 5,
         # SSH multiplexing is useful here to go through 2FA only once.
         **ssh_multiplexing_config,
     },
