@@ -21,35 +21,35 @@ from milatools.utils.compute_node import (
     salloc,
     sbatch,
 )
-from milatools.utils.remote_v2 import RemoteV2
+from milatools.utils.remote import Remote
 
 from ..conftest import launches_jobs
 from .runner_tests import RunnerTests
-from .test_remote_v2 import uses_remote_v2
+from .test_remote import uses_remote
 
 logger = get_logger(__name__)
-pytestmark = [uses_remote_v2]
+pytestmark = [uses_remote]
 
 
 @launches_jobs
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_salloc(
-    login_node_v2: RemoteV2,
+    login_node_session: Remote,
     allocation_flags: list[str],
     job_name: str,
 ):
-    if login_node_v2.hostname == "localhost":
+    if login_node_session.hostname == "localhost":
         # todo: Check why this (and other tests in this file) don't work on the mock
         # slurm cluster during the CI.
         # - perhaps there is only one 'node' and so only one 'job' can run, and tests
         #   are actually running more than one job, so blocking each other?
         pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
 
-    compute_node = await salloc(login_node_v2, allocation_flags, job_name=job_name)
+    compute_node = await salloc(login_node_session, allocation_flags, job_name=job_name)
 
     assert isinstance(compute_node, ComputeNode)
-    assert compute_node.hostname != login_node_v2.hostname
+    assert compute_node.hostname != login_node_session.hostname
 
     # note: needs to be properly quoted so as not to evaluate the variable here!
     job_id = compute_node.get_output("echo $SLURM_JOB_ID")
@@ -71,17 +71,17 @@ async def test_salloc(
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_sbatch(
-    login_node_v2: RemoteV2,
+    login_node_session: Remote,
     allocation_flags: list[str],
     job_name: str,
 ):
-    if login_node_v2.hostname == "localhost":
+    if login_node_session.hostname == "localhost":
         pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
 
-    compute_node = await sbatch(login_node_v2, allocation_flags, job_name=job_name)
+    compute_node = await sbatch(login_node_session, allocation_flags, job_name=job_name)
     assert isinstance(compute_node, ComputeNode)
 
-    assert compute_node.hostname != login_node_v2.hostname
+    assert compute_node.hostname != login_node_session.hostname
     job_id = compute_node.get_output("echo $SLURM_JOB_ID")
     assert compute_node.job_id == int(job_id)
     all_slurm_env_vars = {
@@ -102,7 +102,7 @@ def persist(request: pytest.FixtureRequest):
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_interrupt_allocation(
-    login_node_v2: RemoteV2,
+    login_node_session: Remote,
     allocation_flags: list[str],
     job_name: str,
     persist: bool,
@@ -115,11 +115,11 @@ async def test_interrupt_allocation(
     - while waiting for the job to show up in `sacct`;
     - while waiting for the job to start running.
     """
-    if login_node_v2.hostname == "localhost":
+    if login_node_session.hostname == "localhost":
         pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
 
     async def get_jobs_in_squeue() -> set[int]:
-        return await get_queued_milatools_job_ids(login_node_v2, job_name=job_name)
+        return await get_queued_milatools_job_ids(login_node_session, job_name=job_name)
 
     _jobs_before = await get_jobs_in_squeue()
 
@@ -145,9 +145,9 @@ async def test_interrupt_allocation(
     # NOTE: Assuming that it takes more time for the job to be allocated than it takes for
     # the job to show up in `squeue`.
     salloc_task = asyncio.create_task(
-        sbatch(login_node_v2, sbatch_flags=allocation_flags, job_name=job_name)
+        sbatch(login_node_session, sbatch_flags=allocation_flags, job_name=job_name)
         if persist
-        else salloc(login_node_v2, salloc_flags=allocation_flags, job_name=job_name),
+        else salloc(login_node_session, salloc_flags=allocation_flags, job_name=job_name),
         name="sbatch" if persist else "salloc",
     )
     get_new_job_ids_task = asyncio.create_task(
@@ -174,18 +174,18 @@ async def test_interrupt_allocation(
 class TestComputeNode(RunnerTests):
     @pytest_asyncio.fixture(scope="class")
     async def runner(
-        self, login_node_v2: RemoteV2, persist: bool, allocation_flags: list[str]
+        self, login_node_session: Remote, persist: bool, allocation_flags: list[str]
     ):
-        if login_node_v2.hostname == "localhost":
+        if login_node_session.hostname == "localhost":
             pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
 
         if persist:
             runner = await sbatch(
-                login_node_v2, sbatch_flags=allocation_flags, job_name="mila-code"
+                login_node_session, sbatch_flags=allocation_flags, job_name="mila-code"
             )
         else:
             runner = await salloc(
-                login_node_v2, salloc_flags=allocation_flags, job_name="mila-code"
+                login_node_session, salloc_flags=allocation_flags, job_name="mila-code"
             )
         yield runner
         await runner.close_async()
@@ -272,23 +272,23 @@ class TestComputeNode(RunnerTests):
     @pytest.mark.asyncio
     async def test_close(
         self,
-        login_node_v2: RemoteV2,
+        login_node_session: Remote,
         persist: bool,
         allocation_flags: list[str],
         job_name: str,
         use_async: bool,
     ):
-        if login_node_v2.hostname == "localhost":
+        if login_node_session.hostname == "localhost":
             pytest.skip(reason="Test doesn't currently work on the mock slurm cluster.")
         # Here we create a new job allocation just to cancel it. We could reuse the
         # `runner` fixture, but that would require us to run this test as the very last one.
         if persist:
             compute_node = await sbatch(
-                login_node_v2, sbatch_flags=allocation_flags, job_name=job_name
+                login_node_session, sbatch_flags=allocation_flags, job_name=job_name
             )
         else:
             compute_node = await salloc(
-                login_node_v2, salloc_flags=allocation_flags, job_name=job_name
+                login_node_session, salloc_flags=allocation_flags, job_name=job_name
             )
 
         if use_async:
@@ -296,7 +296,7 @@ class TestComputeNode(RunnerTests):
         else:
             compute_node.close()
 
-        job_state = await login_node_v2.get_output_async(
+        job_state = await login_node_session.get_output_async(
             f"sacct --noheader --allocations --jobs {compute_node.job_id} --format=State%100",
             display=True,
             hide=False,
@@ -313,7 +313,7 @@ class TestComputeNode(RunnerTests):
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_del_computenode(
-    login_node_v2: RemoteV2, persist: bool, allocation_flags: list[str], job_name: str
+    login_node_session: Remote, persist: bool, allocation_flags: list[str], job_name: str
 ):
     """Test what happens when we delete a ComputeNode instance (persistent vs non-
     persistent).
@@ -322,18 +322,18 @@ async def test_del_computenode(
     """
     if persist:
         compute_node = await sbatch(
-            login_node_v2, sbatch_flags=allocation_flags, job_name=job_name
+            login_node_session, sbatch_flags=allocation_flags, job_name=job_name
         )
     else:
         compute_node = await salloc(
-            login_node_v2, salloc_flags=allocation_flags, job_name=job_name
+            login_node_session, salloc_flags=allocation_flags, job_name=job_name
         )
 
     job_id = compute_node.job_id
     del compute_node
     # if deleting does anything, wait for its effect to propagate to sacct
     await asyncio.sleep(5)
-    state_after = await login_node_v2.get_output_async(
+    state_after = await login_node_session.get_output_async(
         f"sacct --jobs {job_id} --allocations --noheader --format=State",
     )
     try:
@@ -342,7 +342,7 @@ async def test_del_computenode(
         else:
             assert state_after == "COMPLETED"
     finally:
-        await login_node_v2.run_async(f"scancel {job_id}")
+        await login_node_session.run_async(f"scancel {job_id}")
 
 
 @pytest_asyncio.fixture(scope="function", params=[False, True], ids=["sync", "async"])
@@ -369,10 +369,10 @@ async def mock_closed_compute_node(
         # Unexpected command.
         assert False, (command, input)
 
-    mock_run = Mock(spec=RemoteV2.run, side_effect=_mock_run)
-    mock_run_async = AsyncMock(spec=RemoteV2.run_async, side_effect=_mock_run_async)
+    mock_run = Mock(spec=Remote.run, side_effect=_mock_run)
+    mock_run_async = AsyncMock(spec=Remote.run_async, side_effect=_mock_run_async)
     mock_login_node = Mock(
-        spec=RemoteV2,
+        spec=Remote,
         hostname="mila",
         ssh_config_path=ssh_config_file,
     )
@@ -486,7 +486,7 @@ async def test_cancel_new_jobs_on_interrupt(
         stderr = ""
         return subprocess.CompletedProcess(command, 0, output, stderr)
 
-    mock_run = Mock(spec=RemoteV2.run, side_effect=_run)
+    mock_run = Mock(spec=Remote.run, side_effect=_run)
 
     async def _run_async(command: str, input: str | None = None, *args, **kwargs):
         # Just call `run`, doesn't matter.
@@ -497,10 +497,10 @@ async def test_cancel_new_jobs_on_interrupt(
     async def _get_output_async(*args, **kwargs) -> str:
         return (await _run_async(*args, **kwargs)).stdout.strip()
 
-    mock_run_async = AsyncMock(spec=RemoteV2.run_async, side_effect=_run_async)
+    mock_run_async = AsyncMock(spec=Remote.run_async, side_effect=_run_async)
 
     mock_login_node = Mock(
-        spec=RemoteV2,
+        spec=Remote,
         hostname="some_cluster",
     )
     mock_login_node.configure_mock(

@@ -8,7 +8,7 @@ from logging import getLogger as get_logger
 import pytest
 
 from milatools.cli.utils import SSH_CONFIG_FILE
-from milatools.utils.remote_v2 import is_already_logged_in
+from milatools.utils.remote import Remote, is_already_logged_in
 
 logger = get_logger(__name__)
 JOB_NAME = "milatools_test"
@@ -61,3 +61,31 @@ def skip_param_if_not_already_logged_in(cluster: str):
             skip_if_not_already_logged_in(cluster),
         ],
     )
+
+
+def get_recent_jobs_info(
+    login_node: Remote,
+    since: datetime.timedelta = datetime.timedelta(minutes=5),
+    fields: tuple[str, ...] = ("JobID", "JobName", "Node", "State"),
+) -> list[tuple[str, ...]]:
+    """Returns a list of fields for jobs that started recently."""
+    lines = login_node.run(
+        f"sacct --noheader --allocations --user=$USER "
+        f"--starttime=now-{int(since.total_seconds())}seconds "
+        "--format=" + ",".join(f"{field}%100" for field in fields),
+        display=False,
+        hide=True,
+    ).stdout.splitlines()
+    # note: using maxsplit because the State field can contain spaces: "canceled by ..."
+    return [tuple(line.strip().split(maxsplit=len(fields) - 1)) for line in lines]
+
+
+def get_recent_jobs_info_dicts(
+    login_node: Remote,
+    since: datetime.timedelta = datetime.timedelta(minutes=5),
+    fields: tuple[str, ...] = ("JobID", "JobName", "Node", "State"),
+) -> list[dict[str, str]]:
+    return [
+        dict(zip(fields, line))
+        for line in get_recent_jobs_info(login_node, since=since, fields=fields)
+    ]

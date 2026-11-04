@@ -1,6 +1,5 @@
 import functools
 import multiprocessing
-import random
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,14 +12,8 @@ from milatools.cli.utils import (
     internet_on_compute_nodes,
     make_process,
     qn,
-    randname,
     yn,
 )
-
-
-def test_randname(file_regression):
-    random.seed(0)
-    file_regression.check("\n".join(randname() for _ in range(100)) + "\n")
 
 
 @pytest.mark.skip(reason="Fails when test_profile::test__ask_name runs.")

@@ -10,9 +10,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from milatools.utils.remote_v1 import Hide
-from milatools.utils.remote_v2 import RemoteV2
-from milatools.utils.runner import Runner
+from milatools.utils.remote import Remote
+from milatools.utils.runner import Hide, Runner
 
 
 class RunnerTests(abc.ABC):
@@ -341,7 +340,7 @@ class RunnerTests(abc.ABC):
         assert output is mock.stdout.strip()
 
     @pytest.mark.asyncio
-    async def test_run_async_runs_in_parallel(self, runner: RemoteV2):
+    async def test_run_async_runs_in_parallel(self, runner: Remote):
         commands = [f"sleep {i * 5}" for i in range(1, 3)]
         start_time = time.time()
         # Sequential time:

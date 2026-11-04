@@ -11,14 +11,12 @@ from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 from typing import Any
 
-import fabric
-import paramiko.ssh_exception
 import pytest
 from pytest_regressions.file_regression import FileRegressionFixture
 from typing_extensions import ParamSpec
 
 from milatools.cli.utils import SSH_CACHE_DIR, SSH_CONFIG_FILE, SSHConfig
-from milatools.utils.remote_v2 import RemoteV2, get_controlpath_for
+from milatools.utils.remote import Remote, get_controlpath_for
 
 if typing.TYPE_CHECKING:
     from typing_extensions import TypeGuard
@@ -64,25 +62,13 @@ def ssh_to_localhost_is_setup() -> bool:
         config.set("localhost", StrictHostKeyChecking="no")
     config.save()
 
-    if sys.platform != "win32":
-        try:
-            _localhost_remote = RemoteV2("localhost", control_path=control_path)
-        except (
-            subprocess.CalledProcessError,
-            subprocess.TimeoutExpired,
-        ) as err:
-            logger.error(f"SSH connection to localhost is not setup: {err}")
-            return False
-        return True
-
     try:
-        # todo: do we need to disable strict host key checking here as well?
-        _connection = fabric.Connection("localhost")
-        _connection.open()
+        _localhost_remote = Remote("localhost", control_path=control_path)
     except (
-        paramiko.ssh_exception.SSHException,
-        paramiko.ssh_exception.NoValidConnectionsError,
-    ):
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ) as err:
+        logger.error(f"SSH connection to localhost is not setup: {err}")
         return False
     return True
 

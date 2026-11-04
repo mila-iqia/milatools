@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 import argparse
-import contextvars
 import functools
 import itertools
 import multiprocessing
-import random
 import shutil
 import socket
 import subprocess
 import sys
-import typing
 import warnings
 from collections.abc import Callable, Iterable
-from contextlib import contextmanager
 from logging import getLogger as get_logger
 from pathlib import Path
 from typing import Any, Literal, TypeVar, Union, get_args
@@ -24,16 +20,10 @@ import paramiko.config
 import questionary as qn
 import rich
 import rich.prompt
-from invoke.exceptions import UnexpectedExit
 from sshconf import ConfigLine, SshConfigFile, read_ssh_config
 from typing_extensions import ParamSpec, TypeGuard
 
-if typing.TYPE_CHECKING:
-    from milatools.utils.remote_v1 import RemoteV1
-
-
 logger = get_logger(__name__)
-control_file_var = contextvars.ContextVar("control_file", default="/dev/null")
 
 SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
 SSH_CACHE_DIR = Path.home() / ".cache" / "ssh"
@@ -53,10 +43,6 @@ style = qn.Style(
     ]
 )
 
-vowels = list("aeiou")
-consonants = list("bdfgjklmnprstvz")
-syllables = ["".join(letters) for letters in itertools.product(consonants, vowels)]
-
 ClusterWithInternetOnCNodes = Literal["mila", "cedar"]
 ClusterWithoutInternetOnCNodes = Literal["narval", "beluga", "graham"]
 
@@ -71,17 +57,6 @@ CLUSTERS: list[Cluster] = list(
     get_args(ClusterWithInternetOnCNodes) + get_args(ClusterWithoutInternetOnCNodes)
 )
 DRAC_CLUSTERS: list[Cluster] = [c for c in CLUSTERS if c != "mila"]
-
-cluster_to_connect_kwargs: dict[str, dict[str, Any]] = {
-    "mila": {
-        "banner_timeout": 60,
-    }
-}
-"""The `connect_kwargs` dict to be passed to `fabric.Connection` for each cluster.
-
-NOTE: These are passed down to `paramiko.SSHClient.connect`. See that method for all
-the possible values.
-"""
 
 
 def currently_in_a_test() -> bool:
@@ -98,33 +73,6 @@ def internet_on_compute_nodes(cluster: str) -> TypeGuard[ClusterWithInternetOnCN
             )
         )
     return cluster in get_args(ClusterWithInternetOnCNodes)
-
-
-def randname():
-    a = random.choice(syllables)
-    b = random.choice(syllables)
-    c = random.choice(syllables)
-    d = random.choice(syllables)
-    return f"{a}{b}-{c}{d}"
-
-
-@contextmanager
-def with_control_file(remote: RemoteV1, name=None):
-    name = name or randname()
-    pth = f".milatools/control/{name}"
-    remote.run("mkdir -p ~/.milatools/control", hide=True)
-
-    try:
-        remote.simple_run(f"[ -f {pth} ]")
-        exit(f"Server {name} already exists. You may use mila serve kill to remove it.")
-    except UnexpectedExit:
-        pass
-
-    token = control_file_var.set(pth)
-    try:
-        yield pth
-    finally:
-        control_file_var.reset(token)
 
 
 class MilatoolsUserError(Exception):
@@ -183,17 +131,6 @@ class SSHConnectionError(paramiko.SSHException):
 
 def yn(prompt: str, default: bool = True) -> bool:
     return rich.prompt.Confirm.ask(prompt, default=default)
-
-
-def askpath(prompt: str, remote: RemoteV1) -> str:
-    while True:
-        pth = rich.prompt.Prompt.ask(prompt)
-        try:
-            remote.simple_run(f"[ -d {pth} ]")
-        except UnexpectedExit:
-            qn.print(f"Path {pth} does not exist")
-            continue
-        return pth
 
 
 class SSHConfig:

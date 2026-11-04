@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import subprocess
-import typing
 from abc import ABC, abstractmethod
+from typing import Literal
 
-if typing.TYPE_CHECKING:
-    from milatools.utils.remote_v1 import Hide
+Hide = Literal[True, False, "out", "stdout", "err", "stderr"]
 
 
 class Runner(ABC):

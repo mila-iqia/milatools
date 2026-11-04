@@ -22,24 +22,7 @@ def _convert_argparse_output_to_pre_py311_format(output: str) -> str:
 @requires_no_s_flag
 @pytest.mark.parametrize(
     "command",
-    ["mila"]
-    + [
-        f"mila {command}"
-        for command in ["docs", "intranet", "init", "forward", "code", "serve"]
-    ]
-    + [
-        f"mila serve {serve_subcommand}"
-        for serve_subcommand in (
-            "connect",
-            "kill",
-            "list",
-            "lab",
-            "notebook",
-            "tensorboard",
-            "mlflow",
-            "aim",
-        )
-    ],
+    ["mila"] + [f"mila {command}" for command in ["init", "code"]],
 )
 def test_help(
     command: str,
@@ -67,11 +50,6 @@ def test_help(
         ("mila", "the following arguments are required: <command>"),
         ("mila search conda", "invalid choice: 'search'"),
         ("mila code --boo", "unrecognized arguments: --boo"),
-        (
-            "mila serve",
-            "error: the following arguments are required: <serve_subcommand>",
-        ),
-        ("mila forward", "error: the following arguments are required: REMOTE"),
     ],
 )
 def test_invalid_command_output(
@@ -93,25 +71,6 @@ def test_invalid_command_output(
     assert expected_error in buf.getvalue()
     # The output changes between python versions.
     # file_regression.check(_convert_argparse_output_to_pre_py311_format(buf.getvalue()))
-
-
-@pytest.mark.parametrize(
-    "command", ["mila docs conda", "mila intranet", "mila intranet idt"]
-)
-def test_check_command_output(
-    command: str,
-    file_regression: FileRegressionFixture,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Run simple commands and check that their output matches what's expected."""
-
-    monkeypatch.setattr("webbrowser.open", lambda url: None)
-    monkeypatch.setattr("sys.argv", shlex.split(command))
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-        main()
-    output: str = buf.getvalue()
-    file_regression.check(_convert_argparse_output_to_pre_py311_format(output))
 
 
 used_kbytes = 95764232
