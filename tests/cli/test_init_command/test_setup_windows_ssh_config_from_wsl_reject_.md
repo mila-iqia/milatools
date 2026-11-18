@@ -6,6 +6,7 @@ Host mila
   PreferredAuthentications publickey,keyboard-interactive
   Port 2222
   ForwardAgent yes
+  AddKeysToAgent yes
   ServerAliveInterval 120
   ServerAliveCountMax 5
   ControlMaster auto
@@ -17,6 +18,7 @@ Host mila
 Host mila-cpu
   Port 2222
   ForwardAgent yes
+  AddKeysToAgent yes
   StrictHostKeyChecking no
   LogLevel ERROR
   UserKnownHostsFile /dev/null
@@ -50,6 +52,7 @@ Host cn-????
 Host narval rorqual fir nibi trillium trillium-gpu tamia killarney vulcan
   HostName %h.alliancecan.ca
   ForwardAgent yes
+  AddKeysToAgent yes
   ServerAliveInterval 120
   ServerAliveCountMax 5
   ControlMaster auto

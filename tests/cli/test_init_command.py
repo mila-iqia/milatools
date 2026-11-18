@@ -130,6 +130,7 @@ def test_creates_ssh_config_file(ssh_config_file: Path):
 )
 def test_login_entry_options(login_entry: dict[str, int | str]):
     assert login_entry["ForwardAgent"] == "yes"
+    assert login_entry["AddKeysToAgent"] == "yes"
     assert login_entry["ServerAliveInterval"] == 120
     assert login_entry["ServerAliveCountMax"] == 5
 
