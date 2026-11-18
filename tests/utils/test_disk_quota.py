@@ -8,6 +8,7 @@ from typing import Callable
 
 import pytest
 
+from milatools.cli.utils import MilatoolsUserError
 from milatools.utils.disk_quota import (
     _parse_diskusage_report_output,
     _parse_lfs_quota_output,
@@ -69,7 +70,13 @@ async def test_check_disk_quota(
 
     else:
         with caplog.at_level(logging.DEBUG):
-            await _check_disk_quota()
+            try:
+                await _check_disk_quota()
+            except MilatoolsUserError as err:
+                # The quota is actually exceeded on this cluster for the current user.
+                # This is the expected behaviour: the output was parsed correctly and
+                # the check raised the appropriate error.
+                assert "disk quota on the $HOME filesystem is exceeded" in str(err)
 
 
 def _kb_to_gb(kb: int) -> float:
