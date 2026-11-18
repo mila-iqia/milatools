@@ -136,6 +136,22 @@ def test_parse_lfs_quota_output(
                 (28_000, 500_000),
             ),
         ),
+        (
+            # Seen on tamia and nibi: an arrow marker between the columns.
+            textwrap.dedent(
+                """\
+                                            Description                Space         # of files
+                                /home (user normandf)        21GiB/  25GiB     ->  249K/ 250K
+                             /scratch (user normandf)       403GiB/2048GiB          418K/ 500K
+                --
+                On some clusters, a break down per user may be available by adding the option '--per_user'.
+                """
+            ),
+            (
+                (21 * 1024 / 1000, 25 * 1024 / 1000),
+                (249_000, 250_000),
+            ),
+        ),
     ],
 )
 def test_parse_diskusage_report_output(
