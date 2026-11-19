@@ -121,10 +121,12 @@ def test_make_process():
     ("cluster", "expected"),
     [
         ("mila", True),
+        ("fir", True),
+        ("nibi", True),
         ("narval", False),
-        ("beluga", False),
-        ("graham", False),
-        ("cedar", True),
+        ("rorqual", False),
+        ("trillium", False),
+        ("trillium-gpu", False),
     ],
 )
 def test_internet_on_compute_nodes(cluster: str, expected: bool):
