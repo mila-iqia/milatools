@@ -65,6 +65,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         "PreferredAuthentications": "publickey,keyboard-interactive",
         "Port": 2222,
         "ForwardAgent": "yes",
+        "AddKeysToAgent": "yes",
         "ServerAliveInterval": 120,
         "ServerAliveCountMax": 5,
         **ssh_multiplexing_config,
@@ -73,6 +74,7 @@ MILA_ENTRIES: dict[str, dict[str, int | str]] = {
         # "User": mila_username,
         "Port": 2222,
         "ForwardAgent": "yes",
+        "AddKeysToAgent": "yes",
         "StrictHostKeyChecking": "no",
         "LogLevel": "ERROR",
         "UserKnownHostsFile": "/dev/null",
@@ -127,6 +129,11 @@ DRAC_ENTRIES: dict[str, dict[str, int | str]] = {
         "Hostname": "%h.alliancecan.ca",
         # User=drac_username,
         "ForwardAgent": "yes",
+        "AddKeysToAgent": "yes",
+        # Send keepalives so idle connections aren't dropped and dead ones are
+        # detected (avoids a hung ControlMaster).
+        "ServerAliveInterval": 120,
+        "ServerAliveCountMax": 5,
         # SSH multiplexing is useful here to go through 2FA only once.
         **ssh_multiplexing_config,
     },
