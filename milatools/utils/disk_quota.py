@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from logging import getLogger as get_logger
 from subprocess import CompletedProcess
 
@@ -168,34 +169,48 @@ def _parse_diskusage_report_output(
     --
     On some clusters, a break down per user may be available by adding the option '--per_user'.
     """
+    # Some clusters add markers between the columns (e.g. `21GiB/  25GiB  ->  249K/ 250K`
+    # when nearing the quota), so we look for the two `used/ max` pairs instead of
+    # relying on a fixed number of whitespace-separated tokens.
     for line in diskusage_report_output.splitlines()[1:]:
         line = line.strip()
         if line.startswith("/home"):
             _, _, space_and_files_parts = line.partition(")")
-            space_used_with_slash, space_avail, files_used_with_slask, files_avail = (
-                space_and_files_parts.split()
-            )
-            # note: can also have MB suffix
-            if "GiB" in space_used_with_slash:
-                space_used_gb = (
-                    int(space_used_with_slash.removesuffix("GiB/")) * 1024 / 1000
+            pairs = _DISKUSAGE_PAIR_REGEX.findall(space_and_files_parts)
+            if len(pairs) != 2:
+                raise ValueError(
+                    f"Unable to parse the /home line of the diskusage_report output: "
+                    f"{line!r}"
                 )
-            elif "GB" in space_used_with_slash:
-                space_used_gb = int(space_used_with_slash.removesuffix("GB/"))
-            else:
-                assert "MB" in space_used_with_slash
-                space_used_gb = int(space_used_with_slash.removesuffix("MB/")) / 1024
-            if "GiB" in space_avail:
-                space_avail_gb = int(space_avail.removesuffix("GiB")) * 1024 / 1000
-            elif "GB" in space_avail:
-                space_avail_gb = int(space_avail.removesuffix("GB"))
-            else:
-                assert "MB" in space_avail
-                space_avail_gb = int(space_avail.removesuffix("MB")) / 1024
-            k_files_used = 1000 * int(files_used_with_slask.removesuffix("K/"))
-            k_files_avail = 1000 * int(files_avail.removesuffix("K"))
-            return (space_used_gb, space_avail_gb), (k_files_used, k_files_avail)
+            space, files = pairs
+            space_used_gb = _to_gb(space[0], space[1])
+            space_avail_gb = _to_gb(space[2], space[3])
+            files_used = _to_n_files(files[0], files[1])
+            files_avail = _to_n_files(files[2], files[3])
+            return (space_used_gb, space_avail_gb), (files_used, files_avail)
     raise ValueError("Could not find /home line in diskusage_report output.")
+
+
+# Matches a `<used><unit>/ <max><unit>` pair, e.g. `19GiB/  25GiB` or `206K/ 250K`.
+_DISKUSAGE_PAIR_REGEX = re.compile(r"(\d+)\s*([A-Za-z]*)\s*/\s*(\d+)\s*([A-Za-z]*)")
+
+
+def _to_gb(value: str, unit: str) -> float:
+    if unit == "GiB":
+        return int(value) * 1024 / 1000
+    if unit == "GB":
+        return int(value)
+    if unit == "MB":
+        return int(value) / 1024
+    raise ValueError(f"Unexpected disk space unit in diskusage_report output: {unit!r}")
+
+
+def _to_n_files(value: str, unit: str) -> int:
+    if unit == "K":
+        return 1000 * int(value)
+    if unit == "":
+        return int(value)
+    raise ValueError(f"Unexpected # of files unit in diskusage_report output: {unit!r}")
 
 
 def _check_disk_quota_common_part(

@@ -8,6 +8,7 @@ from typing import Callable
 
 import pytest
 
+from milatools.cli.utils import MilatoolsUserError
 from milatools.utils.disk_quota import (
     _parse_diskusage_report_output,
     _parse_lfs_quota_output,
@@ -69,7 +70,13 @@ async def test_check_disk_quota(
 
     else:
         with caplog.at_level(logging.DEBUG):
-            await _check_disk_quota()
+            try:
+                await _check_disk_quota()
+            except MilatoolsUserError as err:
+                # The quota is actually exceeded on this cluster for the current user.
+                # This is the expected behaviour: the output was parsed correctly and
+                # the check raised the appropriate error.
+                assert "disk quota on the $HOME filesystem is exceeded" in str(err)
 
 
 def _kb_to_gb(kb: int) -> float:
@@ -134,6 +141,22 @@ def test_parse_lfs_quota_output(
             (
                 (4942 / 1024, 50),
                 (28_000, 500_000),
+            ),
+        ),
+        (
+            # Seen on tamia and nibi: an arrow marker between the columns.
+            textwrap.dedent(
+                """\
+                                            Description                Space         # of files
+                                /home (user normandf)        21GiB/  25GiB     ->  249K/ 250K
+                             /scratch (user normandf)       403GiB/2048GiB          418K/ 500K
+                --
+                On some clusters, a break down per user may be available by adding the option '--per_user'.
+                """
+            ),
+            (
+                (21 * 1024 / 1000, 25 * 1024 / 1000),
+                (249_000, 250_000),
             ),
         ),
     ],
