@@ -259,6 +259,15 @@ def add_arguments(parser: argparse.ArgumentParser):
     if sys.platform == "win32":
         code_parser.set_defaults(function=code_v1)
     else:
+        code_parser.add_argument(
+            "--reuse-window",
+            action="store_true",
+            default=False,
+            help=(
+                "Open the path in an existing VSCode window instead of opening a new "
+                "window."
+            ),
+        )
         code_parser.set_defaults(function=code)
 
     # ----- mila sync vscode-extensions ------
